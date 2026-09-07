@@ -1,0 +1,380 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  OPERATOR
+  APPROVER
+  AUDITOR
+  DEVELOPER
+}
+
+enum TreasuryStatus {
+  ACTIVE
+  FROZEN
+}
+
+enum RecipientType {
+  BUSINESS
+  INDIVIDUAL
+  INTERNAL
+}
+
+enum RecipientStatus {
+  PENDING
+  VERIFIED
+  BLOCKED
+  ARCHIVED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum PolicyStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum PayoutStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  QUEUED_FOR_EXECUTION
+  SIMULATING
+  SIMULATION_FAILED
+  READY_TO_SIGN
+  SUBMITTED
+  CONFIRMED
+  FAILED
+  CANCELLED
+  BLOCKED
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+}
+
+enum LedgerEntryType {
+  PAYOUT_REQUESTED
+  PAYOUT_APPROVED
+  PAYOUT_REJECTED
+  PAYOUT_BLOCKED
+  PAYOUT_SIMULATED
+  PAYOUT_SUBMITTED
+  PAYOUT_CONFIRMED
+  PAYOUT_FAILED
+  RECIPIENT_CREATED
+  POLICY_ACTIVATED
+  TREASURY_FROZEN
+  TREASURY_UNFROZEN
+}
+
+enum LedgerDirection {
+  DEBIT
+  CREDIT
+  INFORMATIONAL
+}
+
+enum ActorType {
+  USER
+  API_KEY
+  SYSTEM
+}
+
+enum WebhookEndpointStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+}
+
+model Organization {
+  id        String             @id
+  name      String
+  slug      String             @unique
+  status    OrganizationStatus @default(ACTIVE)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  memberships        Membership[]
+  treasuries         Treasury[]
+  recipients         Recipient[]
+  payouts            Payout[]
+  ledgerEntries      LedgerEntry[]
+  auditEvents        AuditEvent[]
+  apiKeys            ApiKey[]
+  webhookEndpoints   WebhookEndpoint[]
+  idempotencyRecords IdempotencyRecord[]
+}
+
+model User {
+  id           String     @id
+  email        String     @unique
+  displayName  String
+  passwordHash String
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  memberships Membership[]
+  approvals   PayoutApproval[]
+  createdPolicies Policy[]      @relation("PolicyCreatedBy")
+  createdPayouts  Payout[]      @relation("PayoutCreatedBy")
+  createdApiKeys  ApiKey[]      @relation("ApiKeyCreatedBy")
+}
+
+model Membership {
+  id             String       @id
+  organizationId String
+  userId         String
+  role           Role         @default(OPERATOR)
+  createdAt      DateTime     @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+}
+
+model Treasury {
+  id                     String         @id
+  organizationId         String
+  name                   String
+  slug                   String
+  network                String         @default("DEVNET")
+  assetSymbol            String         @default("USDC")
+  mintAddress            String
+  settlementWalletAddress String
+  status                 TreasuryStatus @default(ACTIVE)
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  policies      Policy[]
+  payouts       Payout[]
+  ledgerEntries LedgerEntry[]
+
+  @@unique([organizationId, slug])
+}
+
+model Recipient {
+  id                 String          @id
+  organizationId     String
+  displayName        String
+  recipientType      RecipientType   @default(BUSINESS)
+  status             RecipientStatus @default(PENDING)
+  walletAddress      String
+  expectedMintAddress String
+  countryCode        String?
+  email              String?
+  referenceCode      String?
+  riskLevel          RiskLevel       @default(LOW)
+  verificationNotes  String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payouts      Payout[]
+
+  @@unique([organizationId, walletAddress, expectedMintAddress])
+}
+
+model Policy {
+  id              String       @id
+  treasuryId      String
+  version         Int
+  name            String
+  status          PolicyStatus @default(DRAFT)
+  rules           Json
+  createdByUserId String
+  activatedAt     DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  treasury  Treasury @relation(fields: [treasuryId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("PolicyCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@unique([treasuryId, version])
+}
+
+model Payout {
+  id                      String       @id
+  organizationId          String
+  treasuryId              String
+  recipientId             String
+  idempotencyKey          String
+  externalReference       String?
+  invoiceReference        String?
+  amountBaseUnits         String
+  decimals                Int          @default(6)
+  assetSymbol             String       @default("USDC")
+  mintAddress             String
+  destinationTokenAccount String?
+  memo                    String?
+  status                  PayoutStatus @default(DRAFT)
+  riskLevel               RiskLevel    @default(LOW)
+  riskReasons             Json         @default("[]")
+  policyEvaluation        Json         @default("{}")
+  simulationResult        Json?
+  transactionBase64       String?
+  transactionSignature    String?
+  submittedAt             DateTime?
+  confirmedAt             DateTime?
+  failureCode             String?
+  failureMessage          String?
+  createdByUserId         String
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  treasury      Treasury         @relation(fields: [treasuryId], references: [id], onDelete: Cascade)
+  recipient     Recipient        @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  createdBy     User             @relation("PayoutCreatedBy", fields: [createdByUserId], references: [id])
+  approvals     PayoutApproval[]
+  ledgerEntries LedgerEntry[]
+
+  @@unique([organizationId, idempotencyKey])
+}
+
+model PayoutApproval {
+  id        String           @id
+  payoutId  String
+  userId    String
+  decision  ApprovalDecision
+  comment   String?
+  createdAt DateTime         @default(now())
+
+  payout Payout @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([payoutId, userId])
+}
+
+model LedgerEntry {
+  id              String          @id
+  organizationId  String
+  treasuryId      String
+  payoutId        String?
+  entryType       LedgerEntryType
+  direction       LedgerDirection
+  amountBaseUnits String?
+  assetSymbol     String?
+  referenceType   String
+  referenceId     String
+  metadata        Json            @default("{}")
+  createdAt       DateTime        @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  treasury     Treasury     @relation(fields: [treasuryId], references: [id], onDelete: Cascade)
+  payout       Payout?      @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+}
+
+model AuditEvent {
+  id             String    @id
+  organizationId String
+  actorType      ActorType
+  actorId        String?
+  action         String
+  resourceType   String
+  resourceId     String
+  requestId      String?
+  ipAddress      String?
+  userAgent      String?
+  previousState  Json?
+  newState       Json?
+  metadata       Json?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model ApiKey {
+  id              String    @id
+  organizationId  String
+  name            String
+  keyPrefix       String
+  keyHash         String
+  scopes          Json
+  lastUsedAt      DateTime?
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id])
+}
+
+model WebhookEndpoint {
+  id              String                @id
+  organizationId  String
+  url             String
+  secretEncrypted String
+  eventTypes      Json
+  status          WebhookEndpointStatus @default(ACTIVE)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deliveries   WebhookDelivery[]
+}
+
+model WebhookDelivery {
+  id                    String                @id
+  webhookEndpointId     String
+  eventType             String
+  payload               Json
+  attemptCount          Int                   @default(0)
+  status                WebhookDeliveryStatus @default(PENDING)
+  responseStatus        Int?
+  responseBodyTruncated String?
+  nextAttemptAt         DateTime?
+  deliveredAt           DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  webhookEndpoint WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id], onDelete: Cascade)
+}
+
+model IdempotencyRecord {
+  id             String   @id
+  organizationId String
+  key            String
+  requestHash    String
+  responseStatus Int
+  responseBody   Json
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+}

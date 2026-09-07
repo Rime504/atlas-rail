@@ -1,0 +1,37 @@
+{
+  "name": "atlas-rail-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Programmable treasury controls and safe USDC payouts for Solana devnet",
+  "license": "Apache-2.0",
+  "author": "Atlas Rail Contributors",
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "vitest run --config vitest.config.ts",
+    "test:unit": "vitest run --config vitest.config.ts packages/domain packages/solana",
+    "test:integration": "vitest run --config vitest.config.ts apps/api",
+    "test:watch": "vitest --config vitest.config.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\"",
+    "db:generate": "pnpm --filter @atlas-rail/database db:generate",
+    "db:migrate": "pnpm --filter @atlas-rail/database db:migrate",
+    "db:seed": "pnpm --filter @atlas-rail/database db:seed",
+    "db:push": "pnpm --filter @atlas-rail/database db:push",
+    "openapi": "pnpm --filter @atlas-rail/api openapi"
+  },
+  "devDependencies": {
+    "eslint": "^9.16.0",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@atlas-rail/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "ts-node src/main.ts",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@atlas-rail/config": "workspace:*",
+    "@atlas-rail/database": "workspace:*",
+    "@atlas-rail/domain": "workspace:*",
+    "@atlas-rail/solana": "workspace:*",
+    "bullmq": "^5.25.6",
+    "ioredis": "^5.4.1",
+    "pino": "^9.5.0"
+  },
+  "devDependencies": {
+    "@atlas-rail/typescript-config": "workspace:*",
+    "@types/node": "^22.10.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

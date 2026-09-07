@@ -1,0 +1,9 @@
+{
+  "extends": "@atlas-rail/typescript-config/base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "jsx": "react-jsx"
+  },
+  "include": ["src/**/*"]
+}

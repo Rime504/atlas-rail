@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: atlas_postgres
+    environment:
+      POSTGRES_USER: atlas
+      POSTGRES_PASSWORD: atlas
+      POSTGRES_DB: atlas_rail
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atlas -d atlas_rail"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: atlas_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: atlas_mailpit
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: atlas_api
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://atlas:atlas@postgres:5432/atlas_rail?schema=public
+      REDIS_URL: redis://redis:6379
+      API_PORT: 3001
+      SOLANA_RPC_URL: https://api.devnet.solana.com
+      SOLANA_USDC_MINT: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
+      ATLAS_ALLOW_MOCK_SIGNER: "true"
+      ATLAS_MAINNET_ENABLED: "false"
+      JWT_ACCESS_SECRET: atlas_rail_dev_access_secret_do_not_use_in_production_32bytes
+      JWT_REFRESH_SECRET: atlas_rail_dev_refresh_secret_do_not_use_in_production_32bytes
+      ENCRYPTION_KEY_BASE64: c29tZV9zZWNyZXRfMzJfYnl0ZV9rZXlfZm9yX2RldnZ2
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: atlas_worker
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://atlas:atlas@postgres:5432/atlas_rail?schema=public
+      REDIS_URL: redis://redis:6379
+      SOLANA_RPC_URL: https://api.devnet.solana.com
+      SOLANA_USDC_MINT: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
+      ATLAS_ALLOW_MOCK_SIGNER: "true"
+      ATLAS_MAINNET_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: atlas_web
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
