@@ -16,7 +16,7 @@
     "@atlas-rail/domain": "workspace:*",
     "@atlas-rail/ui": "workspace:*",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.468.0",
+    "lucide-react": "^1.41.0",
     "next": "^15.0.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
