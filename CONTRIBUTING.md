@@ -7,7 +7,7 @@ Thank you for contributing to Atlas Rail!
 1. Prerequisites: Node.js 22 LTS, pnpm 9+, Docker Desktop.
 2. Clone repository:
    ```bash
-   git clone https://github.com/Kamelia503/atlas-rail.git
+   git clone https://github.com/Rime504/atlas-rail.git
    cd atlas-rail
    ```
 3. Copy environment file:

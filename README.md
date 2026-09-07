@@ -4,7 +4,7 @@
 
 If you've ever had to explain to a CFO why "just send it from the multisig" isn't an internal control, this is the layer you were missing.
 
-[![CI](https://github.com/Kamelia503/atlas-rail/actions/workflows/ci.yml/badge.svg)](https://github.com/Kamelia503/atlas-rail/actions)
+[![CI](https://github.com/Rime504/atlas-rail/actions/workflows/ci.yml/badge.svg)](https://github.com/Rime504/atlas-rail/actions)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Solana](https://img.shields.io/badge/Solana-Devnet_Only-14F195?logo=solana&logoColor=white)](https://solana.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -211,7 +211,7 @@ atlas-rail/
 **Prerequisites:** Node.js 22 LTS · pnpm 9+ · Docker Desktop
 
 ```bash
-git clone https://github.com/Kamelia503/atlas-rail.git
+git clone https://github.com/Rime504/atlas-rail.git
 cd atlas-rail
 cp .env.example .env
 
