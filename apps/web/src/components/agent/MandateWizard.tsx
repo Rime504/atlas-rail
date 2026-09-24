@@ -250,7 +250,7 @@ export function MandateWizard({
             <Field label="Allowed recipient wallets" error={errors.payTo} hint="One address per line. A payment to any other wallet is denied.">
               <textarea className="input-field min-h-[84px] font-mono text-xs" value={form.payTo} onChange={(e) => set('payTo', e.target.value)} placeholder="Base58 addresses, one per line" spellCheck={false} />
             </Field>
-            <Field label="Allowed resources" error={errors.resources} hint="URL patterns, one per line. Use * for a single path segment, e.g. http://localhost:4402/research/*">
+            <Field label="Allowed resources" error={errors.resources} hint="URL patterns, one per line. A trailing /* allows everything under that path, e.g. http://localhost:4402/research/*">
               <textarea className="input-field min-h-[84px] font-mono text-xs" value={form.resources} onChange={(e) => set('resources', e.target.value)} placeholder="https://api.example.com/research/*" spellCheck={false} />
             </Field>
           </>
