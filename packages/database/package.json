@@ -33,7 +33,7 @@
   "devDependencies": {
     "@atlas-rail/typescript-config": "workspace:*",
     "@types/node": "^22.10.1",
-    "prisma": "^5.22.0",
+    "prisma": "^7.10.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2"
   }
