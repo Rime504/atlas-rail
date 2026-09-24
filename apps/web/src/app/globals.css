@@ -2,10 +2,93 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: dark;
+}
+
+* {
+  border-color: #1c2038;
+}
+
+html,
 body {
-  background-color: #090d16;
-  color: #f8fafc;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  height: 100%;
+}
+
+body {
+  background-color: #050611;
+  background-image:
+    radial-gradient(1200px 600px at 15% -10%, rgba(153, 69, 255, 0.18), transparent 60%),
+    radial-gradient(900px 500px at 90% 0%, rgba(20, 241, 149, 0.1), transparent 55%);
+  background-attachment: fixed;
+  color: #f1f2f9;
   margin: 0;
   padding: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(153, 69, 255, 0.35);
+  color: #ffffff;
+}
+
+/* Slim, quiet scrollbars that still fit the theme */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #1c2038;
+  border-radius: 999px;
+  border: 2px solid #050611;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2a2f52;
+}
+
+@layer components {
+  .gradient-text {
+    @apply bg-solana-gradient bg-clip-text text-transparent;
+  }
+
+  .glass-card {
+    @apply relative rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl;
+  }
+
+  .glass-card-hover {
+    @apply transition-all duration-300 hover:border-white/[0.16] hover:bg-white/[0.05] hover:shadow-glow;
+  }
+
+  .btn-gradient {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-solana-gradient px-4 py-2.5 text-sm font-semibold text-[#05060f] shadow-glow transition-all duration-200 hover:brightness-110 hover:shadow-[0_0_50px_-8px_rgba(153,69,255,0.6)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-4 py-2.5 text-sm font-medium text-slate-300 transition-all duration-200 hover:border-white/20 hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-sm font-semibold text-rose-300 transition-all duration-200 hover:border-rose-400/50 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .input-field {
+    @apply w-full rounded-lg border border-white/10 bg-black/30 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 outline-none transition-colors focus:border-solana-purple/60 focus:ring-2 focus:ring-solana-purple/20;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-500;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden rounded-md bg-white/[0.04];
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.06] to-transparent;
+    animation: shimmer 1.8s infinite;
+  }
 }
