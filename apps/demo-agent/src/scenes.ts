@@ -265,12 +265,15 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       say();
       step(c.yellow(`Waiting for a human. Open ${c.bold(`${env.webUrl}/approvals`)} (works on a phone) and approve the $40.00 request.`));
       if (options.autoApprove) {
+        // Approve this exact escalation only — a re-run's leftover, already-expired approvals from
+        // a previous pass must never be touched (they 409, and "approve every PENDING row in the
+        // org" is not what a real approver does anyway).
+        const approvalId = awaiting.approvalId;
         info('(auto-approve is on: acting as approver Sarah Jenkins in 2 seconds)');
         setTimeout(() => {
-          void (async () => {
-            const pending = await api.get<Array<{ id: string }>>('/v1/agent/approvals?status=PENDING', { token: approver });
-            for (const a of pending) await api.post(`/v1/agent/approvals/${a.id}/approve`, { token: approver }, { comment: 'Approved for the Q3 inference budget' });
-          })().catch((e) => bad(`auto-approve failed: ${e instanceof Error ? e.message : String(e)}`));
+          void api
+            .post(`/v1/agent/approvals/${approvalId}/approve`, { token: approver }, { comment: 'Approved for the Q3 inference budget' })
+            .catch((e) => bad(`auto-approve failed: ${e instanceof Error ? e.message : String(e)}`));
         }, 2000);
       }
     }, 300);

@@ -22,8 +22,8 @@
     "db:push": "pnpm --filter @atlas-rail/database db:push",
     "openapi": "pnpm --filter @atlas-rail/api openapi",
     "demo": "node scripts/demo.mjs",
-    "demo:offline": "node scripts/demo.mjs --offline",
-    "demo:rehearse": "node scripts/demo.mjs --offline --auto-approve --exit",
+    "demo:offline": "node scripts/demo.mjs --offline --no-docker",
+    "demo:rehearse": "node scripts/demo.mjs --offline --no-docker --auto-approve --exit",
     "build:demo": "turbo run build --filter=@atlas-rail/api --filter=@atlas-rail/worker --filter=@atlas-rail/demo-api --filter=@atlas-rail/demo-agent --filter=@atlas-rail/cli --filter=@atlas-rail/mock-validator --filter=@atlas-rail/web"
   },
   "devDependencies": {
