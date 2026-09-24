@@ -8,6 +8,8 @@ export default defineConfig({
       '@atlas-rail/database': path.resolve(__dirname, 'packages/database/src/index.ts'),
       '@atlas-rail/domain': path.resolve(__dirname, 'packages/domain/src/index.ts'),
       '@atlas-rail/solana': path.resolve(__dirname, 'packages/solana/src/index.ts'),
+      '@atlas-rail/mandate/testing': path.resolve(__dirname, 'packages/mandate/src/testing.ts'),
+      '@atlas-rail/mandate': path.resolve(__dirname, 'packages/mandate/src/index.ts'),
       '@atlas-rail/api-client': path.resolve(__dirname, 'packages/api-client/src/index.ts'),
     },
   },
