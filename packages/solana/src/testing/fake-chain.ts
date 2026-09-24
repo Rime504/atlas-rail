@@ -111,6 +111,10 @@ export class FakeChain implements ChainClient {
     this.airdrop(address, lamports);
   }
 
+  async getTokenBalance(owner: string, mint: string): Promise<bigint> {
+    return this.tokenBalance(owner, mint);
+  }
+
   /* ---- ChainClient --------------------------------------------------------------------------- */
 
   async getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: number }> {

@@ -6,7 +6,7 @@ import {
   signDomainHash,
   verifyDomainHash,
 } from './crypto';
-import { JsonValue } from './jcs';
+import { JsonValue, canonicalize } from './jcs';
 import {
   DecisionKind,
   GateApproval,
@@ -207,7 +207,9 @@ export function verifyDecisionMatchesScope(mandate: AgentMandate, signed: Signed
   const same =
     replay.decision === record.decision &&
     replay.kind === record.kind &&
-    JSON.stringify(replay.rulesEvaluated) === JSON.stringify(record.rulesEvaluated);
+    // Canonical (key-sorted) comparison: JSONB storage reorders object keys, so a plain stringify would
+    // wrongly flag every decision that has been through Postgres.
+    canonicalize(replay.rulesEvaluated) === canonicalize(record.rulesEvaluated);
   return {
     id: 'DECISION_MATCHES_SCOPE',
     ok: same,

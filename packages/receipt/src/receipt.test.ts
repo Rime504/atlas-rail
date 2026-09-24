@@ -179,6 +179,28 @@ describe('verifyReceipt', () => {
   });
 });
 
+describe('key order independence (Postgres JSONB does not preserve key order)', () => {
+  const reverseKeys = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(reverseKeys);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value as Record<string, unknown>).reverse().map(([k, v]) => [k, reverseKeys(v)]));
+    }
+    return value;
+  };
+
+  it('a receipt whose every object has been re-keyed in reverse order still verifies, including the scope replay', async () => {
+    const world = await createWorld();
+    await payOnce(world);
+    const { receipt } = await payOnce(world, '20000');
+    await world.anchorService.run();
+    const stored = (await world.receipts.get(WORLD_ORG, receipt.id))!.receipt;
+    const reordered = reverseKeys(JSON.parse(JSON.stringify(stored)));
+    const result = await verifyReceipt(reordered, { chain: world.chain, requireAnchor: true });
+    expect(result.checks.filter((c) => c.status === 'FAIL')).toEqual([]);
+    expect(result.pass).toBe(true);
+  });
+});
+
 describe('anchoring', () => {
   it('returns null when nothing is pending and anchors only new receipts on later runs', async () => {
     const world = await createWorld();

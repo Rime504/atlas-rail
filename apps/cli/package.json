@@ -1,0 +1,30 @@
+{
+  "name": "@atlas-rail/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "atlas: verify Atlas Rail bound receipts and agent mandates, offline plus one devnet RPC read.",
+  "license": "Apache-2.0",
+  "bin": {
+    "atlas": "./dist/main.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --build",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@atlas-rail/mandate": "workspace:*",
+    "@atlas-rail/receipt": "workspace:*",
+    "@atlas-rail/solana": "workspace:*"
+  },
+  "devDependencies": {
+    "@atlas-rail/typescript-config": "workspace:*",
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

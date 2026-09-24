@@ -20,9 +20,14 @@
     "db:migrate": "pnpm --filter @atlas-rail/database db:migrate",
     "db:seed": "pnpm --filter @atlas-rail/database db:seed",
     "db:push": "pnpm --filter @atlas-rail/database db:push",
-    "openapi": "pnpm --filter @atlas-rail/api openapi"
+    "openapi": "pnpm --filter @atlas-rail/api openapi",
+    "demo": "node scripts/demo.mjs",
+    "demo:offline": "node scripts/demo.mjs --offline",
+    "demo:rehearse": "node scripts/demo.mjs --offline --auto-approve --exit",
+    "build:demo": "turbo run build --filter=@atlas-rail/api --filter=@atlas-rail/worker --filter=@atlas-rail/demo-api --filter=@atlas-rail/demo-agent --filter=@atlas-rail/cli --filter=@atlas-rail/mock-validator --filter=@atlas-rail/web"
   },
   "devDependencies": {
+    "embedded-postgres": "18.4.0-beta.17",
     "eslint": "^9.16.0",
     "prettier": "^3.4.2",
     "turbo": "^2.3.3",

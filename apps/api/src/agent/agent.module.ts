@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { ChainClient, DevnetKeyring, Web3ChainClient } from '@atlas-rail/solana';
 import { AgentController } from './agent.controller';
 import { AgentFacade } from './agent.facade';
@@ -6,6 +7,7 @@ import { AgentGateController } from './agent-gate.controller';
 import { AGENT_CHAIN, AGENT_KEYRING } from './agent.tokens';
 
 @Module({
+  imports: [AuthModule],
   controllers: [AgentController, AgentGateController],
   providers: [
     // Devnet only: Web3ChainClient refuses mainnet endpoints at construction (ADR 0004).

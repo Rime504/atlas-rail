@@ -31,7 +31,8 @@ export function setToken(token: string | null) {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
-    'content-type': 'application/json',
+    // Fastify rejects a POST that declares JSON but sends no body (e.g. freeze/unfreeze, anchor).
+    ...(options.body !== undefined ? { 'content-type': 'application/json' } : {}),
     ...((options.headers as Record<string, string>) || {}),
   };
   if (token) headers['authorization'] = `Bearer ${token}`;

@@ -204,6 +204,16 @@ export class Web3ChainClient implements ChainClient {
     await this.connection.requestAirdrop(new PublicKey(address), Number(lamports));
   }
 
+  async getTokenBalance(owner: string, mint: string): Promise<bigint> {
+    const ata = getAssociatedTokenAddressSync(new PublicKey(mint), new PublicKey(owner), true, TOKEN_PROGRAM_ID);
+    try {
+      const { value } = await this.connection.getTokenAccountBalance(ata, 'confirmed');
+      return BigInt(value.amount);
+    } catch {
+      return 0n; // account does not exist yet
+    }
+  }
+
   async getMintInfo(mint: string): Promise<MintInfo | null> {
     const key = new PublicKey(mint);
     const info = await this.connection.getAccountInfo(key, 'confirmed');

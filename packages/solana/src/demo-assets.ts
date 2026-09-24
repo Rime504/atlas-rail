@@ -25,6 +25,8 @@ export interface FundableChain extends ChainClient {
   getBalanceLamports(address: string): Promise<bigint>;
   /** Requests a faucet airdrop. May be rate limited on public devnet. */
   requestAirdrop(address: string, lamports: bigint): Promise<void>;
+  /** Token balance (base units) of `owner`'s associated token account for `mint`; 0 if it does not exist. */
+  getTokenBalance(owner: string, mint: string): Promise<bigint>;
 }
 
 export class FundingError extends Error {
@@ -50,6 +52,8 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 export interface EnsureSolOptions {
   /** A devnet wallet you funded (e.g. from faucet.solana.com) used when the public airdrop is rate limited. */
   funder?: Keypair | null;
+  /** Transfer from the funder first (when it has the balance) instead of hitting the rate-limited faucet. */
+  preferFunder?: boolean;
   attempts?: number;
   log?: (message: string) => void;
   sleepMs?: (attempt: number) => number;
@@ -63,6 +67,18 @@ export interface EnsureSolOptions {
 export async function ensureSol(chain: FundableChain, target: string, minLamports: bigint, options: EnsureSolOptions = {}): Promise<void> {
   const log = options.log ?? (() => {});
   if ((await chain.getBalanceLamports(target)) >= minLamports) return;
+
+  const funder = options.funder;
+  const canUseFunder = async () =>
+    funder !== null &&
+    funder !== undefined &&
+    funder.publicKey.toBase58() !== target &&
+    (await chain.getBalanceLamports(funder.publicKey.toBase58())) > minLamports + 10_000n;
+  if (options.preferFunder && funder && (await canUseFunder())) {
+    log(`funding ${target} from the pre-funded wallet ${funder.publicKey.toBase58()}`);
+    await send(chain, funder, [SystemProgram.transfer({ fromPubkey: funder.publicKey, toPubkey: new PublicKey(target), lamports: minLamports })]);
+    return;
+  }
 
   const attempts = options.attempts ?? 4;
   for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -79,14 +95,10 @@ export async function ensureSol(chain: FundableChain, target: string, minLamport
     await sleep(options.sleepMs ? options.sleepMs(attempt) : attempt * 2000);
   }
 
-  const funder = options.funder;
-  if (funder && funder.publicKey.toBase58() !== target) {
-    const funderBalance = await chain.getBalanceLamports(funder.publicKey.toBase58());
-    if (funderBalance > minLamports + 10_000n) {
-      log(`falling back to the pre-funded wallet ${funder.publicKey.toBase58()}`);
-      await send(chain, funder, [SystemProgram.transfer({ fromPubkey: funder.publicKey, toPubkey: new PublicKey(target), lamports: minLamports })]);
-      return;
-    }
+  if (funder && (await canUseFunder())) {
+    log(`falling back to the pre-funded wallet ${funder.publicKey.toBase58()}`);
+    await send(chain, funder, [SystemProgram.transfer({ fromPubkey: funder.publicKey, toPubkey: new PublicKey(target), lamports: minLamports })]);
+    return;
   }
   throw new FundingError(
     `Could not fund ${target} with devnet SOL: the public faucet is rate limited and no pre-funded wallet with enough balance was available. ` +
