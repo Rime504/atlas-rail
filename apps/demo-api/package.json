@@ -1,0 +1,35 @@
+{
+  "name": "@atlas-rail/demo-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Devnet demo: a paid x402 API (research + inference) and a local facilitator built on the official @x402/svm scheme.",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --build",
+    "start": "node dist/main.js",
+    "start:facilitator": "node dist/facilitator-main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@atlas-rail/config": "workspace:*",
+    "@atlas-rail/solana": "workspace:*",
+    "@solana/kit": "^6.9.0",
+    "@x402/core": "^2.27.0",
+    "@x402/fastify": "^2.26.0",
+    "@x402/svm": "^2.27.0",
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "@atlas-rail/mandate": "workspace:*",
+    "@atlas-rail/receipt": "workspace:*",
+    "@atlas-rail/typescript-config": "workspace:*",
+    "@atlas-rail/x402": "workspace:*",
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
