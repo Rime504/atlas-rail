@@ -28,7 +28,7 @@ export const policyRulesSchema = z.object({
       'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
       'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
       'ComputeBudget111111111111111111111111111111',
-      'MemoSsq6gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcY',
+      'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr',
     ]),
     blockMemoRequired: z.boolean().default(false),
     minimumConfirmations: z.string().default('confirmed'),
