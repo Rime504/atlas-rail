@@ -1,7 +1,7 @@
 import { ZodError } from 'zod';
 import { MessageSigner } from '../crypto';
 import { CreateMandateInput, MandateSigningError, createMandate, hashMandate, signMandate, verifyMandateChain } from '../mandate';
-import { DelegationRole } from '../schema';
+import { DelegationLink, DelegationRole } from '../schema';
 import {
   AgentEvent,
   AgentEventSink,
@@ -112,6 +112,42 @@ export class MandateLifecycleService {
       if (next.status === 'ACTIVE') {
         await this.emit({ type: 'agent.mandate.activated', organizationId, payload: { mandateId, mandateHash: next.mandateHash } });
       }
+      return next;
+    });
+  }
+
+  /**
+   * Attaches the agent's own acceptance, computed by the agent with its own key (the agent's
+   * private key never leaves the agent). The link is only accepted if the resulting chain verifies
+   * end to end, so a wrong key, a wrong role or a signature over a different mandate is rejected.
+   */
+  async attachAgentLink(
+    organizationId: string,
+    mandateId: string,
+    link: DelegationLink,
+  ): Promise<MandateRecord> {
+    const { store, clock } = this.deps;
+    return store.runExclusive(`mandate:${mandateId}`, async () => {
+      const record = await store.mandates.get(organizationId, mandateId);
+      if (!record) throw new AgentServiceError('NOT_FOUND', 'Mandate not found');
+      if (record.revocation) throw new AgentServiceError('INVALID_STATE', 'Mandate is revoked');
+      if (record.status === 'ACTIVE') throw new AgentServiceError('INVALID_STATE', 'Mandate is already fully signed');
+      if (link.role !== 'AGENT' || link.publicKey !== record.mandate.agent.publicKey) {
+        throw new AgentServiceError('FORBIDDEN', 'Only the agent named in the mandate can add the AGENT link');
+      }
+      const candidate = { ...record.mandate, delegationChain: [...record.mandate.delegationChain, link] };
+      const verification = verifyMandateChain(candidate);
+      if (!verification.valid) throw new AgentServiceError('INVALID_STATE', verification.errors[0]);
+
+      const next: MandateRecord = {
+        ...record,
+        mandate: candidate,
+        status: 'ACTIVE',
+        signers: [...record.signers, { role: 'AGENT', publicKey: link.publicKey, userId: null, signedAt: clock() }],
+      };
+      await store.mandates.update(next);
+      await this.audit(organizationId, null, 'AGENT_MANDATE_SIGNED_AGENT', mandateId, { publicKey: link.publicKey });
+      await this.emit({ type: 'agent.mandate.activated', organizationId, payload: { mandateId, mandateHash: next.mandateHash } });
       return next;
     });
   }

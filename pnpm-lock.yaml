@@ -35,6 +35,12 @@ importers:
       '@atlas-rail/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@atlas-rail/mandate':
+        specifier: workspace:*
+        version: link:../../packages/mandate
+      '@atlas-rail/receipt':
+        specifier: workspace:*
+        version: link:../../packages/receipt
       '@atlas-rail/solana':
         specifier: workspace:*
         version: link:../../packages/solana
@@ -83,6 +89,9 @@ importers:
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
     devDependencies:
       '@atlas-rail/typescript-config':
         specifier: workspace:*
@@ -142,6 +151,34 @@ importers:
       '@atlas-rail/x402':
         specifier: workspace:*
         version: link:../../packages/x402-client
+      '@types/node':
+        specifier: ^22.10.1
+        version: 22.20.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+
+  apps/mock-validator:
+    dependencies:
+      '@atlas-rail/solana':
+        specifier: workspace:*
+        version: link:../../packages/solana
+      '@scure/base':
+        specifier: ^1.2.6
+        version: 1.2.6
+      '@solana/web3.js':
+        specifier: ^1.95.8
+        version: 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      fastify:
+        specifier: ^5.0.0
+        version: 5.12.5
+    devDependencies:
+      '@atlas-rail/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
       '@types/node':
         specifier: ^22.10.1
         version: 22.20.1
@@ -328,6 +365,12 @@ importers:
 
   packages/database:
     dependencies:
+      '@atlas-rail/mandate':
+        specifier: workspace:*
+        version: link:../mandate
+      '@atlas-rail/receipt':
+        specifier: workspace:*
+        version: link:../receipt
       '@prisma/client':
         specifier: ^5.22.0
         version: 5.22.0(prisma@5.22.0)

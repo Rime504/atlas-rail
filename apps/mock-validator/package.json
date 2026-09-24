@@ -1,0 +1,28 @@
+{
+  "name": "@atlas-rail/mock-validator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline Solana JSON-RPC stand-in (in-memory cluster) so the demo runs without devnet or solana-test-validator.",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --build",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@atlas-rail/solana": "workspace:*",
+    "@scure/base": "^1.2.6",
+    "@solana/web3.js": "^1.95.8",
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "@atlas-rail/typescript-config": "workspace:*",
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

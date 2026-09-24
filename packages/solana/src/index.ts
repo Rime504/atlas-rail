@@ -10,3 +10,5 @@ export * from './x402-payment';
 export * from './chain';
 export * from './anchor';
 export * from './payment-simulator';
+export * from './keyring';
+export * from './demo-assets';

@@ -61,6 +61,7 @@ export interface DecisionStore {
   findByRequest(organizationId: string, mandateId: string, nonce: string): Promise<StoredDecision | null>;
   /** Append-only. There is deliberately no update or delete. */
   insert(decision: StoredDecision): Promise<void>;
+  /** `afterCreatedAt` is inclusive (>=); callers dedupe by decision id. Newest first. */
   list(organizationId: string, options: { limit: number; mandateId?: string; afterCreatedAt?: number }): Promise<StoredDecision[]>;
 }
 

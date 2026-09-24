@@ -94,7 +94,7 @@ class InMemoryDecisionStore implements DecisionStore {
         (r) =>
           r.organizationId === organizationId &&
           (options.mandateId === undefined || r.signed.record.mandateId === options.mandateId) &&
-          (options.afterCreatedAt === undefined || r.createdAt > options.afterCreatedAt),
+          (options.afterCreatedAt === undefined || r.createdAt >= options.afterCreatedAt),
       )
       .slice(-options.limit)
       .reverse()

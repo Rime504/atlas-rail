@@ -10,6 +10,7 @@ import { LedgerModule } from './ledger/ledger.module';
 import { ApiKeyModule } from './apikeys/apikey.module';
 import { WebhookModule } from './webhooks/webhook.module';
 import { HealthModule } from './health/health.module';
+import { AgentModule } from './agent/agent.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { HealthModule } from './health/health.module';
     ApiKeyModule,
     WebhookModule,
     HealthModule,
+    AgentModule,
   ],
 })
 export class AppModule {}

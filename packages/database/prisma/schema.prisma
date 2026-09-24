@@ -133,6 +133,11 @@ model Organization {
   apiKeys            ApiKey[]
   webhookEndpoints   WebhookEndpoint[]
   idempotencyRecords IdempotencyRecord[]
+  agentMandates      AgentMandate[]
+  agentDecisions     AgentDecision[]
+  agentApprovals     AgentApproval[]
+  agentSpend         AgentSpend[]
+  boundReceipts      BoundReceipt[]
 }
 
 model User {
@@ -144,19 +149,19 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  memberships Membership[]
-  approvals   PayoutApproval[]
-  createdPolicies Policy[]      @relation("PolicyCreatedBy")
-  createdPayouts  Payout[]      @relation("PayoutCreatedBy")
-  createdApiKeys  ApiKey[]      @relation("ApiKeyCreatedBy")
+  memberships     Membership[]
+  approvals       PayoutApproval[]
+  createdPolicies Policy[]         @relation("PolicyCreatedBy")
+  createdPayouts  Payout[]         @relation("PayoutCreatedBy")
+  createdApiKeys  ApiKey[]         @relation("ApiKeyCreatedBy")
 }
 
 model Membership {
-  id             String       @id
+  id             String   @id
   organizationId String
   userId         String
-  role           Role         @default(OPERATOR)
-  createdAt      DateTime     @default(now())
+  role           Role     @default(OPERATOR)
+  createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -165,17 +170,17 @@ model Membership {
 }
 
 model Treasury {
-  id                     String         @id
-  organizationId         String
-  name                   String
-  slug                   String
-  network                String         @default("DEVNET")
-  assetSymbol            String         @default("USDC")
-  mintAddress            String
+  id                      String         @id
+  organizationId          String
+  name                    String
+  slug                    String
+  network                 String         @default("DEVNET")
+  assetSymbol             String         @default("USDC")
+  mintAddress             String
   settlementWalletAddress String
-  status                 TreasuryStatus @default(ACTIVE)
-  createdAt              DateTime       @default(now())
-  updatedAt              DateTime       @updatedAt
+  status                  TreasuryStatus @default(ACTIVE)
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
 
   organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   policies      Policy[]
@@ -186,20 +191,20 @@ model Treasury {
 }
 
 model Recipient {
-  id                 String          @id
-  organizationId     String
-  displayName        String
-  recipientType      RecipientType   @default(BUSINESS)
-  status             RecipientStatus @default(PENDING)
-  walletAddress      String
+  id                  String          @id
+  organizationId      String
+  displayName         String
+  recipientType       RecipientType   @default(BUSINESS)
+  status              RecipientStatus @default(PENDING)
+  walletAddress       String
   expectedMintAddress String
-  countryCode        String?
-  email              String?
-  referenceCode      String?
-  riskLevel          RiskLevel       @default(LOW)
-  verificationNotes  String?
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  countryCode         String?
+  email               String?
+  referenceCode       String?
+  riskLevel           RiskLevel       @default(LOW)
+  verificationNotes   String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payouts      Payout[]
@@ -377,4 +382,175 @@ model IdempotencyRecord {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, key])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Agent Mandates (ADR 0005): signed delegated spending authority for x402 agent payments.
+// AgentDecision, AgentSpend and BoundReceipt are append-only; see the migration for the triggers.
+// Timestamps are DateTime; the mandate/receipt documents themselves carry epoch seconds.
+// ---------------------------------------------------------------------------------------------
+
+enum MandateStatus {
+  DRAFT
+  ACTIVE
+  REVOKED
+}
+
+enum AgentDecisionOutcome {
+  ALLOW
+  DENY
+  ESCALATE
+}
+
+enum AgentApprovalState {
+  PENDING
+  APPROVED
+  DENIED
+  EXPIRED
+  CONSUMED
+}
+
+enum AgentSpendStatus {
+  RESERVED
+  SETTLED
+  RELEASED
+}
+
+enum AnchorBatchStatus {
+  ANCHORED
+  FAILED
+}
+
+model AgentMandate {
+  id              String        @id
+  organizationId  String
+  mandateHash     String
+  document        Json
+  status          MandateStatus @default(DRAFT)
+  agentPublicKey  String
+  agentLabel      String
+  nonce           String
+  notBefore       DateTime
+  expiresAt       DateTime
+  signers         Json          @default("[]")
+  revokedAt       DateTime?
+  revokedReason   String?
+  revokedByUserId String?
+  createdByUserId String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, nonce])
+  @@index([organizationId, status])
+  @@index([agentPublicKey])
+}
+
+model AgentDecision {
+  id              String               @id
+  organizationId  String
+  mandateId       String
+  mandateHash     String
+  offerHash       String
+  decision        AgentDecisionOutcome
+  kind            String?
+  failedRule      String?
+  reason          String
+  record          Json
+  decisionHash    String
+  requestNonce    String?
+  requestHash     String?
+  authorization   Json?
+  approvalId      String?
+  amountBaseUnits String
+  payTo           String
+  resourceUrl     String
+  createdAt       DateTime             @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([mandateId, requestNonce])
+  @@index([organizationId, createdAt])
+  @@index([mandateId, createdAt])
+}
+
+model AgentApproval {
+  id              String             @id
+  organizationId  String
+  mandateId       String
+  decisionId      String
+  offerHash       String
+  offer           Json
+  status          AgentApprovalState @default(PENDING)
+  requiredRoles   Json
+  escalationRules Json
+  requestedAt     DateTime
+  expiresAt       DateTime
+  decidedAt       DateTime?
+  decidedByUserId String?
+  decidedByRole   String?
+  comment         String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([mandateId])
+}
+
+model AgentSpend {
+  id              String           @id
+  organizationId  String
+  mandateId       String
+  decisionId      String           @unique
+  amountBaseUnits String
+  autonomous      Boolean
+  status          AgentSpendStatus @default(RESERVED)
+  txSignature     String?
+  createdAt       DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([mandateId, createdAt])
+}
+
+model BoundReceipt {
+  id             String   @id
+  organizationId String
+  mandateId      String
+  decisionId     String   @unique
+  receiptHash    String   @unique
+  document       Json
+  txSignature    String
+  batchId        String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([batchId])
+}
+
+model AnchorBatch {
+  id          String            @id
+  merkleRoot  String
+  leafCount   Int
+  txSignature String?
+  status      AnchorBatchStatus
+  error       String?
+  createdAt   DateTime          @default(now())
+  anchoredAt  DateTime?
+
+  @@index([createdAt])
+}
+
+/// Demo custody mapping: which Ed25519 public key signs on behalf of which console user. The
+/// private keys live in the devnet keyring (never in the database); production maps this to a
+/// customer-controlled SignerAdapter (HSM / MPC / WebAuthn).
+model UserSigningKey {
+  id        String   @id
+  userId    String   @unique
+  publicKey String   @unique
+  label     String?
+  createdAt DateTime @default(now())
 }

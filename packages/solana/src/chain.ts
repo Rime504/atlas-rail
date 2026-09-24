@@ -196,6 +196,14 @@ export class Web3ChainClient implements ChainClient {
     return this.connection.getLatestBlockhash('confirmed');
   }
 
+  async getBalanceLamports(address: string): Promise<bigint> {
+    return BigInt(await this.connection.getBalance(new PublicKey(address), 'confirmed'));
+  }
+
+  async requestAirdrop(address: string, lamports: bigint): Promise<void> {
+    await this.connection.requestAirdrop(new PublicKey(address), Number(lamports));
+  }
+
   async getMintInfo(mint: string): Promise<MintInfo | null> {
     const key = new PublicKey(mint);
     const info = await this.connection.getAccountInfo(key, 'confirmed');
@@ -210,11 +218,19 @@ export class Web3ChainClient implements ChainClient {
 
   async sendAndConfirm(signedTransactionBase64: string): Promise<string> {
     const tx = decodeTransaction(signedTransactionBase64);
-    const signature = await this.connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 3 });
     const latest = await this.connection.getLatestBlockhash('confirmed');
-    const result = await this.connection.confirmTransaction({ signature, ...latest }, 'confirmed');
-    if (result.value.err) throw new Error(`Transaction ${signature} failed: ${JSON.stringify(result.value.err)}`);
-    return signature;
+    const signature = await this.connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 3 });
+    // Poll instead of websocket subscriptions: works against every RPC (public devnet, local
+    // validators, the offline mock) and is robust to dropped subscriptions.
+    const deadline = Date.now() + 60_000;
+    for (;;) {
+      const { value } = await this.connection.getSignatureStatuses([signature]);
+      const status = value[0];
+      if (status?.err) throw new Error(`Transaction ${signature} failed: ${JSON.stringify(status.err)}`);
+      if (status && (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized')) return signature;
+      if (Date.now() > deadline) throw new Error(`Timed out waiting for confirmation of ${signature} (last valid block height ${latest.lastValidBlockHeight})`);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
   }
 
   async getTransactionSummary(signature: string): Promise<ChainTransactionSummary | null> {
