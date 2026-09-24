@@ -335,6 +335,9 @@ importers:
       '@atlas-rail/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@atlas-rail/receipt':
+        specifier: workspace:*
+        version: link:../../packages/receipt
       '@atlas-rail/solana':
         specifier: workspace:*
         version: link:../../packages/solana

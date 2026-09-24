@@ -11,8 +11,8 @@ import { api, ApiError } from '../../../lib/api';
 import { useToast } from '../../../components/Toast';
 import { Card, EmptyState, Modal, MonoAddress, SectionLabel, SkeletonRows, Spinner, StatusBadge } from '../../../components/ui';
 import { DecisionRow, KeyValue, SpendBar } from '../../../components/agent/Bits';
-import { formatUsdc, truncateAddress } from '../../../lib/format';
-import { formatDuration, formatUnix, shortHash } from '../../../lib/agent-format';
+import { truncateAddress } from '../../../lib/format';
+import { formatToken, formatDuration, formatUnix, shortHash } from '../../../lib/agent-format';
 import type { AgentDecisionView, MandateView } from '../../../lib/agent-types';
 
 type ChainSlot = { role: 'OWNER' | 'APPROVER' | 'AGENT'; label: string; signer?: MandateView['signers'][number] };
@@ -129,7 +129,7 @@ export default function MandateDetailPage() {
       {m.revocation && (
         <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.07] p-4 text-sm text-rose-200" role="status">
           <p className="font-semibold">Revoked {formatUnix(m.revocation.revokedAt)}</p>
-          <p className="mt-0.5 text-rose-300/80">{m.revocation.reason || 'No reason recorded.'} Every gate evaluation since then has been denied.</p>
+          <p className="mt-0.5 text-rose-300/80">{m.revocation.reason ? m.revocation.reason.replace(/[.!?]*$/, '.') : 'No reason recorded.'} Every gate evaluation since then has been denied.</p>
         </div>
       )}
 
@@ -196,10 +196,10 @@ export default function MandateDetailPage() {
           <SpendBar label="Lifetime" used={m.spend.totalBaseUnits} limit={limits.maxTotal} />
           <dl className="grid grid-cols-2 gap-4 border-t border-white/[0.06] pt-4">
             <KeyValue label="Per payment">
-              <span className="font-mono font-semibold">{formatUsdc(limits.maxPerPayment)}</span>
+              <span className="font-mono font-semibold">{formatToken(limits.maxPerPayment)}</span>
             </KeyValue>
             <KeyValue label="Ask human above">
-              <span className="font-mono font-semibold text-amber-300">{formatUsdc(m.mandate.escalation.thresholdBaseUnits)}</span>
+              <span className="font-mono font-semibold text-amber-300">{formatToken(m.mandate.escalation.thresholdBaseUnits)}</span>
             </KeyValue>
             <KeyValue label="Valid from">{formatUnix(m.mandate.notBefore)}</KeyValue>
             <KeyValue label="Expires">{formatUnix(m.mandate.expiresAt)}</KeyValue>

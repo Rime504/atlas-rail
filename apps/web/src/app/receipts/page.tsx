@@ -9,8 +9,8 @@ import { useAuth } from '../../lib/auth-context';
 import { api, ApiError } from '../../lib/api';
 import { useToast } from '../../components/Toast';
 import { Card, EmptyState, MonoAddress, PageHeader, SkeletonRows, Spinner, StatusBadge } from '../../components/ui';
-import { explorerTxUrl, formatUsdc } from '../../lib/format';
-import { hostOf, shortHash, timeAgoUnix } from '../../lib/agent-format';
+import { explorerTxUrl } from '../../lib/format';
+import { formatToken, hostOf, shortHash, timeAgoUnix } from '../../lib/agent-format';
 import type { AnchorRunResult, ReceiptListItem } from '../../lib/agent-types';
 
 export default function ReceiptsPage() {
@@ -83,7 +83,7 @@ export default function ReceiptsPage() {
                     </p>
                   </div>
                   <div className="flex items-center justify-between gap-4 sm:justify-end">
-                    <span className="font-mono text-base font-bold text-slate-100">{formatUsdc(r.amount)}</span>
+                    <span className="font-mono text-base font-bold text-slate-100">{formatToken(r.amount)}</span>
                     <span className="hidden sm:block">
                       <MonoAddress value={r.txSignature} lead={6} trail={4} />
                     </span>

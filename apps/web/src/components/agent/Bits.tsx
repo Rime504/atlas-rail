@@ -3,8 +3,7 @@
 import React from 'react';
 import { CheckCircle2, ChevronDown, CircleSlash, MinusCircle, ShieldAlert, XCircle } from 'lucide-react';
 import { MonoAddress, StatusBadge } from '../ui';
-import { formatUsdc } from '../../lib/format';
-import { hostOf, ruleTitle } from '../../lib/agent-format';
+import { formatToken, hostOf, ruleTitle } from '../../lib/agent-format';
 import type { AgentDecisionView, RuleResultView } from '../../lib/agent-types';
 
 /** Budget consumption bar. Uses BigInt so no amount is ever rounded through a float. */
@@ -33,7 +32,7 @@ export function SpendBar({
       <div className="flex items-baseline justify-between gap-2 text-[11px]">
         <span className="font-semibold uppercase tracking-wider text-slate-500">{label}</span>
         <span className="font-mono text-slate-300">
-          {formatUsdc(used, decimals)} <span className="text-slate-600">/</span> {formatUsdc(limit, decimals)}
+          {formatToken(used, decimals)} <span className="text-slate-600">/</span> {formatToken(limit, decimals)}
         </span>
       </div>
       <div
@@ -103,6 +102,14 @@ export function RuleList({ rules, highlight }: { rules: RuleResultView[]; highli
   );
 }
 
+/** One human sentence for a non-allow decision: the rule that decided it and why. */
+function summarize(decision: AgentDecisionView): string {
+  const ruleId = decision.failedRule ?? decision.escalationRules[0] ?? null;
+  const rule = ruleId ? decision.rulesEvaluated.find((r) => r.id === ruleId) : undefined;
+  if (ruleId && rule) return `${ruleTitle(ruleId)}: ${rule.message}`;
+  return decision.reason;
+}
+
 /** One decision, collapsed to a row and expandable to the full per-rule evidence. */
 export function DecisionRow({
   decision,
@@ -147,14 +154,12 @@ export function DecisionRow({
               ? decision.kind === 'APPROVED'
                 ? 'released after human approval'
                 : 'within mandate'
-              : decision.failedRule
-                ? `${ruleTitle(decision.failedRule)} — ${decision.reason}`
-                : decision.reason}
+              : summarize(decision)}
           </p>
         </div>
         <div className="flex items-center justify-between gap-3 sm:justify-end">
           <span className="font-mono text-sm font-bold text-slate-100">
-            {formatUsdc(decision.offer.amount, decimals)}
+            {formatToken(decision.offer.amount, decimals)}
           </span>
           <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
         </div>

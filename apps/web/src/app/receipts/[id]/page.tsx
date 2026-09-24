@@ -9,8 +9,8 @@ import { api, ApiError } from '../../../lib/api';
 import { useToast } from '../../../components/Toast';
 import { Card, EmptyState, MonoAddress, SectionLabel, SkeletonRows, Spinner, StatusBadge } from '../../../components/ui';
 import { KeyValue, RuleList } from '../../../components/agent/Bits';
-import { explorerTxUrl, formatUsdc } from '../../../lib/format';
-import { formatUnix, hostOf, shortHash } from '../../../lib/agent-format';
+import { explorerTxUrl } from '../../../lib/format';
+import { formatToken, formatUnix, hostOf, shortHash } from '../../../lib/agent-format';
 import type { BoundReceiptView, ReceiptVerificationView } from '../../../lib/agent-types';
 
 const CHECK_ICON = {
@@ -140,7 +140,7 @@ export default function ReceiptDetailPage() {
         <Card className="space-y-4 p-5">
           <SectionLabel>Payment</SectionLabel>
           <p className="font-display text-3xl font-bold text-white">
-            {formatUsdc(receipt.offer.amount)}
+            {formatToken(receipt.offer.amount)}
             <span className="ml-1.5 text-sm font-medium text-slate-500">USDC</span>
           </p>
           <dl className="space-y-3">

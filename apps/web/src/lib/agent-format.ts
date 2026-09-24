@@ -1,4 +1,14 @@
+import { formatUsdc } from './format';
+
 /** Formatting helpers for the agent-mandate console. The agent API speaks unix seconds. */
+
+/** Token amount for display: grouped, at least 2 and at most `decimals` places, trailing zeros trimmed. Never a float. */
+export function formatToken(baseUnits: string | null | undefined, decimals = 6): string {
+  const full = formatUsdc(baseUnits, decimals);
+  const [whole, fraction = ''] = full.split('.');
+  const trimmed = fraction.replace(/0+$/, '').padEnd(2, '0');
+  return `${whole}.${trimmed}`;
+}
 
 export function formatUnix(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return '—';

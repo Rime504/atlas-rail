@@ -10,8 +10,7 @@ import { useAuth } from '../../lib/auth-context';
 import { Card, EmptyState, PageHeader, SkeletonRows, StatusBadge, MonoAddress } from '../../components/ui';
 import { MandateWizard } from '../../components/agent/MandateWizard';
 import { SpendBar } from '../../components/agent/Bits';
-import { formatUsdc } from '../../lib/format';
-import { formatDuration, formatUnix } from '../../lib/agent-format';
+import { formatToken, formatDuration, formatUnix } from '../../lib/agent-format';
 import type { MandateView } from '../../lib/agent-types';
 
 export default function MandatesPage() {
@@ -93,11 +92,11 @@ export default function MandatesPage() {
                   <dl className="grid grid-cols-3 gap-3 border-t border-white/[0.06] pt-4 text-xs">
                     <div>
                       <dt className="text-slate-500">Per payment</dt>
-                      <dd className="mt-0.5 font-mono font-semibold text-slate-200">{formatUsdc(limits.maxPerPayment)}</dd>
+                      <dd className="mt-0.5 font-mono font-semibold text-slate-200">{formatToken(limits.maxPerPayment)}</dd>
                     </div>
                     <div>
                       <dt className="text-slate-500">Ask human &gt;</dt>
-                      <dd className="mt-0.5 font-mono font-semibold text-amber-300">{formatUsdc(m.mandate.escalation.thresholdBaseUnits)}</dd>
+                      <dd className="mt-0.5 font-mono font-semibold text-amber-300">{formatToken(m.mandate.escalation.thresholdBaseUnits)}</dd>
                     </div>
                     <div>
                       <dt className="text-slate-500">Signatures</dt>

@@ -27,7 +27,11 @@ export function PendingApprovalsProvider({
     if (!enabled) return;
     api
       .get<ApprovalView[]>('/v1/agent/approvals?status=PENDING&limit=100')
-      .then((rows) => setPending(rows.length))
+      .then((rows) => {
+        // The API filters on stored state, so a request that has expired but not yet been swept still comes back.
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        setPending(rows.filter((r) => r.status === 'PENDING' && r.expiresAt > nowSeconds).length);
+      })
       .catch(() => undefined);
   }, [enabled]);
 

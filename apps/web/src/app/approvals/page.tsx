@@ -10,8 +10,7 @@ import { usePendingApprovals, useNowSeconds } from '../../lib/agent-hooks';
 import { useToast } from '../../components/Toast';
 import { Card, EmptyState, MonoAddress, PageHeader, SkeletonRows, Spinner, StatusBadge } from '../../components/ui';
 import { KeyValue } from '../../components/agent/Bits';
-import { formatUsdc } from '../../lib/format';
-import { countdownUnix, formatUnix, hostOf, ruleTitle, timeAgoUnix } from '../../lib/agent-format';
+import { formatToken, countdownUnix, formatUnix, hostOf, ruleTitle, timeAgoUnix } from '../../lib/agent-format';
 import type { ApprovalView } from '../../lib/agent-types';
 
 type Tab = 'PENDING' | 'HISTORY';
@@ -55,7 +54,7 @@ function ApprovalCard({
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{approval.agentLabel ?? 'Agent'} requests</p>
             <p className="mt-1 font-display text-3xl font-bold tracking-tight text-white">
-              {formatUsdc(approval.offer.amount)}
+              {formatToken(approval.offer.amount)}
               <span className="ml-1.5 text-sm font-medium text-slate-500">USDC</span>
             </p>
           </div>
