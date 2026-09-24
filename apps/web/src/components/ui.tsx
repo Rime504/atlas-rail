@@ -189,6 +189,20 @@ const STATUS_CONFIG: Record<
   MEDIUM: { tone: 'amber', icon: AlertTriangle },
   HIGH: { tone: 'rose', icon: AlertTriangle },
   CRITICAL: { tone: 'rose', icon: AlertTriangle },
+  DENY: { tone: 'rose', icon: Ban },
+  ESCALATE: { tone: 'amber', icon: AlertTriangle },
+  DENIED: { tone: 'rose', icon: XCircle },
+  EXPIRED: { tone: 'slate', icon: Clock },
+  CONSUMED: { tone: 'slate', icon: CheckCircle2 },
+  REVOKED: { tone: 'rose', icon: Ban },
+  NOT_YET_VALID: { label: 'NOT YET VALID', tone: 'slate', icon: Clock },
+  PASS: { tone: 'green', icon: CheckCircle2 },
+  FAIL: { tone: 'rose', icon: XCircle },
+  SKIP: { tone: 'slate', icon: Radio },
+  SKIPPED: { tone: 'slate', icon: Radio },
+  OVERRIDDEN: { tone: 'purple', icon: ShieldCheck },
+  ANCHORED: { tone: 'green', icon: ShieldCheck },
+  UNANCHORED: { tone: 'amber', icon: Clock },
   ALLOW: { tone: 'green', icon: CheckCircle2 },
   REQUIRE_APPROVAL: { label: 'REQUIRES APPROVAL', tone: 'amber', icon: Clock },
   BLOCK: { tone: 'rose', icon: Ban },
@@ -236,7 +250,10 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div
-        className={`glass-card relative w-full ${maxWidth} animate-fade-in bg-[#0b0d1c]/95 p-6 shadow-2xl`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={`glass-card relative max-h-[92vh] w-full ${maxWidth} animate-fade-in overflow-y-auto bg-[#0b0d1c]/95 p-4 shadow-2xl sm:p-6`}
       >
         <div className="mb-5">
           <h2 className="font-display text-lg font-bold text-white">{title}</h2>
