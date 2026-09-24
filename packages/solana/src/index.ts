@@ -5,3 +5,6 @@ export * from './builder';
 export * from './simulator';
 export * from './signer';
 export * from './tracker';
+export * from './keypair-signer';
+export * from './x402-payment';
+export * from './chain';

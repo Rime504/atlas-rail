@@ -7,3 +7,4 @@ export * from './mandate';
 export * from './gate';
 export * from './decision';
 export * from './json-schema';
+export * from './service';

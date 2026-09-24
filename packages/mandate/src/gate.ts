@@ -223,6 +223,19 @@ export function evaluateGate(mandateInput: unknown, offerInput: unknown, context
     'ESCALATION_THRESHOLD',
   ];
 
+  // Human approval is validated up front so the simulation rule can tell that the request is already doomed.
+  const offerHash = offer ? hashOffer(offer) : null;
+  const approvalProblems: string[] = [];
+  if (context.approval && mandate && offerHash) {
+    const approval = context.approval;
+    if (approval.status !== 'APPROVED') approvalProblems.push(`approval is ${approval.status}`);
+    if (approval.offerHash !== offerHash) approvalProblems.push('approval was granted for a different offer');
+    if (context.now >= approval.expiresAt) approvalProblems.push('approval has expired');
+    if (!approval.approver || !mandate.escalation.approverRoles.includes(approval.approver.role as never)) {
+      approvalProblems.push('approver role is not permitted by the mandate');
+    }
+  }
+
   if (hardStop || !mandate || !offer) {
     for (const id of scopeRuleIds) rules.push(skipped(id, 'an integrity or validity rule failed'));
   } else {
@@ -340,7 +353,7 @@ export function evaluateGate(mandateInput: unknown, offerInput: unknown, context
     );
 
     // 11. Pre-flight simulation of the exact transaction (skipped once a hard rule already failed).
-    const hardFailedSoFar = rules.some((r) => r.status === 'FAIL');
+    const hardFailedSoFar = rules.some((r) => r.status === 'FAIL') || approvalProblems.length > 0;
     if (hardFailedSoFar && !context.simulation) {
       rules.push(skipped('TRANSACTION_SIMULATION', 'a scope rule already failed, no transaction was simulated'));
     } else if (!context.simulation) {
@@ -388,22 +401,14 @@ export function evaluateGate(mandateInput: unknown, offerInput: unknown, context
   }
 
   // Human approval: may only override approvable (ESCALATE) rules; never hard failures.
-  const offerHash = offer ? hashOffer(offer) : null;
   const mandateHash = parsedMandate ? hashMandate(parsedMandate) : null;
   const anyHardFail = rules.some((r) => r.status === 'FAIL');
   const anyEscalate = rules.some((r) => r.status === 'ESCALATE');
 
   if (context.approval && mandate && offerHash) {
     const approval = context.approval;
-    const problems: string[] = [];
-    if (approval.status !== 'APPROVED') problems.push(`approval is ${approval.status}`);
-    if (approval.offerHash !== offerHash) problems.push('approval was granted for a different offer');
-    if (context.now >= approval.expiresAt) problems.push('approval has expired');
-    if (!approval.approver || !mandate.escalation.approverRoles.includes(approval.approver.role as never)) {
-      problems.push('approver role is not permitted by the mandate');
-    }
-    if (problems.length > 0) {
-      rules.push(fail('ESCALATION_APPROVAL', `Approval rejected: ${problems.join('; ')}`, { approvalId: approval.id }));
+    if (approvalProblems.length > 0) {
+      rules.push(fail('ESCALATION_APPROVAL', `Approval rejected: ${approvalProblems.join('; ')}`, { approvalId: approval.id }));
     } else if (anyEscalate && !anyHardFail) {
       for (const rule of rules) if (rule.status === 'ESCALATE') rule.status = 'OVERRIDDEN';
       rules.push(

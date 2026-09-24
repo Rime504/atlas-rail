@@ -18,6 +18,8 @@
   },
   "dependencies": {
     "@atlas-rail/config": "workspace:*",
+    "@noble/curves": "^1.9.7",
+    "@scure/base": "^1.2.6",
     "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.95.8"
   },
