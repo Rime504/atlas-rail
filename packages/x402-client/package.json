@@ -1,0 +1,42 @@
+{
+  "name": "@atlas-rail/x402",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Drop-in fetch for AI agents: catches x402 402 responses, asks the Atlas Rail mandate gate, and only then signs and pays.",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testkit": {
+      "types": "./dist/testkit/index.d.ts",
+      "default": "./dist/testkit/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "testkit.js",
+    "testkit.d.ts"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@atlas-rail/mandate": "workspace:*",
+    "@atlas-rail/receipt": "workspace:*",
+    "@atlas-rail/solana": "workspace:*",
+    "@x402/core": "^2.27.0"
+  },
+  "devDependencies": {
+    "@atlas-rail/typescript-config": "workspace:*",
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

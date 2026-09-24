@@ -55,8 +55,13 @@ services:
       JWT_ACCESS_SECRET: atlas_rail_dev_access_secret_do_not_use_in_production_32bytes
       JWT_REFRESH_SECRET: atlas_rail_dev_refresh_secret_do_not_use_in_production_32bytes
       ENCRYPTION_KEY_BASE64: c29tZV9zZWNyZXRfMzJfYnl0ZV9rZXlfZm9yX2RldnZ2
+      # Agent Mandates: devnet signing-key file and gate behaviour (see docs/DEMO.md)
+      ATLAS_KEYRING_PATH: /app/.demo/keyring.json
+      AGENT_REQUIRE_SIMULATION: "true"
     ports:
       - "3001:3001"
+    volumes:
+      - agent_keyring:/app/.demo
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,6 +81,10 @@ services:
       SOLANA_USDC_MINT: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
       ATLAS_ALLOW_MOCK_SIGNER: "true"
       ATLAS_MAINNET_ENABLED: "false"
+      ATLAS_KEYRING_PATH: /app/.demo/keyring.json
+      AGENT_ANCHOR_INTERVAL_MS: "300000"
+    volumes:
+      - agent_keyring:/app/.demo
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,3 +107,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  # Shared between api and worker so both see the same devnet instance/user signing keys
+  # (Agent Mandates). Devnet keys only — see docs/DEMO.md.
+  agent_keyring:

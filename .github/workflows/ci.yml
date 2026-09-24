@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   build-and-test:
@@ -36,3 +36,42 @@ jobs:
 
       - name: Build Monorepo
         run: pnpm build
+
+  agent-mandates-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.15.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (workspace packages + demo apps)
+        run: pnpm build
+
+      # No Docker, no devnet, no network dependency: embedded Postgres + an in-memory Solana JSON-RPC
+      # cluster stand in for both, so this job can't be flaky because of a faucet rate limit or a
+      # container registry pull. --exit makes the orchestrator report the scenes' pass/fail as its
+      # own exit code instead of staying up afterward.
+      - name: Run the Agent Mandates demo (offline rehearsal, all six scenes)
+        run: pnpm demo:rehearse --skip-build --skip-web
+
+      - name: Upload demo artifacts (receipts, run summary) on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-mandates-demo-artifacts
+          path: |
+            .demo/last-run.json
+            .demo/receipts/
+            .demo/logs/
+          if-no-files-found: ignore

@@ -1,0 +1,273 @@
+{
+  "$ref": "#/definitions/AgentMandate",
+  "definitions": {
+    "AgentMandate": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "atlasrail.agent-mandate"
+        },
+        "version": {
+          "type": "string",
+          "const": "0.1"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^mnd_[A-Za-z0-9]{10,40}$"
+        },
+        "issuer": {
+          "type": "object",
+          "properties": {
+            "organizationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "required": [
+            "organizationId",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        "agent": {
+          "type": "object",
+          "properties": {
+            "publicKey": {
+              "type": "string",
+              "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "required": [
+            "publicKey",
+            "label"
+          ],
+          "additionalProperties": false
+        },
+        "delegation": {
+          "type": "object",
+          "properties": {
+            "requiredApprovals": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "preventIssuerApproval": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": [
+            "requiredApprovals",
+            "preventIssuerApproval"
+          ],
+          "additionalProperties": false
+        },
+        "scope": {
+          "type": "object",
+          "properties": {
+            "allowedNetworks": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 4
+            },
+            "allowedAssets": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+              },
+              "minItems": 1,
+              "maxItems": 16
+            },
+            "allowedPayTo": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+              },
+              "minItems": 1,
+              "maxItems": 256
+            },
+            "allowedResources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "maxItems": 256
+            },
+            "limits": {
+              "type": "object",
+              "properties": {
+                "mint": {
+                  "type": "string",
+                  "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                },
+                "maxPerPayment": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]{0,19})$"
+                },
+                "maxPerWindow": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]{0,19})$"
+                },
+                "windowSeconds": {
+                  "type": "integer",
+                  "minimum": 60,
+                  "maximum": 31536000
+                },
+                "maxTotal": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]{0,19})$"
+                }
+              },
+              "required": [
+                "mint",
+                "maxPerPayment",
+                "maxPerWindow",
+                "windowSeconds",
+                "maxTotal"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "allowedNetworks",
+            "allowedAssets",
+            "allowedPayTo",
+            "allowedResources",
+            "limits"
+          ],
+          "additionalProperties": false
+        },
+        "escalation": {
+          "type": "object",
+          "properties": {
+            "thresholdBaseUnits": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,19})$"
+            },
+            "approverRoles": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "OWNER",
+                  "ADMIN",
+                  "APPROVER"
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 3
+            },
+            "resources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 256
+            },
+            "approvalTtlSeconds": {
+              "type": "integer",
+              "minimum": 30,
+              "maximum": 86400
+            }
+          },
+          "required": [
+            "thresholdBaseUnits",
+            "approverRoles",
+            "resources",
+            "approvalTtlSeconds"
+          ],
+          "additionalProperties": false
+        },
+        "notBefore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4102444800
+        },
+        "expiresAt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4102444800
+        },
+        "nonce": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "revocable": {
+          "type": "boolean",
+          "const": true
+        },
+        "delegationChain": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "OWNER",
+                  "APPROVER",
+                  "AGENT"
+                ]
+              },
+              "publicKey": {
+                "type": "string",
+                "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+              },
+              "signature": {
+                "type": "string",
+                "pattern": "^[1-9A-HJ-NP-Za-km-z]{64,90}$"
+              }
+            },
+            "required": [
+              "role",
+              "publicKey",
+              "signature"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 8
+        }
+      },
+      "required": [
+        "type",
+        "version",
+        "id",
+        "issuer",
+        "agent",
+        "delegation",
+        "scope",
+        "escalation",
+        "notBefore",
+        "expiresAt",
+        "nonce",
+        "revocable",
+        "delegationChain"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlasrail.dev/schema/agent-mandate-v0.1.schema.json",
+  "title": "Atlas Rail Agent Mandate v0.1"
+}

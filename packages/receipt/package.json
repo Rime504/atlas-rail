@@ -1,0 +1,43 @@
+{
+  "name": "@atlas-rail/receipt",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bound receipts, Merkle batching and the offline verifier for Atlas Rail agent payments.",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
+  },
+  "files": [
+    "dist",
+    "testing.d.ts",
+    "testing.js"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@atlas-rail/mandate": "workspace:*",
+    "@atlas-rail/solana": "workspace:*",
+    "@noble/hashes": "^1.8.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@atlas-rail/typescript-config": "workspace:*",
+    "@types/node": "^22.10.1",
+    "fast-check": "^4.1.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

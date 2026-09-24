@@ -58,7 +58,7 @@ export class SplTokenPayoutTransactionBuilder {
 
     // Optional Memo Instruction
     if (memo && memo.trim().length > 0) {
-      const memoProgramId = new PublicKey('MemoSsq6gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcY');
+      const memoProgramId = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
       const memoIx = new TransactionInstruction({
         keys: [],
         programId: memoProgramId,

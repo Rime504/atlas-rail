@@ -20,9 +20,14 @@
     "db:migrate": "pnpm --filter @atlas-rail/database db:migrate",
     "db:seed": "pnpm --filter @atlas-rail/database db:seed",
     "db:push": "pnpm --filter @atlas-rail/database db:push",
-    "openapi": "pnpm --filter @atlas-rail/api openapi"
+    "openapi": "pnpm --filter @atlas-rail/api openapi",
+    "demo": "node scripts/demo.mjs",
+    "demo:offline": "node scripts/demo.mjs --offline --no-docker",
+    "demo:rehearse": "node scripts/demo.mjs --offline --no-docker --auto-approve --exit",
+    "build:demo": "turbo run build --filter=@atlas-rail/api --filter=@atlas-rail/worker --filter=@atlas-rail/demo-api --filter=@atlas-rail/demo-agent --filter=@atlas-rail/cli --filter=@atlas-rail/mock-validator --filter=@atlas-rail/web"
   },
   "devDependencies": {
+    "embedded-postgres": "18.4.0-beta.17",
     "eslint": "^9.16.0",
     "prettier": "^3.4.2",
     "turbo": "^2.3.3",
@@ -33,5 +38,18 @@
     "node": ">=22.0.0",
     "pnpm": ">=9.0.0"
   },
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@9.15.0",
+  "pnpm": {
+    "overrides": {
+      "postcss": ">=8.5.23",
+      "lodash": ">=4.18.0",
+      "js-yaml@4": ">=4.3.2",
+      "ajv@8": ">=8.18.0",
+      "qs@6": ">=6.16.0",
+      "glob@10": ">=10.5.0",
+      "picomatch@4": ">=4.0.4",
+      "webpack@5": ">=5.104.1",
+      "esbuild": ">=0.25.0"
+    }
+  }
 }

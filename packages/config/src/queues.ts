@@ -4,6 +4,7 @@ export const QUEUE_NAMES = {
   WEBHOOK_DELIVERY: 'webhook-delivery',
   RECONCILIATION_EXPORT: 'reconciliation-export',
   HOUSEKEEPING: 'housekeeping',
+  AGENT_ANCHOR: 'agent-anchor',
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -29,6 +30,10 @@ export interface ReconciliationExportJobData {
   requestedByUserId?: string;
 }
 
+export interface AgentAnchorJobData {
+  reason?: string;
+}
+
 export interface HousekeepingJobData {
   reason?: string;
 }
@@ -42,6 +47,15 @@ export const WEBHOOK_EVENT_TYPES = {
   PAYOUT_SUBMITTED: 'payout.submitted',
   PAYOUT_CONFIRMED: 'payout.confirmed',
   PAYOUT_FAILED: 'payout.failed',
+  AGENT_MANDATE_CREATED: 'agent.mandate.created',
+  AGENT_MANDATE_ACTIVATED: 'agent.mandate.activated',
+  AGENT_MANDATE_REVOKED: 'agent.mandate.revoked',
+  AGENT_DECISION_ALLOW: 'agent.decision.allow',
+  AGENT_DECISION_DENY: 'agent.decision.deny',
+  AGENT_DECISION_ESCALATE: 'agent.decision.escalate',
+  AGENT_APPROVAL_REQUESTED: 'agent.approval.requested',
+  AGENT_APPROVAL_DECIDED: 'agent.approval.decided',
+  AGENT_RECEIPT_ISSUED: 'agent.receipt.issued',
 } as const;
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[keyof typeof WEBHOOK_EVENT_TYPES];

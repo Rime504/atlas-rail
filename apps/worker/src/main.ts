@@ -7,8 +7,10 @@ import { processPayoutConfirmationJob } from './queues/payout-confirmation.proce
 import { processWebhookDeliveryJob } from './queues/webhook-delivery.processor';
 import { processReconciliationExportJob } from './queues/reconciliation-export.processor';
 import { processHousekeepingJob } from './queues/housekeeping.processor';
+import { processAgentAnchorJob } from './queues/agent-anchor.processor';
 
 const HOUSEKEEPING_INTERVAL_MS = 5 * 60 * 1000;
+const AGENT_ANCHOR_INTERVAL_MS = Number(process.env.AGENT_ANCHOR_INTERVAL_MS) > 0 ? Number(process.env.AGENT_ANCHOR_INTERVAL_MS) : 5 * 60 * 1000;
 
 async function startWorker() {
   const env = validateEnv();
@@ -25,6 +27,7 @@ async function startWorker() {
     new Worker(QUEUE_NAMES.WEBHOOK_DELIVERY, processWebhookDeliveryJob, { connection, concurrency: 10 }),
     new Worker(QUEUE_NAMES.RECONCILIATION_EXPORT, processReconciliationExportJob, { connection, concurrency: 2 }),
     new Worker(QUEUE_NAMES.HOUSEKEEPING, processHousekeepingJob, { connection, concurrency: 1 }),
+    new Worker(QUEUE_NAMES.AGENT_ANCHOR, processAgentAnchorJob, { connection, concurrency: 1 }),
   ];
 
   for (const worker of workers) {
@@ -43,12 +46,19 @@ async function startWorker() {
     { repeat: { every: HOUSEKEEPING_INTERVAL_MS }, removeOnComplete: 10, removeOnFail: 10 },
   );
 
+  const anchorQueue = new Queue(QUEUE_NAMES.AGENT_ANCHOR, { connection });
+  await anchorQueue.add('periodic-anchor',
+    { reason: 'scheduled' },
+    { repeat: { every: AGENT_ANCHOR_INTERVAL_MS }, removeOnComplete: 10, removeOnFail: 10 },
+  );
+
   console.info(`📡 Listening on queues: ${Object.values(QUEUE_NAMES).join(', ')}`);
 
   const shutdown = async (signal: string) => {
     console.info(`🛑 Received ${signal}, shutting down Atlas Rail worker...`);
     await Promise.all(workers.map((worker) => worker.close()));
     await housekeepingQueue.close();
+    await anchorQueue.close();
     connection.disconnect();
     process.exit(0);
   };

@@ -15,6 +15,8 @@
     "@atlas-rail/config": "workspace:*",
     "@atlas-rail/database": "workspace:*",
     "@atlas-rail/domain": "workspace:*",
+    "@atlas-rail/mandate": "workspace:*",
+    "@atlas-rail/receipt": "workspace:*",
     "@atlas-rail/solana": "workspace:*",
     "@fastify/static": "^7.0.4",
     "@nestjs/common": "^10.4.8",
@@ -30,7 +32,8 @@
     "ioredis": "^5.4.1",
     "pino": "^9.5.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@atlas-rail/typescript-config": "workspace:*",

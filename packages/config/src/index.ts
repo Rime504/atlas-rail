@@ -2,6 +2,19 @@ import { z } from 'zod';
 
 export * from './queues';
 
+/**
+ * Environment variables always arrive as strings. `z.coerce.boolean()` treats every non-empty
+ * string (including "false" and "0") as `true`, which silently inverts safety flags, so booleans
+ * are parsed explicitly and anything unrecognised is rejected.
+ */
+export const envBoolean = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  const normalized = value.trim().toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'off', ''].includes(normalized)) return false;
+  return value;
+}, z.boolean());
+
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('debug'),
@@ -27,13 +40,13 @@ export const envSchema = z.object({
   SOLANA_COMMITMENT: z.enum(['processed', 'confirmed', 'finalized']).default('confirmed'),
   SOLANA_EXPLORER_CLUSTER: z.string().default('devnet'),
 
-  ATLAS_ALLOW_MOCK_SIGNER: z.coerce.boolean().default(true),
-  ATLAS_EXTERNAL_SIGNER_ENABLED: z.coerce.boolean().default(false),
-  ATLAS_MAINNET_ENABLED: z.boolean().refine((val) => val === false, {
+  ATLAS_ALLOW_MOCK_SIGNER: envBoolean.default(true),
+  ATLAS_EXTERNAL_SIGNER_ENABLED: envBoolean.default(false),
+  ATLAS_MAINNET_ENABLED: envBoolean.default(false).refine((val) => val === false, {
     message: 'CRITICAL SAFETY ERROR: ATLAS_MAINNET_ENABLED must remain false in v1.',
   }),
 
-  WEBHOOK_ALLOW_PRIVATE_NETWORKS: z.coerce.boolean().default(true),
+  WEBHOOK_ALLOW_PRIVATE_NETWORKS: envBoolean.default(true),
   WEBHOOK_MAX_ATTEMPTS: z.coerce.number().default(6),
   WEBHOOK_TIMEOUT_MS: z.coerce.number().default(10000),
 
@@ -41,7 +54,7 @@ export const envSchema = z.object({
   RATE_LIMIT_API_PER_MINUTE: z.coerce.number().default(120),
   RATE_LIMIT_PAYOUT_CREATE_PER_MINUTE: z.coerce.number().default(20),
 
-  SEED_DEMO_DATA: z.coerce.boolean().default(true),
+  SEED_DEMO_DATA: envBoolean.default(true),
   DEMO_ADMIN_EMAIL: z.string().email().default('admin@atlasrail.local'),
   DEMO_ADMIN_PASSWORD: z.string().default('ChangeMe_AtlasRail_DevOnly'),
 });
@@ -69,14 +82,15 @@ export function validateEnv(env: Record<string, unknown> = process.env): EnvConf
   return parsed;
 }
 
-export const DEVNET_WARNING_BANNER = 'DEVNET ONLY — Simulation environment. Do not use real funds.';
+export const DEVNET_WARNING_BANNER =
+  'DEVNET ONLY — Simulation environment. Do not use real funds. Atlas Rail never takes custody of production keys.';
 
 export const ALLOWED_SOLANA_PROGRAM_IDS = {
   SYSTEM_PROGRAM: '11111111111111111111111111111111',
   TOKEN_PROGRAM: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
   ASSOCIATED_TOKEN_PROGRAM: 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
   COMPUTE_BUDGET_PROGRAM: 'ComputeBudget111111111111111111111111111111',
-  MEMO_PROGRAM: 'MemoSsq6gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcY',
+  MEMO_PROGRAM: 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr',
 } as const;
 
 export enum ErrorCode {

@@ -2,24 +2,30 @@
   "name": "@atlas-rail/database",
   "version": "0.1.0",
   "private": true,
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "scripts": {
-    "build": "tsc --build",
-    "typecheck": "tsc --noEmit",
+    "build": "prisma generate && tsc --build",
+    "typecheck": "prisma generate && tsc --noEmit",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
+    "db:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
-    "clean": "rimraf dist tsconfig.tsbuildinfo"
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "db:migrate:dev": "prisma migrate dev"
   },
   "prisma": {
     "seed": "node -r ts-node/register prisma/seed.ts"
   },
   "dependencies": {
+    "@atlas-rail/mandate": "workspace:*",
+    "@atlas-rail/receipt": "workspace:*",
     "@prisma/client": "^5.22.0",
     "argon2": "^0.41.1",
     "ulid": "^2.3.0"

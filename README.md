@@ -20,6 +20,7 @@ If you've ever had to explain to a CFO why "just send it from the multisig" isn'
 - [Safety Boundary — Read This First](#-safety-boundary--read-this-first)
 - [How a Payout Actually Moves](#how-a-payout-actually-moves)
 - [Core Capabilities](#core-capabilities)
+- [Agent Mandates](#agent-mandates)
 - [Architecture](#architecture)
 - [Repository Layout](#repository-layout)
 - [Quick Start](#quick-start)
@@ -158,6 +159,48 @@ Concretely, that means:
 - **Signed, retried webhooks** — HMAC-SHA256, timestamped, with exponential backoff on delivery failure and per-attempt tracking, so your ERP integration doesn't have to poll.
 - **Base-unit money math everywhere** — every amount is stored and computed as an integer base-unit string (`5000000` = `5.000000 USDC`), never a float, so rounding errors aren't a category of bug that can exist.
 
+## Agent Mandates
+
+x402 lets an agent pay whatever a server's `402 Payment Required` asks. For a human clicking a button that's fine; for an autonomous agent it's an open wallet — a prompt-injected or buggy agent pays an attacker's address as readily as a real one. Agent Mandates is Atlas Rail's answer: a signed, revocable, per-agent spending authority, enforced by a policy gate that sits *outside* the agent's own reasoning, with every decision recorded and every payment provable after the fact. It's a draft proposal — see [`spec/agent-mandate-v0.1.md`](spec/agent-mandate-v0.1.md) for the full data model, canonicalisation, verification algorithm and threat table — implemented end to end here as `packages/mandate`, `packages/receipt`, and `@atlas-rail/x402`.
+
+**Devnet only. No real funds move. Atlas Rail never takes custody of production keys** — same boundary as the rest of this README, enforced the same way (see [Safety Boundary](#-safety-boundary--read-this-first) above).
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant Gate as Policy Gate (Atlas Rail)
+    participant Human as Owner / Approver
+    participant Seller as x402 seller
+
+    Agent->>Seller: GET /resource
+    Seller-->>Agent: 402 Payment Required (offer)
+    Agent->>Gate: evaluate(mandate, offer) — agent-signed request
+    alt within mandate scope & budget
+        Gate-->>Agent: ALLOW + GateAuthorization (bound to tx hash)
+        Agent->>Seller: pay (signed only because the authorization is valid)
+        Seller-->>Agent: 200 OK
+        Gate->>Gate: bound receipt issued, later anchored on devnet
+    else above the human-approval threshold
+        Gate-->>Human: ESCALATE — approval request (console / phone)
+        Human-->>Gate: approve (bound to this exact offer, single-use, expires)
+        Gate-->>Agent: ALLOW + GateAuthorization
+        Agent->>Seller: pay
+    else outside scope, over the hard ceiling, or revoked
+        Gate-->>Agent: DENY (no signature ever produced)
+    end
+```
+
+A mandate names one agent key, an allow-list of recipients and resource URL patterns, a hard per-payment ceiling, a rolling autonomous budget, a lifetime cap, and a threshold above which a human must approve. It is only active once the owner, an independent approver, and the agent itself (proof of possession) have each signed a hash-chained delegation. The gate re-evaluates every rule on every request — network, asset, recipient, resource, three separate budget checks, a pre-flight transaction simulation, and the escalation threshold — and the agent's signer is wrapped so it **physically cannot sign** a transaction without a fresh, hash-bound authorization from the gate. Every decision, allow or deny or escalate, is written to the same append-only audit ledger as everything else in Atlas Rail.
+
+**60-second quickstart:**
+
+```bash
+pnpm demo            # full stack incl. the console, needs Docker for Postgres/Redis
+pnpm demo:offline     # no Docker, no real devnet: embedded Postgres + in-memory Solana cluster
+```
+
+Either command seeds two agent mandates and runs six scripted scenes end to end — grant, pay, a simulated prompt-injection/wallet-drain attempt that the gate blocks, a $40 request that escalates to a human (approve it from your phone at `/approvals`), offline receipt verification (`atlas verify`), and revocation — then leaves the console open at `http://localhost:3000/decisions` so you can watch it live. See [`docs/DEMO.md`](docs/DEMO.md) for the full runbook, funding options and troubleshooting.
+
 ## Architecture
 
 Atlas Rail is a TypeScript monorepo (pnpm workspaces + Turborepo) split into an API, a background worker, a web console, and a set of framework-agnostic domain packages.
@@ -190,17 +233,25 @@ graph TD
 ```
 atlas-rail/
 ├── apps/
-│   ├── web/           # Next.js 15 treasury console (draft, approve, monitor, export)
+│   ├── web/           # Next.js 15 console: treasury + agent mandates (mobile-first)
 │   ├── api/            # NestJS Fastify REST API + OpenAPI/Swagger
-│   └── worker/         # BullMQ queues: execution, confirmation, webhooks, reconciliation, housekeeping
+│   ├── worker/          # BullMQ queues: execution, confirmation, webhooks, reconciliation, agent anchoring
+│   ├── demo-api/        # Scripted x402 seller (paid endpoints) + local facilitator, for the demo
+│   ├── demo-agent/      # Scripted demo agent + the six-scene `pnpm demo` runner
+│   ├── mock-validator/  # In-memory Solana JSON-RPC cluster, for `pnpm demo:offline`
+│   └── cli/             # `atlas` CLI: offline receipt verification, mandate inspection
 ├── packages/
 │   ├── config/         # Env schema validation, safety constants, queue/event definitions
 │   ├── database/       # Prisma schema, migrations, ULIDs, seed data
 │   ├── domain/         # Policy engine, payout state machine, RBAC, money math, webhook signing
 │   ├── solana/         # Devnet RPC client, SPL instruction builder, simulator, signer adapters
+│   ├── mandate/         # Agent Mandates: JCS, delegation chain, the policy gate, decisions
+│   ├── receipt/         # Bound receipts, Merkle batching, devnet anchoring, offline verification
+│   ├── x402-client/     # @atlas-rail/x402: atlas fetch, gated signer, a local seller test kit
 │   ├── api-client/     # TypeScript SDK for the Atlas Rail API
 │   └── ui/             # Shared UI primitives, including the devnet safety banner
-├── docs/                # Architecture, ADRs, security threat model, operations runbook
+├── spec/                 # Agent Mandate v0.1 proposal + generated conformance test vectors
+├── docs/                # Architecture, ADRs, security threat model, operations runbook, DEMO.md
 ├── examples/            # Minimal Node API client and webhook receiver
 ├── docker-compose.yml   # Postgres, Redis, Mailpit, API, worker, web — one command up
 └── Makefile
