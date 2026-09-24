@@ -19,7 +19,9 @@
   },
   "files": [
     "dist",
-    "schema"
+    "schema",
+    "testing.d.ts",
+    "testing.js"
   ],
   "scripts": {
     "build": "tsc --build",

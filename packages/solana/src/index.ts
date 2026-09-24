@@ -8,3 +8,5 @@ export * from './tracker';
 export * from './keypair-signer';
 export * from './x402-payment';
 export * from './chain';
+export * from './anchor';
+export * from './payment-simulator';
