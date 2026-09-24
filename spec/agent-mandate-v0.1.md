@@ -2,7 +2,7 @@
 
 **Status:** Draft proposal. Not adopted, endorsed or reviewed by any standards body, wallet vendor or x402 maintainer.
 **Reference implementation:** Atlas Rail, `packages/mandate` and `packages/receipt`. **Network scope:** Solana devnet only.
-**Related:** the x402 agent-authorization discussion referenced as issue #3500 in the Atlas Rail project brief (the tracker was not re-checked when this draft was written; confirm the link before citing it publicly).
+**Related:** [x402-foundation/x402 issue #3500](https://github.com/x402-foundation/x402/issues/3500), "Dispute evidence for agent-initiated payments" (confirmed open as of this writing). Atlas Rail's bound receipts are a proposed answer to the evidence-binding half of that problem — signed receipts that bind a settlement to the authorization scope in effect at signing time; not endorsed by x402 maintainers.
 **Machine-readable artefacts:** [`packages/mandate/schema/agent-mandate-v0.1.schema.json`](../packages/mandate/schema/agent-mandate-v0.1.schema.json) (JSON Schema, generated from the implementation) and [`spec/test-vectors/agent-mandate-v0.1.json`](test-vectors/agent-mandate-v0.1.json) (conformance vectors, checked in CI).
 
 ## 1. Motivation
@@ -17,6 +17,12 @@ Existing mitigations live inside the agent (which the attacker controls) or insi
 Anything that can verify an Ed25519 signature and compute SHA-256 can implement a verifier. The Policy Gate that produces decisions is specified as a pure function so a recorded decision can be replayed by an auditor.
 
 Non-goals: defining a wallet, a facilitator, an approval UI, or a mainnet deployment. Nothing here is audited.
+
+### 1.1 Relationship to Google AP2
+
+[AP2](https://ap2-protocol.org/) (Agent Payments Protocol) and this proposal both use the word "mandate," but they authorize different things and sit at different layers. An **AP2 mandate proves user intent**: a signed statement, upstream of any specific payment, that a human authorized an agent to act on their behalf under some stated conditions ("book me a flight under $500"). An **Atlas Mandate enforces treasury policy at signing time**: it is the downstream authority that decides, for one specific offer, whether the organization's actual funds may move — scope, budgets, simulation, and the escalation threshold — independent of how the upstream intent was captured or expressed.
+
+The two are complementary, not competing, and nothing here renames or repurposes either term: a deployment could use an AP2 IntentMandate to establish that a human asked for something, and still require an Atlas Mandate to authorize the org's own spend against it. v0.1 does not implement this integration. It is **roadmap-only**: a future version may add an optional `ap2IntentMandateId` field so an Atlas Mandate (or a decision record) can reference the AP2 intent mandate that produced the request it is honoring, purely for audit correlation. That field is not part of the v0.1 schema in §3.1, and the schema's closed-object refinement means a document carrying it today is rejected, not silently accepted.
 
 ## 2. Conventions
 

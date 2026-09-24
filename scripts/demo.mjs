@@ -168,7 +168,8 @@ async function assertPortsFree(ports) {
 
 async function main() {
   say(bold('\nAtlas Rail — Agent Mandates demo'));
-  say(dim(`mode: ${OFFLINE ? 'OFFLINE (in-memory Solana JSON-RPC)' : 'Solana DEVNET'} · database: ${NO_DOCKER ? 'embedded Postgres' : 'Docker'} · asset: ${ASSET}\n`));
+  say(dim(`mode: ${OFFLINE ? 'OFFLINE (in-memory Solana JSON-RPC)' : 'Solana DEVNET'} · database: ${NO_DOCKER ? 'embedded Postgres' : 'Docker'} · asset: ${ASSET}`));
+  say(dim('DEVNET ONLY · no real funds move · Atlas Rail never takes custody of production keys (see SECURITY.md)\n'));
   if (/mainnet/i.test(RPC_URL)) fatal('Refusing to run: mainnet RPC endpoints are prohibited. Atlas Rail is devnet only.');
   if (Number(process.versions.node.split('.')[0]) < 22) fatal(`Node 22+ is required (found ${process.versions.node}).`);
   ensurePnpm();

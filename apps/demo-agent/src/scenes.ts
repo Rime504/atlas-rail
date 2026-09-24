@@ -245,7 +245,12 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
         summary.ok = false;
         summary.scenes.attack = { denied: false };
       }
-      say(c.dim('  (This recreates the May 2026 Grok/Bankr wallet-drain pattern; here the drain fails.)'));
+      say(
+        c.dim(
+          '  (In May 2026, a Bankr wallet associated with Grok was reportedly tricked by an encoded prompt into sending about\n' +
+            '   $150–175k of tokens on Base; most was reportedly returned. Here, the same attack fails.)',
+        ),
+      );
     } finally {
       await seller.close();
     }

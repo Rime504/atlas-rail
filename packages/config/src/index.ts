@@ -82,7 +82,8 @@ export function validateEnv(env: Record<string, unknown> = process.env): EnvConf
   return parsed;
 }
 
-export const DEVNET_WARNING_BANNER = 'DEVNET ONLY — Simulation environment. Do not use real funds.';
+export const DEVNET_WARNING_BANNER =
+  'DEVNET ONLY — Simulation environment. Do not use real funds. Atlas Rail never takes custody of production keys.';
 
 export const ALLOWED_SOLANA_PROGRAM_IDS = {
   SYSTEM_PROGRAM: '11111111111111111111111111111111',

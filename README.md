@@ -163,6 +163,8 @@ Concretely, that means:
 
 x402 lets an agent pay whatever a server's `402 Payment Required` asks. For a human clicking a button that's fine; for an autonomous agent it's an open wallet — a prompt-injected or buggy agent pays an attacker's address as readily as a real one. Agent Mandates is Atlas Rail's answer: a signed, revocable, per-agent spending authority, enforced by a policy gate that sits *outside* the agent's own reasoning, with every decision recorded and every payment provable after the fact. It's a draft proposal — see [`spec/agent-mandate-v0.1.md`](spec/agent-mandate-v0.1.md) for the full data model, canonicalisation, verification algorithm and threat table — implemented end to end here as `packages/mandate`, `packages/receipt`, and `@atlas-rail/x402`.
 
+**Devnet only. No real funds move. Atlas Rail never takes custody of production keys** — same boundary as the rest of this README, enforced the same way (see [Safety Boundary](#-safety-boundary--read-this-first) above).
+
 ```mermaid
 sequenceDiagram
     participant Agent
