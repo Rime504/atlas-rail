@@ -38,7 +38,7 @@
   "devDependencies": {
     "@atlas-rail/typescript-config": "workspace:*",
     "@nestjs/cli": "^10.4.8",
-    "@nestjs/schematics": "^10.2.3",
+    "@nestjs/schematics": "^12.0.4",
     "@types/node": "^22.10.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2",
