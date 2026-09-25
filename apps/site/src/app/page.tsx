@@ -51,8 +51,8 @@ function Hero() {
           Devnet only &middot; open source
         </div>
         <h1 className="animate-fade-in font-display text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-6xl">
-          AI agents can&rsquo;t be tricked into{' '}
-          <span className="gradient-text">spending your money.</span>
+          Your AI agent can be tricked.{' '}
+          <span className="gradient-text">Your treasury shouldn&rsquo;t be.</span>
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-mutedText sm:text-lg">
           Atlas Rail is an open-source policy and evidence layer for agent payments on Solana.
@@ -123,7 +123,7 @@ const FLOW_STEPS = [
   { icon: FileCheck2, label: 'Mandate', detail: 'Owner + approver + agent sign a scoped, revocable spending authority' },
   { icon: ShieldCheck, label: 'Policy Gate', detail: 'Allow · deny · ask a human — 14 rules, every one recorded' },
   { icon: Wallet, label: 'Payment', detail: 'The agent’s signer cannot sign without a fresh gate authorization' },
-  { icon: ScrollText, label: 'Signed receipt', detail: 'Bound, Merkle-anchored on devnet, verifiable offline' },
+  { icon: ScrollText, label: 'Signed receipt', detail: 'Bound to the mandate, decision and payment, Merkle-anchored on devnet, independently verifiable' },
 ];
 
 function HowItWorks() {
@@ -218,8 +218,9 @@ function BuiltToBeVerified() {
             <li className="flex gap-3">
               <ScrollText className="mt-0.5 h-4 w-4 shrink-0 text-solana-green" />
               <span>
-                <strong className="text-white"><code className="font-mono">atlas verify</code> works offline</strong>{' '}
-                &mdash; no network, no trust in this site or the console required to check a receipt.
+                <code className="font-mono text-white">atlas verify</code> checks a receipt without trusting
+                this site or the console. Signatures, delegation chain, decision replay and Merkle proof
+                run fully offline; the on-chain anchor and settlement checks need only a public Solana RPC.
               </span>
             </li>
             <li className="flex gap-3">

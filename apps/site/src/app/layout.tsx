@@ -10,7 +10,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: 'Atlas Rail — AI agents can’t be tricked into spending your money',
+  title: 'Atlas Rail — Your AI agent can be tricked. Your treasury shouldn’t be.',
   description:
     'Atlas Rail is an open-source policy and evidence layer for agent payments on Solana: signed mandates, a policy gate, human approval and verifiable receipts. Devnet only.',
   metadataBase: new URL('https://atlasrail.dev'),
