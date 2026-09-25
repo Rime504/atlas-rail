@@ -16,7 +16,7 @@
     "@atlas-rail/domain": "workspace:*",
     "@atlas-rail/receipt": "workspace:*",
     "@atlas-rail/solana": "workspace:*",
-    "bullmq": "^5.25.6",
+    "bullmq": "^5.81.5",
     "ioredis": "^5.4.1",
     "pino": "^9.5.0"
   },

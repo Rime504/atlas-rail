@@ -80,8 +80,8 @@ importers:
         specifier: ^0.41.1
         version: 0.41.1
       bullmq:
-        specifier: ^5.25.6
-        version: 5.81.4
+        specifier: ^5.81.5
+        version: 5.81.5
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1
@@ -353,8 +353,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/solana
       bullmq:
-        specifier: ^5.25.6
-        version: 5.81.4
+        specifier: ^5.81.5
+        version: 5.81.5
       ioredis:
         specifier: ^5.4.1
         version: 5.11.1
@@ -2828,8 +2828,8 @@ packages:
     resolution: {integrity: sha512-ZMANVnAixE6AWWnPzlW2KpUrxhm9woycYvPOo67jWHyFowASTEd9s+QN1EIMsSDtwhIxN4sWE1jotpuDUIgyIw==}
     engines: {node: '>=6.14.2'}
 
-  bullmq@5.81.4:
-    resolution: {integrity: sha512-n+WHSzz20KooBGoJyASre6oJNz/p5f1IJRRN2ibD+NWPQaNpNQmDrwYuPO+bsXrQeM1MQzUxXGbdjmyOFKP2xQ==}
+  bullmq@5.81.5:
+    resolution: {integrity: sha512-pW7pFc/X+9AEIx91TWTdIpZ1icfbJnA0unsyzD7VICjCUw8a3qedSjej5dxxn6LjfM1kr2jvalOCGbCmoA5Kxg==}
     engines: {node: '>=12.22.0'}
     peerDependencies:
       redis: '>=5.0.0'
@@ -7736,7 +7736,7 @@ snapshots:
       node-gyp-build: 4.8.4
     optional: true
 
-  bullmq@5.81.4:
+  bullmq@5.81.5:
     dependencies:
       cron-parser: 4.9.0
       ioredis: 5.11.1
