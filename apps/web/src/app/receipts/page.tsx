@@ -39,7 +39,7 @@ export default function ReceiptsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Bound Receipts"
-        description="Each paid request leaves a receipt that binds the mandate, the gate’s decision, the on-chain settlement and the response. Anyone can verify one offline."
+        description="Each paid request leaves a receipt that binds the mandate, the policy gate’s decision, the on-chain settlement and the response. Anyone can verify one offline."
         actions={
           canAnchor && (
             <button className="btn-ghost" onClick={anchorNow} disabled={anchoring || unanchored === 0}>

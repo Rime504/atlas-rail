@@ -95,7 +95,7 @@ export default function DecisionsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Live Decisions"
-        description="Every payment an agent attempts is judged by the gate. Each row is a signed, replayable record: expand it to see every rule that ran."
+        description="Every payment an agent attempts is judged by the policy gate. Each row is a signed, replayable record: expand it to see every rule that ran."
         actions={<StreamPill state={state} />}
       />
 

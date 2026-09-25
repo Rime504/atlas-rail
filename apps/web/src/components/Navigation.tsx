@@ -37,8 +37,10 @@ interface NavLink {
   badge?: 'approvals';
 }
 
+const HOME_LINKS: NavLink[] = [{ name: 'Home', href: '/', icon: LayoutDashboard, permission: 'mandate:read' }];
+
 const TREASURY_LINKS: NavLink[] = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard, permission: 'payout:read' },
+  { name: 'Dashboard', href: '/treasury', icon: Landmark, permission: 'payout:read' },
   { name: 'Treasuries', href: '/treasuries', icon: Landmark, permission: 'treasury:read' },
   { name: 'Recipients', href: '/recipients', icon: Users, permission: 'recipient:read' },
   { name: 'Policies', href: '/policies', icon: FileText, permission: 'policy:read' },
@@ -154,6 +156,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
 
   const visible = (links: NavLink[]) =>
     links.filter((l) => !user || hasPermission(user.role, l.permission));
+  const home = useMemo(() => visible(HOME_LINKS), [user]); // eslint-disable-line react-hooks/exhaustive-deps
   const treasury = useMemo(() => visible(TREASURY_LINKS), [user]); // eslint-disable-line react-hooks/exhaustive-deps
   const agent = useMemo(() => visible(AGENT_LINKS), [user]); // eslint-disable-line react-hooks/exhaustive-deps
   const admin = useMemo(() => visible(ADMIN_LINKS), [user]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -181,8 +184,9 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         </div>
 
         <nav className="space-y-1 p-4" aria-label="Primary">
-          <NavGroup links={treasury} pathname={pathname} onNavigate={onNavigate} />
+          <NavGroup links={home} pathname={pathname} onNavigate={onNavigate} />
           <NavGroup label="Agent Mandates" links={agent} pathname={pathname} onNavigate={onNavigate} />
+          <NavGroup label="Treasury" links={treasury} pathname={pathname} onNavigate={onNavigate} />
           <NavGroup label="Administration" links={admin} pathname={pathname} onNavigate={onNavigate} />
         </nav>
       </div>
