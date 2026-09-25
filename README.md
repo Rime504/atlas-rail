@@ -2,6 +2,8 @@
 
 **Atlas Rail is an open-source, self-hostable policy engine for Solana stablecoin payouts** — the governance layer that sits between "we approved this payment" and "this payment left the treasury." It gives finance and engineering teams programmable spend limits, multi-person approval, pre-flight transaction simulation, an append-only audit ledger, and HMAC-signed webhooks, without ever taking custody of a private key.
 
+https://atlas-rail-site.vercel.app/
+
 If you've ever had to explain to a CFO why "just send it from the multisig" isn't an internal control, this is the layer you were missing.
 
 [![CI](https://github.com/Rime504/atlas-rail/actions/workflows/ci.yml/badge.svg)](https://github.com/Rime504/atlas-rail/actions)
