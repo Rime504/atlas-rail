@@ -4,6 +4,12 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Major bumps need full regression testing across a 20-package monorepo; batching them right
+    # before a deadline is how you end up debugging a dependency instead of shipping. Re-enable
+    # (remove this block) once there's room to take them on deliberately, one at a time.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
