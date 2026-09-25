@@ -234,6 +234,7 @@ graph TD
 atlas-rail/
 ├── apps/
 │   ├── web/           # Next.js 15 console: treasury + agent mandates (mobile-first)
+│   ├── site/           # One-page marketing site, static, deployable to Vercel on its own
 │   ├── api/            # NestJS Fastify REST API + OpenAPI/Swagger
 │   ├── worker/          # BullMQ queues: execution, confirmation, webhooks, reconciliation, agent anchoring
 │   ├── demo-api/        # Scripted x402 seller (paid endpoints) + local facilitator, for the demo
