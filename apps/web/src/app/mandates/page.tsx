@@ -26,7 +26,7 @@ export default function MandatesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Agent Mandates"
-        description="Signed, revocable spending authority for autonomous agents. The gate checks every payment against these limits before a key ever signs."
+        description="Signed, revocable spending authority for autonomous agents. The policy gate checks every payment against these limits before a key ever signs."
         actions={
           canCreate && (
             <button className="btn-gradient" onClick={() => setWizardOpen(true)}>
