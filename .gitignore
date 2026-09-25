@@ -50,3 +50,6 @@ playwright/.cache/
 
 # Devnet demo material (generated; never commit)
 .demo/
+
+# Local pointer to docs/ENGINEERING_STANDARDS.md — machine-local, not part of the repo's own content
+CLAUDE.md
