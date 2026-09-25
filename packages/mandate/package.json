@@ -39,7 +39,7 @@
   },
   "devDependencies": {
     "@atlas-rail/typescript-config": "workspace:*",
-    "@types/node": "^22.10.1",
+    "@types/node": "^22.20.4",
     "fast-check": "^4.1.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2",

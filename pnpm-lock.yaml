@@ -36,7 +36,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+        version: 2.1.9(@types/node@26.6.2)(terser@5.51.2)
 
   apps/api:
     dependencies:
@@ -117,17 +117,17 @@ importers:
         specifier: ^10.2.3
         version: 10.2.3(chokidar@3.6.0)(typescript@5.9.3)
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       ts-node:
         specifier: ^10.9.2
-        version: 10.9.2(@types/node@22.20.1)(typescript@5.9.3)
+        version: 10.9.2(@types/node@22.20.4)(typescript@5.9.3)
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+        version: 2.1.9(@types/node@22.20.4)(terser@5.51.2)
 
   apps/cli:
     dependencies:
@@ -145,14 +145,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/typescript-config
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+        version: 2.1.9(@types/node@22.20.4)(terser@5.51.2)
 
   apps/demo-agent:
     dependencies:
@@ -182,14 +182,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/typescript-config
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+        version: 2.1.9(@types/node@22.20.4)(terser@5.51.2)
 
   apps/demo-api:
     dependencies:
@@ -228,14 +228,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/x402-client
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+        version: 2.1.9(@types/node@22.20.4)(terser@5.51.2)
 
   apps/mock-validator:
     dependencies:
@@ -256,14 +256,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/typescript-config
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+        version: 2.1.9(@types/node@22.20.4)(terser@5.51.2)
 
   apps/site:
     dependencies:
@@ -272,7 +272,7 @@ importers:
         version: 0.468.0(react@18.3.1)
       next:
         specifier: ^15.0.3
-        version: 15.5.25(@types/node@22.20.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 15.5.25(@types/node@22.20.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -287,8 +287,8 @@ importers:
         specifier: ^3.2.0
         version: 3.3.6
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       '@types/react':
         specifier: ^18.3.12
         version: 18.3.31
@@ -336,7 +336,7 @@ importers:
         version: 0.468.0(react@18.3.1)
       next:
         specifier: ^15.0.3
-        version: 15.5.25(@types/node@22.20.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 15.5.25(@types/node@22.20.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -357,8 +357,8 @@ importers:
         specifier: ^3.2.0
         version: 3.3.6
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       '@types/react':
         specifier: ^18.3.12
         version: 18.3.31
@@ -415,17 +415,17 @@ importers:
         specifier: workspace:*
         version: link:../../packages/typescript-config
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       ts-node:
         specifier: ^10.9.2
-        version: 10.9.2(@types/node@22.20.1)(typescript@5.9.3)
+        version: 10.9.2(@types/node@22.20.4)(typescript@5.9.3)
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+        version: 2.1.9(@types/node@22.20.4)(terser@5.51.2)
 
   examples/api-client-node:
     dependencies:
@@ -435,7 +435,7 @@ importers:
     devDependencies:
       ts-node:
         specifier: ^10.9.2
-        version: 10.9.2(@types/node@22.20.1)(typescript@5.9.3)
+        version: 10.9.2(@types/node@26.6.2)(typescript@5.9.3)
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -451,7 +451,7 @@ importers:
         version: 5.0.6
       ts-node:
         specifier: ^10.9.2
-        version: 10.9.2(@types/node@22.20.1)(typescript@5.9.3)
+        version: 10.9.2(@types/node@26.6.2)(typescript@5.9.3)
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -466,8 +466,8 @@ importers:
         specifier: workspace:*
         version: link:../typescript-config
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -482,14 +482,14 @@ importers:
         specifier: workspace:*
         version: link:../typescript-config
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+        version: 2.1.9(@types/node@22.20.4)(terser@5.51.2)
 
   packages/database:
     dependencies:
@@ -513,14 +513,14 @@ importers:
         specifier: workspace:*
         version: link:../typescript-config
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       prisma:
         specifier: ^5.22.0
         version: 5.22.0
       ts-node:
         specifier: ^10.9.2
-        version: 10.9.2(@types/node@22.20.1)(typescript@5.9.3)
+        version: 10.9.2(@types/node@22.20.4)(typescript@5.9.3)
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -538,14 +538,14 @@ importers:
         specifier: workspace:*
         version: link:../typescript-config
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+        version: 2.1.9(@types/node@22.20.4)(terser@5.51.2)
 
   packages/eslint-config: {}
 
@@ -571,20 +571,20 @@ importers:
         specifier: workspace:*
         version: link:../typescript-config
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       fast-check:
         specifier: ^4.1.1
         version: 4.10.2
       ts-node:
         specifier: ^10.9.2
-        version: 10.9.2(@types/node@22.20.1)(typescript@5.9.3)
+        version: 10.9.2(@types/node@22.20.4)(typescript@5.9.3)
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+        version: 2.1.9(@types/node@22.20.4)(terser@5.51.2)
       zod-to-json-schema:
         specifier: ^3.24.6
         version: 3.25.2(zod@3.25.76)
@@ -608,8 +608,8 @@ importers:
         specifier: workspace:*
         version: link:../typescript-config
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       fast-check:
         specifier: ^4.1.1
         version: 4.10.2
@@ -618,7 +618,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+        version: 2.1.9(@types/node@22.20.4)(terser@5.51.2)
 
   packages/solana:
     dependencies:
@@ -642,14 +642,14 @@ importers:
         specifier: workspace:*
         version: link:../typescript-config
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+        version: 2.1.9(@types/node@22.20.4)(terser@5.51.2)
 
   packages/typescript-config: {}
 
@@ -663,8 +663,8 @@ importers:
         specifier: workspace:*
         version: link:../typescript-config
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       '@types/react':
         specifier: ^18.3.12
         version: 18.3.31
@@ -694,14 +694,14 @@ importers:
         specifier: workspace:*
         version: link:../typescript-config
       '@types/node':
-        specifier: ^22.10.1
-        version: 22.20.1
+        specifier: ^22.20.4
+        version: 22.20.4
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+        version: 2.1.9(@types/node@22.20.4)(terser@5.51.2)
 
 packages:
 
@@ -2283,8 +2283,11 @@ packages:
   '@types/node@12.20.55':
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
 
-  '@types/node@22.20.1':
-    resolution: {integrity: sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q==}
+  '@types/node@22.20.4':
+    resolution: {integrity: sha512-zJRE40jpHtKqE/C4fgHrAKQLJuSpzEnP9ff9Y7YtoR3Wd2pwqzlekDeEuUQXjRd+QCYnVnNwuJYmhdk9XV8gvA==}
+
+  '@types/node@26.6.2':
+    resolution: {integrity: sha512-X1P21scMv4zGKLYqjdGjaKa7COa0RKVYYZZN/NfvLQ1JegxFhdhpZG/Lyn8AXx6CDUavKAd11v6BvfpkDByK8g==}
 
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
@@ -5288,6 +5291,9 @@ packages:
   undici-types@8.11.2:
     resolution: {integrity: sha512-iMVNmWZ0leK/goS6eXMizSzmm9CDWtyphwbaCms3DNLqRxDL+mMoNVcZMTyyVgXP0N+Z8neAMzDoUOUJL8veKg==}
 
+  undici-types@8.9.0:
+    resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
+
   universalify@2.0.1:
     resolution: {integrity: sha512-gptHNQghINnc/vTGIk0SOFGFNXw7JVrlRUtConJRlvaw6DuX0wO5Jeko9sWrMBhh+PsYAZ7oXAiOnf/UKogyiw==}
     engines: {node: '>= 10.0.0'}
@@ -7053,11 +7059,11 @@ snapshots:
   '@types/body-parser@1.19.6':
     dependencies:
       '@types/connect': 3.4.38
-      '@types/node': 22.20.1
+      '@types/node': 22.20.4
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.20.4
 
   '@types/d3-array@3.2.2': {}
 
@@ -7087,7 +7093,7 @@ snapshots:
 
   '@types/express-serve-static-core@5.1.3':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.20.4
       '@types/qs': 6.15.1
       '@types/range-parser': 1.2.7
       '@types/send': 1.2.1
@@ -7106,13 +7112,17 @@ snapshots:
 
   '@types/jsonwebtoken@9.0.5':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.20.4
 
   '@types/node@12.20.55': {}
 
-  '@types/node@22.20.1':
+  '@types/node@22.20.4':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/node@26.6.2':
+    dependencies:
+      undici-types: 8.9.0
 
   '@types/prop-types@15.7.15': {}
 
@@ -7131,12 +7141,12 @@ snapshots:
 
   '@types/send@1.2.1':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.20.4
 
   '@types/serve-static@2.2.0':
     dependencies:
       '@types/http-errors': 2.0.5
-      '@types/node': 22.20.1
+      '@types/node': 22.20.4
 
   '@types/uuid@10.0.0': {}
 
@@ -7144,11 +7154,11 @@ snapshots:
 
   '@types/ws@7.4.7':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.20.4
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.20.4
 
   '@typescript-eslint/eslint-plugin@8.69.0(@typescript-eslint/parser@8.69.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3))(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)':
     dependencies:
@@ -7318,13 +7328,21 @@ snapshots:
       chai: 5.3.3
       tinyrainbow: 1.2.0
 
-  '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@22.20.1)(terser@5.51.2))':
+  '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@22.20.4)(terser@5.51.2))':
     dependencies:
       '@vitest/spy': 2.1.9
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 5.4.21(@types/node@22.20.1)(terser@5.51.2)
+      vite: 5.4.21(@types/node@22.20.4)(terser@5.51.2)
+
+  '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@26.6.2)(terser@5.51.2))':
+    dependencies:
+      '@vitest/spy': 2.1.9
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 5.4.21(@types/node@26.6.2)(terser@5.51.2)
 
   '@vitest/pretty-format@2.1.9':
     dependencies:
@@ -9158,7 +9176,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.20.4
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -9424,7 +9442,7 @@ snapshots:
 
   negotiator@0.6.3: {}
 
-  next@15.5.25(@types/node@22.20.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  next@15.5.25(@types/node@22.20.4)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
       '@next/env': 15.5.25
       '@swc/helpers': 0.5.15
@@ -9442,7 +9460,7 @@ snapshots:
       '@next/swc-linux-x64-musl': 15.5.25
       '@next/swc-win32-arm64-msvc': 15.5.25
       '@next/swc-win32-x64-msvc': 15.5.25
-      sharp: 0.35.4(@types/node@22.20.1)
+      sharp: 0.35.4(@types/node@22.20.4)
     transitivePeerDependencies:
       - '@babel/core'
       - '@types/node'
@@ -10087,7 +10105,7 @@ snapshots:
 
   setprototypeof@1.2.0: {}
 
-  sharp@0.35.4(@types/node@22.20.1):
+  sharp@0.35.4(@types/node@22.20.4):
     dependencies:
       '@img/colour': 1.1.0
       detect-libc: 2.1.2
@@ -10118,7 +10136,7 @@ snapshots:
       '@img/sharp-win32-arm64': 0.35.4
       '@img/sharp-win32-ia32': 0.35.4
       '@img/sharp-win32-x64': 0.35.4
-      '@types/node': 22.20.1
+      '@types/node': 22.20.4
     optional: true
 
   shebang-command@2.0.0:
@@ -10417,14 +10435,32 @@ snapshots:
 
   ts-interface-checker@0.1.13: {}
 
-  ts-node@10.9.2(@types/node@22.20.1)(typescript@5.9.3):
+  ts-node@10.9.2(@types/node@22.20.4)(typescript@5.9.3):
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       '@tsconfig/node10': 1.0.13
       '@tsconfig/node12': 1.0.11
       '@tsconfig/node14': 1.0.3
       '@tsconfig/node16': 1.0.4
-      '@types/node': 22.20.1
+      '@types/node': 22.20.4
+      acorn: 8.18.0
+      acorn-walk: 8.3.5
+      arg: 4.1.3
+      create-require: 1.1.1
+      diff: 4.0.4
+      make-error: 1.3.6
+      typescript: 5.9.3
+      v8-compile-cache-lib: 3.0.1
+      yn: 3.1.1
+
+  ts-node@10.9.2(@types/node@26.6.2)(typescript@5.9.3):
+    dependencies:
+      '@cspotcode/source-map-support': 0.8.1
+      '@tsconfig/node10': 1.0.13
+      '@tsconfig/node12': 1.0.11
+      '@tsconfig/node14': 1.0.3
+      '@tsconfig/node16': 1.0.4
+      '@types/node': 26.6.2
       acorn: 8.18.0
       acorn-walk: 8.3.5
       arg: 4.1.3
@@ -10535,6 +10571,8 @@ snapshots:
 
   undici-types@8.11.2: {}
 
+  undici-types@8.9.0: {}
+
   universalify@2.0.1: {}
 
   unpipe@1.0.0: {}
@@ -10629,13 +10667,13 @@ snapshots:
       - utf-8-validate
       - zod
 
-  vite-node@2.1.9(@types/node@22.20.1)(terser@5.51.2):
+  vite-node@2.1.9(@types/node@22.20.4)(terser@5.51.2):
     dependencies:
       cac: 6.7.14
       debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 1.1.2
-      vite: 5.4.21(@types/node@22.20.1)(terser@5.51.2)
+      vite: 5.4.21(@types/node@22.20.4)(terser@5.51.2)
     transitivePeerDependencies:
       - '@types/node'
       - less
@@ -10647,20 +10685,48 @@ snapshots:
       - supports-color
       - terser
 
-  vite@5.4.21(@types/node@22.20.1)(terser@5.51.2):
+  vite-node@2.1.9(@types/node@26.6.2)(terser@5.51.2):
+    dependencies:
+      cac: 6.7.14
+      debug: 4.4.3
+      es-module-lexer: 1.7.0
+      pathe: 1.1.2
+      vite: 5.4.21(@types/node@26.6.2)(terser@5.51.2)
+    transitivePeerDependencies:
+      - '@types/node'
+      - less
+      - lightningcss
+      - sass
+      - sass-embedded
+      - stylus
+      - sugarss
+      - supports-color
+      - terser
+
+  vite@5.4.21(@types/node@22.20.4)(terser@5.51.2):
     dependencies:
       esbuild: 0.28.2
       postcss: 8.5.26
       rollup: 4.63.1
     optionalDependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.20.4
       fsevents: 2.3.3
       terser: 5.51.2
 
-  vitest@2.1.9(@types/node@22.20.1)(terser@5.51.2):
+  vite@5.4.21(@types/node@26.6.2)(terser@5.51.2):
+    dependencies:
+      esbuild: 0.28.2
+      postcss: 8.5.26
+      rollup: 4.63.1
+    optionalDependencies:
+      '@types/node': 26.6.2
+      fsevents: 2.3.3
+      terser: 5.51.2
+
+  vitest@2.1.9(@types/node@22.20.4)(terser@5.51.2):
     dependencies:
       '@vitest/expect': 2.1.9
-      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@22.20.1)(terser@5.51.2))
+      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@22.20.4)(terser@5.51.2))
       '@vitest/pretty-format': 2.1.9
       '@vitest/runner': 2.1.9
       '@vitest/snapshot': 2.1.9
@@ -10676,11 +10742,46 @@ snapshots:
       tinyexec: 0.3.2
       tinypool: 1.1.1
       tinyrainbow: 1.2.0
-      vite: 5.4.21(@types/node@22.20.1)(terser@5.51.2)
-      vite-node: 2.1.9(@types/node@22.20.1)(terser@5.51.2)
+      vite: 5.4.21(@types/node@22.20.4)(terser@5.51.2)
+      vite-node: 2.1.9(@types/node@22.20.4)(terser@5.51.2)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.20.4
+    transitivePeerDependencies:
+      - less
+      - lightningcss
+      - msw
+      - sass
+      - sass-embedded
+      - stylus
+      - sugarss
+      - supports-color
+      - terser
+
+  vitest@2.1.9(@types/node@26.6.2)(terser@5.51.2):
+    dependencies:
+      '@vitest/expect': 2.1.9
+      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@26.6.2)(terser@5.51.2))
+      '@vitest/pretty-format': 2.1.9
+      '@vitest/runner': 2.1.9
+      '@vitest/snapshot': 2.1.9
+      '@vitest/spy': 2.1.9
+      '@vitest/utils': 2.1.9
+      chai: 5.3.3
+      debug: 4.4.3
+      expect-type: 1.4.0
+      magic-string: 0.30.21
+      pathe: 1.1.2
+      std-env: 3.10.0
+      tinybench: 2.9.0
+      tinyexec: 0.3.2
+      tinypool: 1.1.1
+      tinyrainbow: 1.2.0
+      vite: 5.4.21(@types/node@26.6.2)(terser@5.51.2)
+      vite-node: 2.1.9(@types/node@26.6.2)(terser@5.51.2)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@types/node': 26.6.2
     transitivePeerDependencies:
       - less
       - lightningcss
