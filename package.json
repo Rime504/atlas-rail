@@ -2,7 +2,7 @@
   "name": "atlas-rail-monorepo",
   "private": true,
   "version": "0.1.0",
-  "description": "Programmable treasury controls and safe USDC payouts for Solana devnet",
+  "description": "Spending rules and verifiable receipts for AI agents paying on Solana (devnet)",
   "license": "Apache-2.0",
   "author": "Atlas Rail Contributors",
   "scripts": {
