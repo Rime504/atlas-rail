@@ -50,3 +50,7 @@ playwright/.cache/
 
 # Devnet demo material (generated; never commit)
 .demo/
+
+# Rust / Anchor
+/target
+.anchor
