@@ -39,6 +39,15 @@ describe('validateEnv', () => {
   it('refuses a mainnet RPC URL', () => {
     expect(() => validateEnv({ ...baseEnv, SOLANA_RPC_URL: 'https://api.mainnet-beta.solana.com' })).toThrow(/mainnet/);
   });
+
+  it('defaults ATLAS_ONCHAIN to false so the on-chain registry stays opt-in', () => {
+    expect(validateEnv(baseEnv).ATLAS_ONCHAIN).toBe(false);
+    expect(validateEnv({ ...baseEnv, ATLAS_ONCHAIN: 'true' }).ATLAS_ONCHAIN).toBe(true);
+  });
+
+  it('defaults MANDATE_PROGRAM_ID to the deployed devnet program', () => {
+    expect(validateEnv(baseEnv).MANDATE_PROGRAM_ID).toBe('CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k');
+  });
 });
 
 describe('ALLOWED_SOLANA_PROGRAM_IDS', () => {

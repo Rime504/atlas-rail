@@ -12,9 +12,32 @@ import {
   verifyMandateChain,
 } from '@atlas-rail/mandate';
 import { AnchorService, ReceiptService } from '@atlas-rail/receipt';
-import { ChainClient, ChainPaymentSimulator, DevnetKeyring, DevnetKeypairSigner } from '@atlas-rail/solana';
+import {
+  ChainClient,
+  ChainPaymentSimulator,
+  DevnetKeyring,
+  DevnetKeypairSigner,
+  buildCreateMandateTransaction,
+  buildRevokeMandateTransaction,
+  fetchMandateAccount,
+  findMandatePda,
+} from '@atlas-rail/solana';
 import { QueueService } from '../common/queue.service';
 import { AGENT_CHAIN, AGENT_KEYRING } from './agent.tokens';
+
+/** True when the on-chain mandate registry (Milestone B) is turned on. Off by default. */
+function onchainEnabled(): boolean {
+  return process.env.ATLAS_ONCHAIN === 'true';
+}
+
+function mandateProgramId(): string {
+  return process.env.MANDATE_PROGRAM_ID ?? 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k';
+}
+
+export interface OnChainMandateResult {
+  address: string;
+  txSignature: string;
+}
 
 const EVENT_TO_WEBHOOK: Record<AgentEvent['type'], WebhookEventType> = {
   'agent.mandate.created': WEBHOOK_EVENT_TYPES.AGENT_MANDATE_CREATED,
@@ -63,6 +86,7 @@ export class AgentFacade {
       newId,
       notify,
       requireSimulation: process.env.AGENT_REQUIRE_SIMULATION !== 'false',
+      onchainRevocationCheck: onchainEnabled() ? (mandateHash) => this.checkOnChainRevocation(mandateHash) : undefined,
     });
     this.lifecycle = new MandateLifecycleService({ store: this.store, clock, notify });
     this.receiptService = new ReceiptService({
@@ -108,6 +132,108 @@ export class AgentFacade {
       data: { id: generateUlid('usk'), userId, publicKey: signer.publicKey, label: 'devnet demo key' },
     });
     return signer;
+  }
+
+  /**
+   * Behind `ATLAS_ONCHAIN=1`: does the on-chain mandate account say revoked? Returns `null` (not
+   * revoked, as far as this check can tell) if the account doesn't exist yet or the RPC call fails —
+   * a chain-read hiccup must never block a payment the database considers valid; only a *positive*
+   * on-chain revocation overrides the database (see {@link GateServiceOptions.onchainRevocationCheck}).
+   */
+  private async checkOnChainRevocation(mandateHashHex: string): Promise<{ revokedAt: number; reason: string | null } | null> {
+    try {
+      const { address } = findMandatePda(mandateProgramId(), Buffer.from(mandateHashHex, 'hex'));
+      const account = await fetchMandateAccount(process.env.SOLANA_RPC_URL ?? 'https://api.devnet.solana.com', address);
+      if (!account || !account.revoked) return null;
+      return { revokedAt: Number(account.revokedAt), reason: 'Mandate is revoked on-chain' };
+    } catch (error) {
+      this.logger.warn(`On-chain revocation check failed, falling back to the database: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  /**
+   * Behind `ATLAS_ONCHAIN=1`: registers a newly-activated mandate on-chain (`create_mandate`), signed
+   * by the owner, approver and agent — the same devnet-custody keys that produced the off-chain
+   * delegation chain (see {@link userSigner}). Best-effort: on any failure this logs and returns
+   * `null` rather than throwing, so the off-chain mandate (already ACTIVE) is never rolled back or
+   * blocked by an on-chain hiccup, per the "existing demo always works" rule.
+   */
+  async anchorMandateOnChain(record: MandateRecord): Promise<OnChainMandateResult | null> {
+    if (!onchainEnabled()) return null;
+    try {
+      const { mandate } = record;
+      const ownerLink = mandate.delegationChain.find((l) => l.role === 'OWNER');
+      const approverLink = mandate.delegationChain.find((l) => l.role === 'APPROVER');
+      if (!ownerLink || !approverLink) throw new Error('mandate is missing an OWNER or APPROVER link');
+      const ownerSigner = this.keyring.signerByPublicKey(ownerLink.publicKey);
+      const approverSigner = this.keyring.signerByPublicKey(approverLink.publicKey);
+      const agentSigner = this.keyring.signerByPublicKey(mandate.agent.publicKey);
+      if (!ownerSigner || !approverSigner || !agentSigner) {
+        throw new Error('owner, approver or agent signing key is not available in the devnet keyring');
+      }
+
+      const programId = mandateProgramId();
+      const mandateHashBytes = Buffer.from(record.mandateHash, 'hex');
+      const latest = await this.chain.getLatestBlockhash();
+      const unsigned = buildCreateMandateTransaction({
+        programId,
+        mandateHash: mandateHashBytes,
+        gateAuthority: this.instanceSigner.publicKey,
+        mint: mandate.scope.limits.mint,
+        maxPerPayment: BigInt(mandate.scope.limits.maxPerPayment),
+        maxPerWindow: BigInt(mandate.scope.limits.maxPerWindow),
+        windowSeconds: BigInt(mandate.scope.limits.windowSeconds),
+        maxTotal: BigInt(mandate.scope.limits.maxTotal),
+        escalationThreshold: BigInt(mandate.escalation.thresholdBaseUnits),
+        notBefore: BigInt(mandate.notBefore),
+        expiresAt: BigInt(mandate.expiresAt),
+        owner: ownerLink.publicKey,
+        approver: approverLink.publicKey,
+        agent: mandate.agent.publicKey,
+        recentBlockhash: latest.blockhash,
+      });
+      let signed = (await ownerSigner.signTransaction(unsigned)).signedBase64;
+      signed = (await approverSigner.signTransaction(signed)).signedBase64;
+      signed = (await agentSigner.signTransaction(signed)).signedBase64;
+      const txSignature = await this.chain.sendAndConfirm(signed);
+      const { address } = findMandatePda(programId, mandateHashBytes);
+      this.logger.log(`Mandate ${mandate.id} registered on-chain at ${address} (${txSignature})`);
+      return { address, txSignature };
+    } catch (error) {
+      this.logger.warn(`On-chain create_mandate skipped for ${record.mandate.id}: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  /**
+   * Behind `ATLAS_ONCHAIN=1`: revokes a mandate on-chain (`revoke_mandate`), signed by whichever
+   * owner/approver user just revoked it off-chain. Best-effort, same reasoning as
+   * {@link anchorMandateOnChain} — a failure here never undoes the (already-effective) off-chain
+   * revocation.
+   */
+  async revokeMandateOnChain(record: MandateRecord, authorityUserId: string): Promise<OnChainMandateResult | null> {
+    if (!onchainEnabled()) return null;
+    try {
+      const authoritySigner = await this.userSigner(authorityUserId);
+      const programId = mandateProgramId();
+      const mandateHashBytes = Buffer.from(record.mandateHash, 'hex');
+      const { address: mandatePda } = findMandatePda(programId, mandateHashBytes);
+      const latest = await this.chain.getLatestBlockhash();
+      const unsigned = buildRevokeMandateTransaction({
+        programId,
+        mandatePda,
+        authority: authoritySigner.publicKey,
+        recentBlockhash: latest.blockhash,
+      });
+      const signed = (await authoritySigner.signTransaction(unsigned)).signedBase64;
+      const txSignature = await this.chain.sendAndConfirm(signed);
+      this.logger.log(`Mandate ${record.mandate.id} revoked on-chain at ${mandatePda} (${txSignature})`);
+      return { address: mandatePda, txSignature };
+    } catch (error) {
+      this.logger.warn(`On-chain revoke_mandate skipped for ${record.mandate.id}: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
   }
 
   async presentMandate(record: MandateRecord) {

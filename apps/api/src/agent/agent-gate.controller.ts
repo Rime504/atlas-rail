@@ -107,6 +107,7 @@ export class AgentGateController {
   async accept(@Req() req: any, @Param('mandateId') mandateId: string, @Body() body: unknown) {
     const { link } = acceptSchema.parse(body);
     const record = await this.agent.lifecycle.attachAgentLink(req.user.organizationId, mandateId, link);
-    return this.agent.presentMandate(record);
+    const onchain = await this.agent.anchorMandateOnChain(record);
+    return { ...(await this.agent.presentMandate(record)), onchain };
   }
 }
