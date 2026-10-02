@@ -70,10 +70,16 @@ async function main(argv: string[]): Promise<number> {
   return 2;
 }
 
+// Setting `process.exitCode` and letting Node drain its own event loop (rather than forcing
+// `process.exit()` immediately after the last await) avoids a Windows-only crash
+// (`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`) seen when `--check-settlement`
+// leaves an in-flight devnet RPC request's underlying handle mid-teardown at exit time.
 main(process.argv.slice(2)).then(
-  (code) => process.exit(code),
+  (code) => {
+    process.exitCode = code;
+  },
   (error) => {
     console.error(error instanceof Error ? error.message : error);
-    process.exit(2);
+    process.exitCode = 2;
   },
 );
