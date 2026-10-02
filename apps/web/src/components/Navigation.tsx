@@ -23,6 +23,7 @@ import {
   Activity,
   UserCheck,
   ReceiptText,
+  FlaskConical,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth-context';
 import { useApiHealth } from '../lib/hooks';
@@ -59,6 +60,7 @@ const AGENT_LINKS: NavLink[] = [
     badge: 'approvals',
   },
   { name: 'Receipts', href: '/receipts', icon: ReceiptText, permission: 'receipt:read' },
+  { name: 'Demo Lab', href: '/demo-lab', icon: FlaskConical, permission: 'mandate:create' },
 ];
 
 const ADMIN_LINKS: NavLink[] = [

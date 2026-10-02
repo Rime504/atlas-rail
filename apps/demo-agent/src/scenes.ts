@@ -162,6 +162,27 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     },
   });
 
+  // `mandateId` is normally set by scene 1 (GRANT) and carries within this one process for the
+  // scenes that follow it in the same run. Called standalone (e.g. one button per scene from the
+  // console's Demo Lab, each a separate process), scenes 2-6 have nothing to bind to. Resolve the
+  // most recently created ACTIVE "Research Agent" mandate for this org instead, so any scene can
+  // run on its own as long as one has been granted at some point.
+  if (!run(1)) {
+    const existing = await api.get<Array<{ id: string; status: string; createdAt: number; mandate: { agent: { label: string } } }>>(
+      '/v1/agent/mandates',
+      { token: owner },
+    );
+    const active = existing
+      .filter((m) => m.status === 'ACTIVE' && m.mandate.agent.label === 'Research Agent')
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (active) bindMandate(active.id);
+    else if ([2, 3, 4, 5, 6].some((n) => run(n))) {
+      bad('No active mandate exists yet. Run scene 1 (Grant) first.');
+      summary.ok = false;
+      return summary;
+    }
+  }
+
   /* -------------------------------------------------------------------------------------------- */
   if (run(1)) {
     scene(1, 'GRANT', 'The org owner and an independent approver sign a mandate for the Research Agent; the agent accepts it.');
