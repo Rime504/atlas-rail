@@ -1,0 +1,24 @@
+[package]
+name = "atlas-mandate"
+version = "0.1.0"
+description = "Atlas Rail on-chain mandate registry (devnet only)"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "atlas_mandate"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = "1.2.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))', 'cfg(feature, values("anchor-debug", "custom-heap", "custom-panic"))'] }

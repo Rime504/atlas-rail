@@ -50,3 +50,10 @@ playwright/.cache/
 
 # Devnet demo material (generated; never commit)
 .demo/
+
+# Rust / Anchor
+/target
+.anchor
+
+# Local agent instructions (not part of the shared repo)
+CLAUDE.md
