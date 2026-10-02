@@ -5,13 +5,14 @@ anchor_version = "1.2.0"
 resolution = true
 skip-lint = false
 
-# Devnet and localnet only. Atlas Rail never deploys to mainnet.
-[programs.localnet]
-atlas_mandate = "DuQ4Aeim1uWt8xUT8NBCNoo6HkLiwRCQRJ7GVxZY9Qf4"
-
 [programs.devnet]
-atlas_mandate = "DuQ4Aeim1uWt8xUT8NBCNoo6HkLiwRCQRJ7GVxZY9Qf4"
+atlas_mandate = "CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k"
+
+[programs.localnet]
+atlas_mandate = "CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k"
 
 [provider]
 cluster = "localnet"
 wallet = "~/.config/solana/id.json"
+
+[hooks]

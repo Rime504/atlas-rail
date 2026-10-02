@@ -16,7 +16,7 @@
 
 use anchor_lang::prelude::*;
 
-declare_id!("DuQ4Aeim1uWt8xUT8NBCNoo6HkLiwRCQRJ7GVxZY9Qf4");
+declare_id!("CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k");
 
 /// Seed prefix for mandate accounts: `["mandate", mandate_hash]`.
 pub const MANDATE_SEED: &[u8] = b"mandate";
