@@ -67,6 +67,27 @@ export const mandateLimitsSchema = z
   })
   .strict();
 
+/**
+ * A per-resource price ceiling (rule 15), fixed at mandate-signing time by the owner. Credit to
+ * Felix for identifying the underlying issue: binding a payment only to the mandate's own limits
+ * still lets an otherwise-allowed seller quietly raise its price on every call. `expectedPriceBaseUnits`
+ * MUST NOT be updated from what a seller has charged in the past — doing so would let a seller creep
+ * the price up by a little each payment, each individually within tolerance of the last.
+ */
+export const resourcePriceLimitSchema = z
+  .object({
+    /** Which resource this price applies to; same pattern syntax as `allowedResources`. */
+    resource: resourcePatternSchema,
+    /** The owner-signed reference price. Fixed for the life of the mandate. */
+    expectedPriceBaseUnits: baseUnitsSchema,
+    /** Percent above `expectedPriceBaseUnits` that is still auto-approved. */
+    tolerancePct: z.number().min(0).max(1000).default(10),
+    /** Above tolerance, a human may approve up to this. Above it, always denied. */
+    hardMaxBaseUnits: baseUnitsSchema,
+  })
+  .strict();
+export type ResourcePriceLimit = z.infer<typeof resourcePriceLimitSchema>;
+
 export const mandateScopeSchema = z
   .object({
     allowedNetworks: z.array(networkSchema).min(1).max(4),
@@ -74,6 +95,8 @@ export const mandateScopeSchema = z
     allowedPayTo: z.array(addressSchema).min(1).max(256),
     allowedResources: z.array(resourcePatternSchema).min(1).max(256),
     limits: mandateLimitsSchema,
+    /** Resources without an entry here have no price ceiling beyond the mandate's own limits. */
+    priceLimits: z.array(resourcePriceLimitSchema).max(64),
   })
   .strict();
 
@@ -146,6 +169,27 @@ function refineBody(body: BodyShape, ctx: z.RefinementCtx): void {
       message: 'escalation threshold cannot exceed the hard per-payment ceiling',
     });
   }
+  body.scope.priceLimits.forEach((limit, index) => {
+    const expected = safeBigInt(limit.expectedPriceBaseUnits);
+    const hardMax = safeBigInt(limit.hardMaxBaseUnits);
+    if (expected === null || hardMax === null) return; // already flagged by baseUnitsSchema itself
+    if (hardMax < expected) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['scope', 'priceLimits', index, 'hardMaxBaseUnits'],
+        message: 'hardMaxBaseUnits cannot be below expectedPriceBaseUnits',
+      });
+      return;
+    }
+    const tolerated = expected + (expected * BigInt(Math.trunc(limit.tolerancePct * 100))) / 10_000n;
+    if (hardMax < tolerated) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['scope', 'priceLimits', index, 'hardMaxBaseUnits'],
+        message: 'hardMaxBaseUnits cannot be below the tolerated price (expectedPriceBaseUnits + tolerancePct)',
+      });
+    }
+  });
 }
 
 /** The signed content of a mandate: everything except the delegation chain. */

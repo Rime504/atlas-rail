@@ -1,9 +1,14 @@
-# Agent Mandate v0.1
+# Agent Mandate v0.2
 
 **Status:** Draft proposal. Not adopted, endorsed or reviewed by any standards body, wallet vendor or x402 maintainer.
 **Reference implementation:** Atlas Rail, `packages/mandate` and `packages/receipt`. **Network scope:** Solana devnet only.
 **Related:** [x402-foundation/x402 issue #3500](https://github.com/x402-foundation/x402/issues/3500), "Dispute evidence for agent-initiated payments" (confirmed open as of this writing). Atlas Rail's bound receipts are a proposed answer to the evidence-binding half of that problem — signed receipts that bind a settlement to the authorization scope in effect at signing time; not endorsed by x402 maintainers.
-**Machine-readable artefacts:** [`packages/mandate/schema/agent-mandate-v0.1.schema.json`](../packages/mandate/schema/agent-mandate-v0.1.schema.json) (JSON Schema, generated from the implementation) and [`spec/test-vectors/agent-mandate-v0.1.json`](test-vectors/agent-mandate-v0.1.json) (conformance vectors, checked in CI).
+**Machine-readable artefacts:** [`packages/mandate/schema/agent-mandate-v0.1.schema.json`](../packages/mandate/schema/agent-mandate-v0.1.schema.json) (JSON Schema, generated from the implementation) and [`spec/test-vectors/agent-mandate-v0.1.json`](test-vectors/agent-mandate-v0.1.json) (conformance vectors, checked in CI). File names keep the `v0.1` stem for now; see the changelog below on wire-version numbering.
+
+## Changelog
+
+- **v0.2 (draft):** Adds §3.4 Price limits and rule 15, `PRICE_LIMIT` — an optional, owner-signed per-resource price ceiling (expected price, tolerance, hard maximum). Thanks to **Felix**, who identified the gap this closes: a seller can sit inside every other limit a mandate already enforces (recipient, resource, amount, budget) and still quietly raise its price on every call, since nothing previously checked the *price* of a resource against what the owner actually expected to pay. **Wire compatibility:** `scope.priceLimits` is additive and required-but-empty-by-default (`[]` means "no price limit configured, behaves exactly as v0.1"); this reference implementation ships it under the existing `version: "0.1"` literal rather than bumping the wire version, so no previously valid v0.1 document is invalidated. A future revision may introduce a formal `"0.2"` version literal if other breaking changes accumulate.
+- **v0.1:** Initial draft.
 
 ## 1. Motivation
 
@@ -55,7 +60,15 @@ The two are complementary, not competing, and nothing here renames or repurposes
       "maxPerWindow":  "5000000",    // autonomous rolling budget
       "windowSeconds": 86400,
       "maxTotal":      "100000000"   // hard lifetime cap
-    }
+    },
+    "priceLimits": [                 // rule 15 (§3.4); [] if the mandate uses no price limits
+      {
+        "resource": "http://localhost:4402/research/*",
+        "expectedPriceBaseUnits": "1000000",  // fixed at signing time, never auto-updated
+        "tolerancePct": 10,
+        "hardMaxBaseUnits": "2000000"
+      }
+    ]
   },
   "escalation": {
     "thresholdBaseUnits": "1000000",          // above this a human must approve
@@ -69,7 +82,7 @@ The two are complementary, not competing, and nothing here renames or repurposes
 }
 ```
 
-Refinements a verifier MUST enforce: `maxPerPayment ≤ maxPerWindow ≤ maxTotal`; `thresholdBaseUnits ≤ maxPerPayment`; `notBefore < expiresAt`; `limits.mint ∈ allowedAssets`; every address is valid base58 of 32 bytes; `requiredApprovals ≥ 1`. Unknown fields are rejected (the schema is closed) so that a signature can never cover fields a verifier ignores.
+Refinements a verifier MUST enforce: `maxPerPayment ≤ maxPerWindow ≤ maxTotal`; `thresholdBaseUnits ≤ maxPerPayment`; `notBefore < expiresAt`; `limits.mint ∈ allowedAssets`; every address is valid base58 of 32 bytes; `requiredApprovals ≥ 1`; for every entry in `priceLimits`, `hardMaxBaseUnits ≥ expectedPriceBaseUnits` and `hardMaxBaseUnits ≥` the tolerated ceiling defined in §3.4. Unknown fields are rejected (the schema is closed) so that a signature can never cover fields a verifier ignores.
 
 ### 3.2 Delegation chain
 
@@ -78,6 +91,33 @@ The chain is an ordered list: exactly one `OWNER`, then `requiredApprovals` or m
 ### 3.3 Resource patterns
 
 A pattern is `<origin><path>` where `path` is exact or ends in `/*`. `/*` is a prefix match that must end on a path-segment boundary (`/research/*` matches `/research/a/b` but not `/researcher`). Matching is fail-closed and applies to the URL *after* WHATWG normalisation, which resolves dot-segments (including `%2e%2e`), lowercases the host, drops default ports and converts backslashes. URLs with userinfo, non-http(s) schemes, or encoded slashes (`%2f`, `%5c`) never match. Query and fragment are ignored. See the `resources` vectors.
+
+### 3.4 Price limits (rule 15)
+
+Every other limit in §3.1 bounds *who* the agent can pay, *where*, and *how much in total* — none of them bound *the price of one unit of the resource itself*. A seller that is already an allowed `payTo` for an allowed `resource`, charging well inside `maxPerPayment`, can still raise its price a little on every call; nothing described so far ever notices, because each individual payment is legitimate by every other rule's own logic. Felix identified this gap. Price limits close it.
+
+`scope.priceLimits` is an array (possibly empty) of:
+
+```jsonc
+{
+  "resource": "http://localhost:4402/research/*",  // same pattern syntax as allowedResources
+  "expectedPriceBaseUnits": "1000000",              // the owner-signed reference price
+  "tolerancePct": 10,                               // percent above expected still auto-approved
+  "hardMaxBaseUnits": "2000000"                     // above this, always denied
+}
+```
+
+A payment's `offer.resourceUrl` is matched against each entry's `resource` pattern in array order; the first match applies. If no entry matches, rule 15 (`PRICE_LIMIT`) passes trivially — a mandate with `priceLimits: []`, or one with no entry covering a given resource, enforces no price ceiling beyond its other limits, exactly as a v0.1 mandate without this field behaves.
+
+When an entry matches, let `ceiling = expectedPriceBaseUnits + floor(expectedPriceBaseUnits × tolerancePct / 100)` (integer arithmetic only; `tolerancePct` MAY be given to two decimal places, i.e. is actually interpreted as centipercent — `expectedPriceBaseUnits × round(tolerancePct × 100) / 10000`):
+
+| `offer.amount` | Outcome |
+|---|---|
+| ≤ `ceiling` | `PASS` — autonomous allow |
+| > `ceiling` and ≤ `hardMaxBaseUnits` | `ESCALATE` — a human may approve this exact offer |
+| > `hardMaxBaseUnits` | `FAIL` — denied; no approval can override a hard limit |
+
+**`expectedPriceBaseUnits` is fixed at mandate-signing time and MUST NOT be updated automatically from a seller's past charges.** A verifier or gate implementation that re-bases the reference price on the last price paid reopens exactly the attack this rule exists to close: a seller raises the price by a little each time, every single increase individually inside tolerance of the *previous* payment, until the price has crept arbitrarily high. Binding the reference price to what the owner actually signed, immutably for the life of the mandate, is what makes rule 15 meaningful. Re-pricing a resource requires a new mandate (or a new price-limit entry), signed by the owner like any other change of terms.
 
 ## 4. Canonicalisation and hashing
 
@@ -141,11 +181,12 @@ Rules run in a fixed order and each returns `PASS`, `FAIL` (hard), `ESCALATE` (a
 | 7 | `RESOURCE_ALLOWED` | ESCALATE if inside `escalation.resources`, otherwise DENY |
 | 8 | `PAYTO_ALLOWED` | DENY |
 | 9 | `MAX_PER_PAYMENT` | DENY |
-| 10 | `WINDOW_BUDGET` | ESCALATE |
-| 11 | `MAX_TOTAL` | DENY |
-| 12 | `TRANSACTION_SIMULATION` | DENY (including "the transaction pays exactly the offer") |
-| 13 | `ESCALATION_THRESHOLD` | ESCALATE |
-| 14 | `ESCALATION_APPROVAL` | DENY if a supplied approval is invalid for this offer |
+| 10 | `PRICE_LIMIT` (§3.4) | ESCALATE above tolerance, DENY above the hard maximum; PASS if no entry matches the resource |
+| 11 | `WINDOW_BUDGET` | ESCALATE |
+| 12 | `MAX_TOTAL` | DENY |
+| 13 | `TRANSACTION_SIMULATION` | DENY (including "the transaction pays exactly the offer") |
+| 14 | `ESCALATION_THRESHOLD` | ESCALATE |
+| 15 | `ESCALATION_APPROVAL` | DENY if a supplied approval is invalid for this offer |
 
 Any DENY wins; otherwise any ESCALATE yields `ESCALATE`; otherwise `ALLOW`. All rules are evaluated so a UI can show every failure, except rules made meaningless by an integrity failure, which are `SKIPPED`. A human approval is bound to `offerHash`, expires, is single-use, and can override only the approvable rules; hard rules are re-evaluated when the agent retries.
 
@@ -200,7 +241,7 @@ Additional notes: a decision is made *before* signing and the anchor is made *af
 
 ## 10. Test vectors
 
-[`spec/test-vectors/agent-mandate-v0.1.json`](test-vectors/agent-mandate-v0.1.json) is generated from the reference implementation with seeded, worthless keys and `now = 1800000000`. It contains: JCS cases; an unsigned canonical mandate body, `mandateHash`, every `linkHash` and deterministic Ed25519 signature, and the fully signed mandate; resource-matching cases; and eight gate cases with expected decisions and per-rule statuses. `packages/mandate/src/vectors.test.ts` fails if the file and the implementation ever disagree.
+[`spec/test-vectors/agent-mandate-v0.1.json`](test-vectors/agent-mandate-v0.1.json) is generated from the reference implementation with seeded, worthless keys and `now = 1800000000`. It contains: JCS cases; an unsigned canonical mandate body, `mandateHash`, every `linkHash` and deterministic Ed25519 signature, and the fully signed mandate; resource-matching cases; eight gate cases against a mandate with no price limits configured; and six further gate cases (`pricedMandate`) against a second mandate carrying one `priceLimits` entry (expected price 1,000,000, 10% tolerance, hard max 2,000,000), covering the normal, within-tolerance, escalate, approved-escalate, above-hard-max, and price-creep scenarios of §3.4. `packages/mandate/src/vectors.test.ts` fails if the file and the implementation ever disagree.
 
 Key values (for orientation; the JSON file is normative):
 
@@ -223,3 +264,9 @@ Key values (for orientation; the JSON file is normative):
 | $60, above the $50 hard ceiling | DENY | `MAX_PER_PAYMENT` |
 | mandate revoked | DENY | `MANDATE_NOT_REVOKED` |
 | $40 inference endpoint | ESCALATE | `RESOURCE_ALLOWED` (approvable), `WINDOW_BUDGET`, `ESCALATION_THRESHOLD` |
+| *(pricedMandate)* at the expected price | ALLOW | – |
+| *(pricedMandate)* within the 10% tolerance | ALLOW | – |
+| *(pricedMandate)* above tolerance | ESCALATE | `PRICE_LIMIT` |
+| *(pricedMandate)* above tolerance, approved | ALLOW (approved) | – |
+| *(pricedMandate)* above the hard maximum | DENY | `PRICE_LIMIT` |
+| *(pricedMandate)* price-creep step (still inside the fixed 10% band) | ALLOW | – |

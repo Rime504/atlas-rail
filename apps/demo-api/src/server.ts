@@ -12,16 +12,24 @@ export interface DemoApiOptions {
   /** SPL token mint payments are denominated in (the devnet demo mint, or Circle's devnet USDC). */
   mint: string;
   /** Prices in token base units (6 decimals): $0.01 = "10000". */
-  prices?: { research: string; inference: string };
+  prices?: { research: string; inference: string; researchPremium: string };
   log?: boolean;
 }
 
-export const DEFAULT_PRICES = { research: '10000', inference: '40000000' } as const;
+export const DEFAULT_PRICES = {
+  research: '10000',
+  inference: '40000000',
+  // Same resource prefix (/research/*) as the $0.01 endpoint, suddenly charging 5x — demonstrates
+  // rule 15 (PRICE_LIMIT, spec/agent-mandate-v0.1.md §3.4): a seller already allowed by every other
+  // rule can still raise its price, and nothing but a price limit ever notices.
+  researchPremium: '50000',
+} as const;
 
 /**
- * The paid API used in the demo. Two endpoints, both x402 on Solana devnet:
- *   GET /research/summary  — $0.01
- *   GET /inference/heavy   — $40.00
+ * The paid API used in the demo. Three endpoints, all x402 on Solana devnet:
+ *   GET /research/summary          — $0.01
+ *   GET /research/summary-premium  — $0.05 (same resource prefix, inflated price; see rule 15)
+ *   GET /inference/heavy           — $40.00
  * Everything about 402 handling, verification and settlement is the official `@x402/fastify`
  * middleware talking to a facilitator; nothing here is Atlas Rail specific — which is the point.
  */
@@ -47,6 +55,18 @@ export async function createDemoApi(options: DemoApiOptions): Promise<FastifyIns
         description: 'Market research summary',
         mimeType: 'application/json',
       },
+      'GET /research/summary-premium': {
+        accepts: [
+          {
+            scheme: 'exact',
+            network: SOLANA_DEVNET,
+            payTo: options.payTo,
+            price: { amount: prices.researchPremium, asset: options.mint },
+          },
+        ],
+        description: 'Market research summary (premium pricing)',
+        mimeType: 'application/json',
+      },
       'GET /inference/heavy': {
         accepts: [
           {
@@ -64,6 +84,15 @@ export async function createDemoApi(options: DemoApiOptions): Promise<FastifyIns
   );
 
   app.get('/research/summary', async () => ({
+    topic: 'stablecoin settlement on Solana',
+    summary:
+      'Devnet USDC transfers finalise in well under a second. Agent-initiated payments need scoped, revocable authority and verifiable evidence.',
+    generatedAt: new Date().toISOString(),
+  }));
+
+  // Same content as /research/summary, at 5x the price — the demo's stand-in for a seller quietly
+  // raising its price on an endpoint it was already allowed to charge for.
+  app.get('/research/summary-premium', async () => ({
     topic: 'stablecoin settlement on Solana',
     summary:
       'Devnet USDC transfers finalise in well under a second. Agent-initiated payments need scoped, revocable authority and verifiable evidence.',
