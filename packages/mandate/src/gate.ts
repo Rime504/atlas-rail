@@ -1,8 +1,19 @@
 import { addBaseUnits, compareBaseUnits } from '@atlas-rail/domain';
 import { verifyMandateChain, hashMandate } from './mandate';
 import { X402Offer, hashOffer, x402OfferSchema } from './offer';
-import { matchesAnyResourcePattern } from './resource';
-import { AgentMandate, BASE_UNITS_PATTERN, SUPPORTED_NETWORKS, agentMandateSchema } from './schema';
+import { matchesAnyResourcePattern, matchesResourcePattern } from './resource';
+import { AgentMandate, BASE_UNITS_PATTERN, ResourcePriceLimit, SUPPORTED_NETWORKS, agentMandateSchema } from './schema';
+
+/**
+ * The highest amount still considered "at or within tolerance" of a price limit's reference price.
+ * Matches the same centipercent fixed-point math `refineBody` in schema.ts validates against —
+ * the two MUST stay in lock-step, or a mandate could pass validation with a ceiling the gate itself
+ * would compute differently.
+ */
+function toleratedCeiling(limit: ResourcePriceLimit): bigint {
+  const expected = BigInt(limit.expectedPriceBaseUnits);
+  return expected + (expected * BigInt(Math.trunc(limit.tolerancePct * 100))) / 10_000n;
+}
 
 /**
  * The Policy Gate: a pure, deterministic function from (mandate, x402 offer, context) to
@@ -25,6 +36,7 @@ export const RULE_IDS = [
   'RESOURCE_ALLOWED',
   'PAYTO_ALLOWED',
   'MAX_PER_PAYMENT',
+  'PRICE_LIMIT',
   'WINDOW_BUDGET',
   'MAX_TOTAL',
   'TRANSACTION_SIMULATION',
@@ -217,6 +229,7 @@ export function evaluateGate(mandateInput: unknown, offerInput: unknown, context
     'RESOURCE_ALLOWED',
     'PAYTO_ALLOWED',
     'MAX_PER_PAYMENT',
+    'PRICE_LIMIT',
     'WINDOW_BUDGET',
     'MAX_TOTAL',
     'TRANSACTION_SIMULATION',
@@ -316,6 +329,37 @@ export function evaluateGate(mandateInput: unknown, offerInput: unknown, context
           maxPerPayment: limits.maxPerPayment,
         }),
       );
+    }
+
+    // 8.5. Per-resource price limit (rule 15). The reference price is fixed in the signed mandate and
+    // never updated from past payments, so a seller cannot creep the price up a little at a time —
+    // each payment is checked against the same owner-signed expectedPriceBaseUnits every time.
+    const priceLimit = scope.priceLimits.find((limit) => matchesResourcePattern(offer.resourceUrl, limit.resource));
+    if (!priceLimit) {
+      rules.push(pass('PRICE_LIMIT', 'No price limit is configured for this resource', { resource: offer.resourceUrl }));
+    } else {
+      const ceiling = toleratedCeiling(priceLimit);
+      const details = {
+        resource: offer.resourceUrl,
+        amount: offer.amount,
+        expectedPrice: priceLimit.expectedPriceBaseUnits,
+        tolerancePct: priceLimit.tolerancePct,
+        toleratedCeiling: ceiling.toString(),
+        hardMax: priceLimit.hardMaxBaseUnits,
+      };
+      if (compareBaseUnits(offer.amount, ceiling.toString()) <= 0) {
+        rules.push(pass('PRICE_LIMIT', `Amount is within ${priceLimit.tolerancePct}% of the expected price ${priceLimit.expectedPriceBaseUnits}`, details));
+      } else if (compareBaseUnits(offer.amount, priceLimit.hardMaxBaseUnits) <= 0) {
+        rules.push(
+          escalate(
+            'PRICE_LIMIT',
+            `Amount ${offer.amount} is above the ${priceLimit.tolerancePct}% tolerance (${ceiling}) but at or below the hard maximum ${priceLimit.hardMaxBaseUnits}`,
+            details,
+          ),
+        );
+      } else {
+        rules.push(fail('PRICE_LIMIT', `Amount ${offer.amount} exceeds the hard maximum price ${priceLimit.hardMaxBaseUnits} for this resource`, details));
+      }
     }
 
     // 9. Rolling-window autonomous budget (approvable).

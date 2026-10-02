@@ -147,6 +147,38 @@
                 "maxTotal"
               ],
               "additionalProperties": false
+            },
+            "priceLimits": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "resource": {
+                    "type": "string"
+                  },
+                  "expectedPriceBaseUnits": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,19})$"
+                  },
+                  "tolerancePct": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1000,
+                    "default": 10
+                  },
+                  "hardMaxBaseUnits": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,19})$"
+                  }
+                },
+                "required": [
+                  "resource",
+                  "expectedPriceBaseUnits",
+                  "hardMaxBaseUnits"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 64
             }
           },
           "required": [
@@ -154,7 +186,8 @@
             "allowedAssets",
             "allowedPayTo",
             "allowedResources",
-            "limits"
+            "limits",
+            "priceLimits"
           ],
           "additionalProperties": false
         },

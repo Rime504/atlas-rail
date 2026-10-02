@@ -43,6 +43,7 @@ export interface MandateDocument {
     allowedPayTo: string[];
     allowedResources: string[];
     limits: { mint: string; maxPerPayment: string; maxPerWindow: string; windowSeconds: number; maxTotal: string };
+    priceLimits: { resource: string; expectedPriceBaseUnits: string; tolerancePct: number; hardMaxBaseUnits: string }[];
   };
   escalation: { thresholdBaseUnits: string; approverRoles: string[]; resources: string[]; approvalTtlSeconds: number };
   notBefore: number;

@@ -7,7 +7,7 @@ import { GateApproval, GateContext, GateSimulation } from './gate';
 import { createMandate } from './mandate';
 import { signMandate } from './mandate';
 import { X402Offer, hashOffer } from './offer';
-import { AgentMandate, SOLANA_DEVNET_CAIP2 } from './schema';
+import { AgentMandate, ResourcePriceLimit, SOLANA_DEVNET_CAIP2 } from './schema';
 
 export function seededSigner(label: string): LocalEd25519Signer {
   const seed = new Uint8Array(32);
@@ -42,6 +42,7 @@ export interface TestMandateOptions {
   allowedResources?: string[];
   escalationResources?: string[];
   requiredApprovals?: number;
+  priceLimits?: ResourcePriceLimit[];
   id?: string;
   nonce?: string;
 }
@@ -66,6 +67,7 @@ export function unsignedTestMandate(options: TestMandateOptions = {}): AgentMand
         windowSeconds: options.windowSeconds ?? 86_400,
         maxTotal: options.maxTotal ?? '100000000',
       },
+      priceLimits: options.priceLimits ?? [],
     },
     escalation: {
       thresholdBaseUnits: options.threshold ?? '1000000',

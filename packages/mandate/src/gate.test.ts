@@ -44,6 +44,7 @@ describe('evaluateGate — happy path', () => {
       'RESOURCE_ALLOWED',
       'PAYTO_ALLOWED',
       'MAX_PER_PAYMENT',
+      'PRICE_LIMIT',
       'WINDOW_BUDGET',
       'MAX_TOTAL',
       'TRANSACTION_SIMULATION',
@@ -408,5 +409,77 @@ describe('evaluateGate — properties (money math)', () => {
       }),
       { numRuns: 150 },
     );
+  });
+});
+
+describe('evaluateGate — PRICE_LIMIT (rule 15)', () => {
+  // expected 1,000,000 · 10% tolerance -> ceiling 1,100,000 · hard max 2,000,000
+  const PRICE_LIMITS = [
+    { resource: `${TEST_ORIGIN}/research/*`, expectedPriceBaseUnits: '1000000', tolerancePct: 10, hardMaxBaseUnits: '2000000' },
+  ];
+  // threshold == maxPerPayment (the schema's own max) so ESCALATION_THRESHOLD never fires in this
+  // block and every ESCALATE/DENY/ALLOW below is attributable to PRICE_LIMIT alone.
+  const priced = () => signedTestMandate({ priceLimits: PRICE_LIMITS, threshold: '50000000' });
+
+  it('normal price: at the expected price passes', async () => {
+    const result = await gate({ amount: '1000000' }, {}, await priced());
+    expect(statusOf(result, 'PRICE_LIMIT')).toBe('PASS');
+    expect(result.decision).toBe('ALLOW');
+  });
+
+  it('small increase within tolerance still passes', async () => {
+    const result = await gate({ amount: '1050000' }, {}, await priced()); // +5%, inside the 10% tolerance
+    expect(statusOf(result, 'PRICE_LIMIT')).toBe('PASS');
+    expect(result.decision).toBe('ALLOW');
+  });
+
+  it('escalation zone: above tolerance but at or below hard max asks for a human, who can release it', async () => {
+    const mandate = await priced();
+    const denied = await gate({ amount: '1500000' }, {}, mandate);
+    expect(statusOf(denied, 'PRICE_LIMIT')).toBe('ESCALATE');
+    expect(denied.decision).toBe('ESCALATE');
+
+    const offer = testOffer({ amount: '1500000' });
+    const approved = evaluateGate(mandate, offer, testContext({ approval: testApproval(offer) }));
+    expect(statusOf(approved, 'PRICE_LIMIT')).toBe('OVERRIDDEN');
+    expect(approved.decision).toBe('ALLOW');
+  });
+
+  it('above hard max: denied, and a human cannot override it', async () => {
+    const mandate = await priced();
+    const result = await gate({ amount: '2500000' }, {}, mandate);
+    expect(statusOf(result, 'PRICE_LIMIT')).toBe('FAIL');
+    expect(result.decision).toBe('DENY');
+
+    // Even presented with an approval for this exact (above-hard-max) offer, it is still denied:
+    // ESCALATION_APPROVAL only overrides ESCALATE statuses, never a hard FAIL.
+    const offer = testOffer({ amount: '2500000' });
+    const withApproval = evaluateGate(mandate, offer, testContext({ approval: testApproval(offer) }));
+    expect(statusOf(withApproval, 'PRICE_LIMIT')).toBe('FAIL');
+    expect(withApproval.decision).toBe('DENY');
+  });
+
+  it('missing price entry: a resource with no configured price limit has no price check at all', async () => {
+    // The default test mandate (used everywhere else in this file) has no priceLimits configured.
+    const result = await gate({ amount: '1000000' });
+    expect(statusOf(result, 'PRICE_LIMIT')).toBe('PASS');
+    expect(result.rulesEvaluated.find((r) => r.id === 'PRICE_LIMIT')?.message).toMatch(/no price limit is configured/i);
+  });
+
+  it('creep attack: the reference price is fixed in the mandate and never drifts from past payments', async () => {
+    const mandate = await priced();
+    // A seller nudging the price up a little each time does NOT move the goalposts: every call is
+    // judged against the same expectedPriceBaseUnits from the signed mandate, not the last amount
+    // that happened to be charged (there is no state here for a seller to creep against).
+    const amounts = ['1000000', '1030000', '1060000', '1090000', '1095000']; // all inside the fixed 10% band
+    for (const amount of amounts) {
+      const result = await gate({ amount }, {}, mandate);
+      expect(statusOf(result, 'PRICE_LIMIT')).toBe('PASS');
+    }
+    // The very next "tiny" increase crosses the fixed tolerance ceiling (1,100,000) and escalates --
+    // it does not matter that each individual step above was small, because none of them ever moved
+    // the reference price.
+    const crept = await gate({ amount: '1150000' }, {}, mandate);
+    expect(statusOf(crept, 'PRICE_LIMIT')).toBe('ESCALATE');
   });
 });

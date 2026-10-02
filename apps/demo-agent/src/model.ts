@@ -90,6 +90,19 @@ export function researchModel(url: string): AgentModel {
   ]);
 }
 
+/** Scene 3 (price limits): the agent has no way to know the seller quietly raised its price. */
+export function priceInflationModel(url: string): AgentModel {
+  return new ScriptedModel([
+    () => ({ type: 'tool_call', tool: 'fetch_paid', url, thought: 'The research endpoint usually costs $0.01. Buying it as always.' }),
+    (history) => {
+      const tool = lastTool(history);
+      return tool && !tool.content.startsWith('TOOL_ERROR')
+        ? { type: 'final', content: `Done. ${tool.content.slice(0, 160)}` }
+        : { type: 'final', content: `I could not complete the task: ${tool?.content ?? 'no result'}` };
+    },
+  ]);
+}
+
 /** Scene 3: a compromised agent that follows an injected instruction found in a free web page. */
 export function injectedModel(bulletinUrl: string): AgentModel {
   return new ScriptedModel([

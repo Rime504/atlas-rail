@@ -121,7 +121,7 @@ function Problem() {
 
 const FLOW_STEPS = [
   { icon: FileCheck2, label: 'Mandate', detail: 'Owner + approver + agent sign a scoped, revocable spending authority' },
-  { icon: ShieldCheck, label: 'Policy Gate', detail: 'Allow · deny · ask a human — 14 rules, every one recorded' },
+  { icon: ShieldCheck, label: 'Policy Gate', detail: 'Allow · deny · ask a human — 15 rules, every one recorded' },
   { icon: Wallet, label: 'Payment', detail: 'The agent’s signer cannot sign without a fresh gate authorization' },
   { icon: ScrollText, label: 'Signed receipt', detail: 'Bound to the mandate, decision and payment, Merkle-anchored on devnet, independently verifiable' },
 ];
