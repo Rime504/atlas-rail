@@ -62,7 +62,7 @@ interface StreamHandlers {
 }
 
 /** Reads an SSE response body, dispatching each complete event. Resolves when the stream ends. */
-async function readEventStream(
+export async function readEventStream(
   body: ReadableStream<Uint8Array>,
   onEvent: (event: string, data: string) => void,
 ): Promise<void> {
@@ -155,4 +155,81 @@ export function useNowSeconds(): number {
     return () => window.clearInterval(id);
   }, [user]);
   return now;
+}
+
+/* ------------------------------------------------------------------------------------------- */
+/* Demo Lab: run the scripted agent on the server, stream its narration back                    */
+/* ------------------------------------------------------------------------------------------- */
+
+export interface DemoLine {
+  stream: 'stdout' | 'stderr';
+  text: string;
+}
+
+export interface DemoStatus {
+  available: boolean;
+  running: boolean;
+  hasActiveMandate: boolean;
+}
+
+/** Drives POST /v1/agent/demo/run: a one-shot streamed run, not a persistent subscription. */
+export function useDemoRun() {
+  const [running, setRunning] = useState(false);
+  const [lines, setLines] = useState<DemoLine[]>([]);
+  const [currentScene, setCurrentScene] = useState<{ number: number; title: string } | null>(null);
+  const [result, setResult] = useState<{ exitCode: number; ok: boolean } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const start = useCallback(async (options: { scenes?: number[]; autoApprove?: boolean } = {}) => {
+    if (abortRef.current) return; // a run is already in flight on this client
+    setLines([]);
+    setCurrentScene(null);
+    setResult(null);
+    setRunning(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const token = getToken();
+      const res = await fetch(`${api.baseUrl}/v1/agent/demo/run`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'text/event-stream',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(options),
+        signal: controller.signal,
+      });
+      if (!res.ok || !res.body) {
+        const body = await res.json().catch(() => null);
+        setLines((prev) => [...prev, { stream: 'stderr', text: (body?.message as string) ?? `Request failed with status ${res.status}` }]);
+        return;
+      }
+      await readEventStream(res.body, (event, data) => {
+        try {
+          if (event === 'line') setLines((prev) => [...prev, JSON.parse(data) as DemoLine]);
+          else if (event === 'scene') setCurrentScene(JSON.parse(data) as { number: number; title: string });
+          else if (event === 'done') setResult(JSON.parse(data) as { exitCode: number; ok: boolean });
+          else if (event === 'error') setLines((prev) => [...prev, { stream: 'stderr', text: (JSON.parse(data) as { message: string }).message }]);
+        } catch {
+          // a malformed frame must not tear the stream down
+        }
+      });
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === 'AbortError')) {
+        setLines((prev) => [...prev, { stream: 'stderr', text: err instanceof Error ? err.message : String(err) }]);
+      }
+    } finally {
+      abortRef.current = null;
+      setRunning(false);
+    }
+  }, []);
+
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  return { running, lines, currentScene, result, start, stop };
 }
