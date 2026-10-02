@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { prisma, generateUlid, PrismaAgentStore, PrismaReceiptStore } from '@atlas-rail/database';
-import { WEBHOOK_EVENT_TYPES, WebhookEventType } from '@atlas-rail/config';
+import { WEBHOOK_EVENT_TYPES, WebhookEventType, envBoolean } from '@atlas-rail/config';
 import {
   AgentEvent,
   AgentGateService,
@@ -25,9 +25,15 @@ import {
 import { QueueService } from '../common/queue.service';
 import { AGENT_CHAIN, AGENT_KEYRING } from './agent.tokens';
 
-/** True when the on-chain mandate registry (Milestone B) is turned on. Off by default. */
+/**
+ * True when the on-chain mandate registry (Milestone B) is turned on. Off by default. Parsed the
+ * same way `validateEnv` parses every other boolean flag (accepts "1"/"true"/"yes"/"on", rejects
+ * anything unrecognised as false) so this can't silently diverge from how ATLAS_ONCHAIN behaves
+ * everywhere else it's read.
+ */
 function onchainEnabled(): boolean {
-  return process.env.ATLAS_ONCHAIN === 'true';
+  const result = envBoolean.safeParse(process.env.ATLAS_ONCHAIN);
+  return result.success && result.data === true;
 }
 
 function mandateProgramId(): string {
