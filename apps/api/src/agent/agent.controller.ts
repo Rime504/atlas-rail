@@ -153,7 +153,8 @@ export class AgentController {
       userId: req.user.userId,
       reason: reason ?? null,
     });
-    return this.agent.presentMandate(record);
+    const onchain = await this.agent.revokeMandateOnChain(record, req.user.userId);
+    return { ...(await this.agent.presentMandate(record)), onchain };
   }
 
   @Post('mandates/verify')

@@ -45,6 +45,10 @@ export const envSchema = z.object({
   ATLAS_MAINNET_ENABLED: envBoolean.default(false).refine((val) => val === false, {
     message: 'CRITICAL SAFETY ERROR: ATLAS_MAINNET_ENABLED must remain false in v1.',
   }),
+  // Gates every on-chain mandate-registry behaviour (Milestone B): off by default so the existing
+  // off-chain demo keeps working unchanged until this is explicitly turned on.
+  ATLAS_ONCHAIN: envBoolean.default(false),
+  MANDATE_PROGRAM_ID: z.string().min(32).default('CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k'),
 
   WEBHOOK_ALLOW_PRIVATE_NETWORKS: envBoolean.default(true),
   WEBHOOK_MAX_ATTEMPTS: z.coerce.number().default(6),

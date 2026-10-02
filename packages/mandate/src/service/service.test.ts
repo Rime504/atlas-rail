@@ -244,6 +244,60 @@ describe('gate service — the six demo scenes', () => {
   });
 });
 
+describe('gate service — on-chain revocation override (Milestone B)', () => {
+  it('denies when the on-chain mandate is revoked even though the database still says active', async () => {
+    const t = await setup();
+    const onchainGate = new AgentGateService({
+      store: t.store,
+      instanceSigner: signers.instance,
+      simulator: t.simulator,
+      clock: t.now,
+      newId: (prefix: string) => `${prefix}_onchain1`,
+      onchainRevocationCheck: async () => ({ revokedAt: t.now(), reason: 'revoked on-chain directly' }),
+    });
+    const result = await onchainGate.evaluate(ORG, await t.request({ amount: '10000' }, { nonce: 'onchain-1' }));
+    expect(result.decision.record.decision).toBe('DENY');
+    expect(result.decision.record.failedRule).toBe('MANDATE_NOT_REVOKED');
+    // The database itself was never told — this proves the chain, not the DB, drove the denial.
+    const record = await t.store.mandates.get(ORG, t.mandate.id);
+    expect(record!.revocation).toBeNull();
+  });
+
+  it('falls back to the database result when the on-chain check is unavailable', async () => {
+    const t = await setup();
+    const onchainGate = new AgentGateService({
+      store: t.store,
+      instanceSigner: signers.instance,
+      simulator: t.simulator,
+      clock: t.now,
+      newId: (prefix: string) => `${prefix}_onchain2`,
+      onchainRevocationCheck: async () => null, // account not found, or the RPC call failed
+    });
+    const result = await onchainGate.evaluate(ORG, await t.request({ amount: '10000' }, { nonce: 'onchain-2' }));
+    expect(result.decision.record.decision).toBe('ALLOW');
+  });
+
+  it('never calls the on-chain check once the database already says revoked', async () => {
+    const t = await setup();
+    await t.lifecycle.revoke(ORG, t.mandate.id, { userId: 'usr_owner', reason: 'db revoke' });
+    let calls = 0;
+    const onchainGate = new AgentGateService({
+      store: t.store,
+      instanceSigner: signers.instance,
+      simulator: t.simulator,
+      clock: t.now,
+      newId: (prefix: string) => `${prefix}_onchain3`,
+      onchainRevocationCheck: async () => {
+        calls += 1;
+        return null;
+      },
+    });
+    const result = await onchainGate.evaluate(ORG, await t.request({ amount: '10000' }, { nonce: 'onchain-3' }));
+    expect(result.decision.record.decision).toBe('DENY');
+    expect(calls).toBe(0);
+  });
+});
+
 describe('gate service — safety properties', () => {
   it('is idempotent on (mandate, nonce): a replay returns the same decision and reserves spend once', async () => {
     const t = await setup();

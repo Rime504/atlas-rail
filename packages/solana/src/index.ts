@@ -12,3 +12,4 @@ export * from './anchor';
 export * from './payment-simulator';
 export * from './keyring';
 export * from './demo-assets';
+export * from './mandate-registry';

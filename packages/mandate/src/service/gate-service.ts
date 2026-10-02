@@ -31,6 +31,14 @@ export interface GateServiceOptions {
   clock: () => number;
   newId: (prefix: string) => string;
   notify?: AgentEventSink;
+  /**
+   * When set (behind `ATLAS_ONCHAIN=1`), additionally checked on every evaluation: if the on-chain
+   * mandate account says revoked, the gate denies even when the database still says active. Returns
+   * `null` if the on-chain account doesn't exist or the check is unavailable (e.g. an RPC hiccup) —
+   * that is not itself treated as revoked, so a transient chain-read failure never blocks a payment
+   * the database considers valid.
+   */
+  onchainRevocationCheck?: (mandateHash: string) => Promise<{ revokedAt: number; reason: string | null } | null>;
   requireSimulation?: boolean;
   /** Maximum difference between the agent's `requestedAt` and the server clock. */
   requestSkewSeconds?: number;
@@ -118,9 +126,13 @@ export class AgentGateService {
 
     const limits = mandate.scope.limits;
     const spend = await store.spend.totals(mandate.id, now, limits.windowSeconds, this.reservationTtlSeconds);
+    let revoked = record.revocation ? { revokedAt: record.revocation.revokedAt, reason: record.revocation.reason } : null;
+    if (!revoked && this.deps.onchainRevocationCheck) {
+      revoked = await this.deps.onchainRevocationCheck(record.mandateHash);
+    }
     const baseContext: GateContext = {
       now,
-      revoked: record.revocation ? { revokedAt: record.revocation.revokedAt, reason: record.revocation.reason } : null,
+      revoked,
       spend,
       simulation: null,
       requireSimulation: this.requireSimulation,

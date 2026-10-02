@@ -216,7 +216,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     const fetched = await api.get<{ mandate: AgentMandate }>(`/v1/agent/gate/mandates/${drafted.id}`, { apiKey: state.apiKey });
     const accepted = await signMandate(fetched.mandate, { role: 'AGENT', signer: agentSigner });
     const link = accepted.delegationChain[accepted.delegationChain.length - 1];
-    const active = await api.post<{ status: string; mandateHash: string; mandate: AgentMandate }>(
+    const active = await api.post<{ status: string; mandateHash: string; mandate: AgentMandate; onchain: { txSignature: string } | null }>(
       `/v1/agent/gate/mandates/${drafted.id}/accept`,
       { apiKey: state.apiKey },
       { link },
@@ -225,6 +225,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     ok(`accepted by the agent's own key — mandate is ${c.green(active.status)}`);
     kv('mandate hash', short(active.mandateHash, 12, 8));
     kv('chain', mandate.delegationChain.map((l) => `${l.role}:${short(l.publicKey, 4, 4)}`).join(' → '));
+    if (active.onchain) kv('on-chain', explorer(env.mode, active.onchain.txSignature));
     summary.scenes.grant = { mandateId: drafted.id, status: active.status };
   }
 
@@ -361,8 +362,13 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
   if (run(6)) {
     scene(6, 'REVOKE', 'The owner revokes the mandate. The agent’s very next payment is denied instantly.');
     step(`Owner revokes ${mandateId || '(mandate)'}…`);
-    await api.post(`/v1/agent/mandates/${mandateId}/revoke`, { token: owner }, { reason: 'Demo: agent behaviour under review' });
+    const revoked = await api.post<{ onchain: { txSignature: string } | null }>(
+      `/v1/agent/mandates/${mandateId}/revoke`,
+      { token: owner },
+      { reason: 'Demo: agent behaviour under review' },
+    );
     ok('revoked (effective immediately, recorded in the audit ledger)');
+    if (revoked.onchain) kv('on-chain', explorer(env.mode, revoked.onchain.txSignature));
     events.length = 0;
     const trace = await runAgent(researchModel(researchUrl), tools(), 'Fetch one more research summary.');
     for (const s of trace.steps) if (s.action.type === 'tool_call') info(`agent: ${s.action.thought}`);
