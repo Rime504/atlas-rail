@@ -54,3 +54,6 @@ playwright/.cache/
 # Rust / Anchor
 /target
 .anchor
+
+# Local agent instructions (not part of the shared repo)
+CLAUDE.md
