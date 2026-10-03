@@ -126,9 +126,16 @@ function accountDiscriminator(name: string): Buffer {
 }
 
 export const MANDATE_SEED = Buffer.from('mandate');
+export const ROOT_SEED = Buffer.from('root');
 
 export function findMandatePda(programId: PublicKey, mandateHash: Uint8Array): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([MANDATE_SEED, Buffer.from(mandateHash)], programId);
+}
+
+export function findRootPda(programId: PublicKey, mandatePda: PublicKey, seq: bigint): [PublicKey, number] {
+  const seqBytes = Buffer.alloc(8);
+  seqBytes.writeBigUInt64LE(seq);
+  return PublicKey.findProgramAddressSync([ROOT_SEED, mandatePda.toBuffer(), seqBytes], programId);
 }
 
 export interface CreateMandateArgs {
@@ -183,6 +190,30 @@ export function encodeRevokeMandateArgs(): Buffer {
   return instructionDiscriminator('revoke_mandate');
 }
 
+export interface AnchorRootArgs {
+  seq: bigint;
+  merkleRoot: Uint8Array;
+  leafCount: number;
+}
+
+// Mirrors `AnchorRootArgs` field order/types in lib.rs.
+const anchorRootArgsSchema = {
+  struct: {
+    seq: 'u64',
+    merkleRoot: { array: { type: 'u8', len: 32 } },
+    leafCount: 'u32',
+  },
+} as const;
+
+export function encodeAnchorRootArgs(args: AnchorRootArgs): Buffer {
+  const body = borsh.serialize(anchorRootArgsSchema as any, {
+    seq: args.seq,
+    merkleRoot: args.merkleRoot,
+    leafCount: args.leafCount,
+  });
+  return Buffer.concat([instructionDiscriminator('anchor_root'), Buffer.from(body)]);
+}
+
 // Mirrors the `Mandate` account struct field order/types in lib.rs, prefixed by its 8-byte
 // account discriminator (sha256("account:Mandate")[0..8]).
 const mandateAccountSchema = {
@@ -204,6 +235,7 @@ const mandateAccountSchema = {
     revoked: 'bool',
     revokedAt: 'i64',
     revokedBy: { array: { type: 'u8', len: 32 } },
+    nextRootSeq: 'u64',
     bump: 'u8',
   },
 } as const;
@@ -226,6 +258,7 @@ export interface MandateAccount {
   revoked: boolean;
   revokedAt: bigint;
   revokedBy: PublicKey;
+  nextRootSeq: bigint;
   bump: number;
 }
 
@@ -253,6 +286,44 @@ export function decodeMandateAccount(data: Buffer): MandateAccount {
     revoked: raw.revoked,
     revokedAt: raw.revokedAt,
     revokedBy: new PublicKey(raw.revokedBy),
+    nextRootSeq: raw.nextRootSeq,
+    bump: raw.bump,
+  };
+}
+
+// Mirrors the `Root` account struct field order/types in lib.rs.
+const rootAccountSchema = {
+  struct: {
+    mandate: { array: { type: 'u8', len: 32 } },
+    seq: 'u64',
+    merkleRoot: { array: { type: 'u8', len: 32 } },
+    leafCount: 'u32',
+    anchoredAt: 'i64',
+    bump: 'u8',
+  },
+} as const;
+
+export interface RootAccount {
+  mandate: PublicKey;
+  seq: bigint;
+  merkleRoot: Uint8Array;
+  leafCount: number;
+  anchoredAt: bigint;
+  bump: number;
+}
+
+export function decodeRootAccount(data: Buffer): RootAccount {
+  const expectedDisc = accountDiscriminator('Root');
+  if (!data.subarray(0, 8).equals(expectedDisc)) {
+    throw new Error('account discriminator mismatch: not a Root account');
+  }
+  const raw: any = borsh.deserialize(rootAccountSchema as any, data.subarray(8));
+  return {
+    mandate: new PublicKey(raw.mandate),
+    seq: raw.seq,
+    merkleRoot: raw.merkleRoot,
+    leafCount: raw.leafCount,
+    anchoredAt: raw.anchoredAt,
     bump: raw.bump,
   };
 }
@@ -325,6 +396,26 @@ export function buildRevokeMandateIx(
   });
 }
 
+export function buildAnchorRootIx(
+  programId: PublicKey,
+  mandatePda: PublicKey,
+  gateAuthority: PublicKey,
+  args: AnchorRootArgs,
+): { ix: TransactionInstruction; rootPda: PublicKey } {
+  const [rootPda] = findRootPda(programId, mandatePda, args.seq);
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: mandatePda, isSigner: false, isWritable: true },
+      { pubkey: rootPda, isSigner: false, isWritable: true },
+      { pubkey: gateAuthority, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: encodeAnchorRootArgs(args),
+  });
+  return { ix, rootPda };
+}
+
 /** Anchor's custom program errors are numbered from 6000 in `#[error_code]` declaration order. */
 export const MandateErrorCode = {
   ApproverIsOwner: 6000,
@@ -337,4 +428,7 @@ export const MandateErrorCode = {
   AlreadyExpired: 6007,
   NotAuthorizedToRevoke: 6008,
   AlreadyRevoked: 6009,
+  UnauthorizedAnchor: 6010,
+  OutOfOrderSeq: 6011,
+  EmptyBatch: 6012,
 } as const;

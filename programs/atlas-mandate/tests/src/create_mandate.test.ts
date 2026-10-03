@@ -57,6 +57,7 @@ describe('create_mandate', () => {
     expect(mandate.notBefore).to.equal(args.notBefore);
     expect(mandate.expiresAt).to.equal(args.expiresAt);
     expect(mandate.revoked).to.equal(false);
+    expect(mandate.nextRootSeq).to.equal(0n);
     expect(Buffer.from(mandate.mandateHash)).to.deep.equal(Buffer.from(args.mandateHash));
   });
 

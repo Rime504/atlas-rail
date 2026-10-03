@@ -1,4 +1,4 @@
-//! Atlas Rail on-chain mandate registry (Milestone 1).
+//! Atlas Rail on-chain mandate registry (Milestone 1 + receipt root anchoring).
 //!
 //! An agent mandate is created and enforced off-chain by the Atlas Rail policy gate
 //! (see `packages/mandate` and `spec/agent-mandate-v0.1.md`). This program makes the
@@ -8,6 +8,8 @@
 //!   the owner, an independent approver and the agent itself all sign the same
 //!   transaction, mirroring the off-chain delegation chain.
 //! * `revoke_mandate` lets the owner or the approver revoke it. Revocation is final.
+//! * `anchor_root` lets the gate authority record a Merkle root for a batch of receipts,
+//!   even after the mandate has been revoked (revocation stops new payments, not evidence).
 //!
 //! The policy gate reads this account before every payment and denies if the mandate is
 //! missing, revoked, not yet valid or expired.
@@ -20,6 +22,9 @@ declare_id!("CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k");
 
 /// Seed prefix for mandate accounts: `["mandate", mandate_hash]`.
 pub const MANDATE_SEED: &[u8] = b"mandate";
+
+/// Seed prefix for root accounts: `["root", mandate, seq.to_le_bytes()]`.
+pub const ROOT_SEED: &[u8] = b"root";
 
 /// Same bounds as `mandateLimitsSchema.windowSeconds` in `packages/mandate/src/schema.ts`.
 pub const MIN_WINDOW_SECONDS: i64 = 60;
@@ -56,6 +61,7 @@ pub mod atlas_mandate {
         mandate.revoked = false;
         mandate.revoked_at = 0;
         mandate.revoked_by = Pubkey::default();
+        mandate.next_root_seq = 0;
         mandate.bump = ctx.bumps.mandate;
 
         emit!(MandateCreated {
@@ -90,6 +96,42 @@ pub mod atlas_mandate {
             mandate_hash: mandate.mandate_hash,
             revoked_by: authority,
             revoked_at: now,
+        });
+        Ok(())
+    }
+
+    /// Anchor a Merkle root for a batch of receipts. Only the gate authority may do this.
+    /// Allowed even after the mandate is revoked — revocation stops new payments, not evidence.
+    pub fn anchor_root(ctx: Context<AnchorRoot>, args: AnchorRootArgs) -> Result<()> {
+        require!(args.leaf_count > 0, MandateError::EmptyBatch);
+
+        let mandate = &mut ctx.accounts.mandate;
+        require!(
+            ctx.accounts.gate_authority.key() == mandate.gate_authority,
+            MandateError::UnauthorizedAnchor
+        );
+        require!(args.seq == mandate.next_root_seq, MandateError::OutOfOrderSeq);
+
+        let now = Clock::get()?.unix_timestamp;
+        let root = &mut ctx.accounts.root;
+        root.mandate = mandate.key();
+        root.seq = args.seq;
+        root.merkle_root = args.merkle_root;
+        root.leaf_count = args.leaf_count;
+        root.anchored_at = now;
+        root.bump = ctx.bumps.root;
+
+        mandate.next_root_seq = args
+            .seq
+            .checked_add(1)
+            .ok_or(MandateError::OutOfOrderSeq)?;
+
+        emit!(RootAnchored {
+            mandate: mandate.key(),
+            seq: args.seq,
+            merkle_root: args.merkle_root,
+            leaf_count: args.leaf_count,
+            anchored_at: now,
         });
         Ok(())
     }
@@ -141,6 +183,38 @@ pub struct RevokeMandate<'info> {
     pub authority: Signer<'info>,
 }
 
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
+pub struct AnchorRootArgs {
+    /// Must equal `mandate.next_root_seq` (monotonically increasing, no gaps, no replays).
+    pub seq: u64,
+    /// RFC 6962 Merkle root over the batch of receipts.
+    pub merkle_root: [u8; 32],
+    /// Number of leaves in the batch; must be > 0.
+    pub leaf_count: u32,
+}
+
+#[derive(Accounts)]
+#[instruction(args: AnchorRootArgs)]
+pub struct AnchorRoot<'info> {
+    #[account(
+        mut,
+        seeds = [MANDATE_SEED, mandate.mandate_hash.as_ref()],
+        bump = mandate.bump
+    )]
+    pub mandate: Account<'info, Mandate>,
+    #[account(
+        init,
+        payer = gate_authority,
+        space = 8 + Root::INIT_SPACE,
+        seeds = [ROOT_SEED, mandate.key().as_ref(), &args.seq.to_le_bytes()],
+        bump
+    )]
+    pub root: Account<'info, Root>,
+    #[account(mut)]
+    pub gate_authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 #[account]
 #[derive(InitSpace, Debug)]
 pub struct Mandate {
@@ -161,6 +235,19 @@ pub struct Mandate {
     pub revoked: bool,
     pub revoked_at: i64,
     pub revoked_by: Pubkey,
+    /// Next expected `anchor_root` sequence number (starts at 0).
+    pub next_root_seq: u64,
+    pub bump: u8,
+}
+
+#[account]
+#[derive(InitSpace, Debug)]
+pub struct Root {
+    pub mandate: Pubkey,
+    pub seq: u64,
+    pub merkle_root: [u8; 32],
+    pub leaf_count: u32,
+    pub anchored_at: i64,
     pub bump: u8,
 }
 
@@ -189,6 +276,15 @@ pub struct MandateRevoked {
     pub revoked_at: i64,
 }
 
+#[event]
+pub struct RootAnchored {
+    pub mandate: Pubkey,
+    pub seq: u64,
+    pub merkle_root: [u8; 32],
+    pub leaf_count: u32,
+    pub anchored_at: i64,
+}
+
 #[error_code]
 pub enum MandateError {
     #[msg("The approver must be a different key from the owner")]
@@ -211,6 +307,12 @@ pub enum MandateError {
     NotAuthorizedToRevoke,
     #[msg("The mandate is already revoked")]
     AlreadyRevoked,
+    #[msg("Only the gate authority can anchor a receipt root")]
+    UnauthorizedAnchor,
+    #[msg("Root sequence must equal the mandate's next_root_seq")]
+    OutOfOrderSeq,
+    #[msg("Receipt batch must contain at least one leaf")]
+    EmptyBatch,
 }
 
 /// Pure validation, kept separate so it can be unit-tested without a validator.
@@ -357,6 +459,7 @@ mod tests {
             revoked,
             revoked_at: 0,
             revoked_by: Pubkey::default(),
+            next_root_seq: 0,
             bump: 255,
         }
     }
