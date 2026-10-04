@@ -7,10 +7,13 @@
  *
  * Runs entirely server-side (Node runtime route handler): no persistence, no outbound network
  * calls unless devnet mode is on. Keys are generated fresh per visitor session (instant mode) or
- * read from server-held env vars (devnet mode) — see devnet.ts. Either way they are never used to
- * move anything of real value; only mandate registration/revocation ever touches a chain, and only
- * when the visitor opts into devnet mode. Payment settlement in every step is synthetic (never a
- * real transfer) — nothing a visitor does can touch real funds.
+ * read from server-held env vars (devnet mode) — see devnet.ts. In instant mode (the default),
+ * payment settlement and receipt anchoring are always synthetic — nothing a visitor does can touch
+ * real funds. In devnet mode, the two payments that are actually ALLOWed (step 3, step 6) settle for
+ * real on Solana devnet (a real SPL token transfer, devnet-only, amounts of a cent or two), and the
+ * step 7 receipt is anchored for real via the registry's `anchor_root` instruction — see the
+ * `settle`/`onchainAnchor` parameters below. Every real on-chain call falls back to the synthetic
+ * path with a visible reason if it fails or devnet mode isn't available for this visitor.
  */
 import {
   AgentMandate,
@@ -20,6 +23,7 @@ import {
   LocalEd25519Signer,
   MessageSigner,
   RuleId,
+  RuleResult,
   SOLANA_DEVNET_CAIP2,
   X402Offer,
   buildDecisionRecord,
@@ -32,8 +36,21 @@ import {
   signMandate,
   toHex,
 } from '@atlas-rail/mandate';
+import type { ChainClient } from '@atlas-rail/solana';
 import { BoundReceipt, ReceiptVerification, buildReceipt, merkleProof, merkleRoot, verifyReceipt } from '@atlas-rail/receipt';
-import { KeyInfo, PaymentOutcome, RuleDisplay, World } from './types';
+import {
+  ATTACK_AMOUNT,
+  EXPECTED_PRICE,
+  MAX_PER_PAYMENT,
+  MAX_PER_WINDOW,
+  MAX_TOTAL,
+  MODERATE_SPIKE_AMOUNT,
+  PRICE_HARD_MAX,
+  PRICE_TOLERANCE_PCT,
+  SEVERE_SPIKE_AMOUNT,
+} from './amounts';
+import { DEMO_MINT_DECIMALS, formatUsd } from './format';
+import { KeyInfo, OnchainAction, PaymentOutcome, RuleDisplay, World } from './types';
 
 export const DEMO_MINT = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const SELLER_A_ORIGIN = 'https://research.atlasrail-sellers.dev';
@@ -41,16 +58,13 @@ const SELLER_B_ORIGIN = 'https://insights.atlasrail-sellers.dev';
 const ATTACKER_ORIGIN = 'https://secure-wallet-rewards.example';
 export const RESEARCH_RESOURCE = `${SELLER_A_ORIGIN}/summary/weekly`;
 
-const MAX_PER_PAYMENT = '5000000'; // $5.00
-const MAX_PER_WINDOW = '20000000'; // $20.00
 const WINDOW_SECONDS = 3600; // 1 hour
-const MAX_TOTAL = '100000000'; // $100.00
 const ESCALATION_THRESHOLD = MAX_PER_PAYMENT; // schema requires threshold <= maxPerPayment
-const EXPECTED_PRICE = '10000'; // $0.01
-const PRICE_TOLERANCE_PCT = 50; // tolerated ceiling: $0.015
-const PRICE_HARD_MAX = '30000'; // $0.03 — anything above this is always denied
-export const MODERATE_SPIKE_AMOUNT = '20000'; // $0.02 — above tolerance, within hard max: escalate
-export const SEVERE_SPIKE_AMOUNT = '50000'; // $0.05 — above hard max: deny
+
+/** A step 3/6 payment settling for real on Solana devnet (devnet mode only). Returns the on-chain
+ * transaction so it can be bound into the receipt; throwing falls back to a synthetic settlement
+ * with a visible reason (see evaluateAndMaybeReceipt). */
+export type SettleFn = (offer: X402Offer) => Promise<OnchainAction>;
 
 function randomBytes(length: number): Uint8Array {
   const bytes = new Uint8Array(length);
@@ -133,8 +147,10 @@ export interface DevnetCoreKeys {
 
 /** Step 1 (Meet the agent) + the mandate skeleton Step 2 will sign. No chain access, instant.
  * In devnet mode, owner/approver/agent/instance are the server's fixed, funded demo keys
- * (devnet.ts); sellers and the attacker are always freshly random, since they never need funding. */
-export function initWorld(mode: 'instant' | 'devnet', devnetCore: DevnetCoreKeys | null): { world: World } {
+ * (devnet.ts); sellers and the attacker are always freshly random, since they never need funding.
+ * `devnetAllowed` is decided once here (by the caller, from the rate limit) and reused for every
+ * on-chain action this session attempts, rather than re-spending the rate limit per action. */
+export function initWorld(mode: 'instant' | 'devnet', devnetCore: DevnetCoreKeys | null, devnetAllowed = mode === 'devnet'): { world: World } {
   const now = Math.floor(Date.now() / 1000);
   const keys: World['keys'] =
     mode === 'devnet' && devnetCore
@@ -153,6 +169,7 @@ export function initWorld(mode: 'instant' | 'devnet', devnetCore: DevnetCoreKeys
       revokeOnchain: null,
       receipts: [],
       devnetFallbackReason: null,
+      devnetAllowed: mode === 'devnet' && devnetAllowed,
     },
   };
 }
@@ -183,8 +200,18 @@ function syntheticTxSignature(): string {
   return out.padEnd(66, BASE58_ALPHABET[0]);
 }
 
+/** PRICE_LIMIT passes vacuously (no price limit is configured at all for this resource — the attack
+ * step's made-up invoice endpoint, for instance) distinctly from a price that was actually checked
+ * and matched. Both come back as gate status PASS; only the message tells them apart. */
+function priceLimitNotConfigured(rule: { id: RuleId; message: string }): boolean {
+  return rule.id === 'PRICE_LIMIT' && rule.message === 'No price limit is configured for this resource';
+}
+
 function friendlyRuleLabel(rule: { id: RuleId; status: string; message: string }): string {
+  if (priceLimitNotConfigured(rule)) return 'No price limit applies to this resource';
   const map: Partial<Record<RuleId, Partial<Record<string, string>>>> = {
+    NETWORK_ALLOWED: { PASS: 'Network is allowed (Solana devnet)', FAIL: 'Network is not allowed' },
+    ASSET_ALLOWED: { PASS: "Asset is on the mandate's allowlist", FAIL: "Asset is not on the mandate's allowlist" },
     RESOURCE_ALLOWED: { PASS: 'This is something the agent is allowed to buy', FAIL: 'Not something this agent is allowed to buy' },
     PAYTO_ALLOWED: { PASS: "The seller is on the mandate's allowlist", FAIL: "Seller is not on the mandate's allowlist" },
     MAX_PER_PAYMENT: { PASS: 'Within the per-payment ceiling', FAIL: 'Above the hard per-payment ceiling' },
@@ -202,14 +229,78 @@ function friendlyRuleLabel(rule: { id: RuleId; status: string; message: string }
   return map[rule.id]?.[rule.status] ?? rule.message;
 }
 
+/** Reads a base-units field out of a rule's `details` and formats it as dollars; falls back to the
+ * field being absent/malformed rather than throwing, since `details` is loosely typed upstream. */
+function usdField(details: Record<string, unknown>, key: string): string | null {
+  const value = details[key];
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
+  return formatUsd(value);
+}
+
+/** The human-readable sentence shown in "show details" — dollar amounts, never base units. Falls
+ * back to the gate's own message (never contains money for the rules not covered here). */
+function friendlyRuleDetail(rule: RuleResult): string {
+  const d = rule.details as Record<string, unknown>;
+  switch (rule.id) {
+    case 'MAX_PER_PAYMENT': {
+      const amount = usdField(d, 'amount');
+      const max = usdField(d, 'maxPerPayment');
+      if (amount && max) return rule.status === 'PASS' ? `${amount} is within the ${max} per-payment ceiling` : `${amount} exceeds the ${max} per-payment ceiling`;
+      break;
+    }
+    case 'PRICE_LIMIT': {
+      if (priceLimitNotConfigured(rule)) return 'This resource has no price limit set — nothing to check it against.';
+      const amount = usdField(d, 'amount');
+      const expected = usdField(d, 'expectedPrice');
+      const ceiling = usdField(d, 'toleratedCeiling');
+      const hardMax = usdField(d, 'hardMax');
+      if (amount && expected && ceiling && hardMax) {
+        if (rule.status === 'PASS') return `${amount} is within tolerance of the expected price ${expected}`;
+        if (rule.status === 'ESCALATE') return `${amount} is above the tolerated ${ceiling} but at or below the hard maximum ${hardMax} — a human can approve it`;
+        return `${amount} is above the hard maximum ${hardMax} the owner signed off on — no human can override this`;
+      }
+      break;
+    }
+    case 'WINDOW_BUDGET': {
+      const projected = usdField(d, 'projected');
+      const max = usdField(d, 'maxPerWindow');
+      if (projected && max) return rule.status === 'PASS' ? `Spending would reach ${projected} of the ${max} hourly budget` : `Spending would reach ${projected}, above the ${max} hourly budget — needs a human`;
+      break;
+    }
+    case 'MAX_TOTAL': {
+      const projected = usdField(d, 'projected');
+      const max = usdField(d, 'maxTotal');
+      if (projected && max) return rule.status === 'PASS' ? `Lifetime spend would reach ${projected} of the ${max} cap` : `Lifetime spend would reach ${projected}, above the ${max} cap`;
+      break;
+    }
+    case 'ESCALATION_THRESHOLD': {
+      const amount = usdField(d, 'amount');
+      const threshold = usdField(d, 'threshold');
+      if (amount && threshold) return rule.status === 'PASS' ? `${amount} is at or below the ${threshold} approval threshold` : `${amount} is above the ${threshold} approval threshold`;
+      break;
+    }
+  }
+  return rule.message;
+}
+
 function displayRules(gate: GateResult): RuleDisplay[] {
   return gate.rulesEvaluated
     .filter((r) => r.status !== 'SKIPPED')
     .map((r) => ({
       id: r.id,
-      verdict:
-        r.status === 'PASS' ? 'pass' : r.status === 'ESCALATE' ? 'escalate' : r.status === 'OVERRIDDEN' ? 'overridden' : r.status === 'FAIL' ? 'fail' : 'skipped',
+      verdict: priceLimitNotConfigured(r)
+        ? 'not-applicable'
+        : r.status === 'PASS'
+          ? 'pass'
+          : r.status === 'ESCALATE'
+            ? 'escalate'
+            : r.status === 'OVERRIDDEN'
+              ? 'overridden'
+              : r.status === 'FAIL'
+                ? 'fail'
+                : 'skipped',
       label: friendlyRuleLabel(r),
+      detail: friendlyRuleDetail(r),
       raw: r,
     }));
 }
@@ -234,15 +325,26 @@ async function evaluateAndMaybeReceipt(
   offer: X402Offer,
   context: GateContext,
   display: DisplayContext,
-  amountUsd: string,
+  settle?: SettleFn,
 ): Promise<{ world: World; outcome: PaymentOutcome }> {
   const mandate = world.mandate;
   if (!mandate) throw new Error('Mandate is not signed yet');
   const gate = evaluateGate(mandate, offer, context);
   let receipt: BoundReceipt | null = null;
   let nextWorld = world;
+  let onchain: OnchainAction | null = null;
 
   if (gate.decision === 'ALLOW') {
+    let txSignature = syntheticTxSignature();
+    let devnetFallbackReason: string | null = null;
+    if (settle) {
+      try {
+        onchain = await settle(offer);
+        txSignature = onchain.txSignature;
+      } catch (error) {
+        devnetFallbackReason = `Devnet settlement failed (${error instanceof Error ? error.message : String(error)}) — this payment is shown without a real on-chain transfer.`;
+      }
+    }
     const instanceSigner = materializeSigner(world.keys.instance);
     const decisionRecord = buildDecisionRecord({
       id: `dec_${randomId()}`,
@@ -260,7 +362,7 @@ async function evaluateAndMaybeReceipt(
         id: `rcp_${randomId()}`,
         mandate,
         decision: signed,
-        settlement: { txSignature: syntheticTxSignature(), network: SOLANA_DEVNET_CAIP2, payer: mandate.agent.publicKey, settledAt: context.now, slot: null },
+        settlement: { txSignature, network: SOLANA_DEVNET_CAIP2, payer: mandate.agent.publicKey, settledAt: context.now, slot: null },
         response: { status: 200, bodySha256, contentType: 'text/plain' },
         issuedAt: context.now,
       },
@@ -277,6 +379,7 @@ async function evaluateAndMaybeReceipt(
               totalBaseUnits: (BigInt(world.spend.totalBaseUnits) + spent).toString(),
             }
           : { ...world.spend, totalBaseUnits: (BigInt(world.spend.totalBaseUnits) + spent).toString() },
+      ...(devnetFallbackReason ? { devnetFallbackReason } : {}),
     };
   }
 
@@ -285,12 +388,13 @@ async function evaluateAndMaybeReceipt(
     outcome: {
       verdict: gate.decision,
       headline: headlineFor(gate, display),
-      amountUsd,
+      amountUsd: formatUsd(offer.amount, DEMO_MINT_DECIMALS),
       resourceUrl: offer.resourceUrl,
       payTo: offer.payTo,
       rules: displayRules(gate),
       gate,
       receipt,
+      onchain,
     },
   };
 }
@@ -332,36 +436,39 @@ function baseOffer(world: World, overrides: Partial<X402Offer>): X402Offer {
   };
 }
 
-/** Step 3 (A normal payment). */
-export async function payNormal(world: World) {
+/** Step 3 (A normal payment). `settle`, when given, is tried for real on Solana devnet. */
+export async function payNormal(world: World, settle?: SettleFn) {
   const offer = baseOffer(world, {});
-  return evaluateAndMaybeReceipt(world, offer, baseContext(world), 'normal', '$0.01');
+  return evaluateAndMaybeReceipt(world, offer, baseContext(world), 'normal', settle);
 }
 
-/** Step 4 (An attack): prompt-injected agent tries to pay a stranger for an invented "invoice". */
+/** Step 4 (An attack): prompt-injected agent tries to pay a stranger for an invented "invoice". Always
+ * denied by design, so `settle` is never invoked — no need to accept one. */
 export async function attack(world: World) {
   const offer = baseOffer(world, {
     payTo: world.keys.attacker.publicKey,
-    amount: '500000000',
+    amount: ATTACK_AMOUNT,
     resourceUrl: `${ATTACKER_ORIGIN}/invoice`,
   });
-  return evaluateAndMaybeReceipt(world, offer, baseContext(world), 'attack', '$500.00');
+  return evaluateAndMaybeReceipt(world, offer, baseContext(world), 'attack');
 }
 
-/** Step 5a: the approved seller raises its price moderately — above tolerance, within the hard max. */
+/** Step 5a: the approved seller raises its price moderately — above tolerance, within the hard max.
+ * Escalates rather than settling, so `settle` is never invoked here either. */
 export async function priceSpikeModerate(world: World) {
   const offer = baseOffer(world, { amount: MODERATE_SPIKE_AMOUNT });
-  return evaluateAndMaybeReceipt(world, offer, baseContext(world), 'spike-moderate', '$0.02');
+  return evaluateAndMaybeReceipt(world, offer, baseContext(world), 'spike-moderate');
 }
 
 /** Step 5b: a 5x spike, above the hard maximum — always denied, no human can override it. */
 export async function priceSpikeSevere(world: World) {
   const offer = baseOffer(world, { amount: SEVERE_SPIKE_AMOUNT });
-  return evaluateAndMaybeReceipt(world, offer, baseContext(world), 'spike-severe', '$0.05');
+  return evaluateAndMaybeReceipt(world, offer, baseContext(world), 'spike-severe');
 }
 
-/** Step 6 (You are the human): approve or reject the moderate price-spike payment from step 5a. */
-export async function humanDecision(world: World, approve: boolean) {
+/** Step 6 (You are the human): approve or reject the moderate price-spike payment from step 5a.
+ * `settle`, when given, is tried for real on Solana devnet (approval only; a rejection never pays). */
+export async function humanDecision(world: World, approve: boolean, settle?: SettleFn) {
   const offer = baseOffer(world, { amount: MODERATE_SPIKE_AMOUNT });
   const approval: GateApproval = {
     id: `apr_${randomId()}`,
@@ -370,7 +477,7 @@ export async function humanDecision(world: World, approve: boolean) {
     expiresAt: world.now + 900,
     approver: { userId: 'visitor', role: 'APPROVER' },
   };
-  return evaluateAndMaybeReceipt(world, offer, baseContext(world, { approval }), 'approval', '$0.02');
+  return evaluateAndMaybeReceipt(world, offer, baseContext(world, { approval }), 'approval', settle);
 }
 
 /** Step 8 (Revoke): the owner revokes the mandate, then the agent tries one more payment. */
@@ -378,14 +485,31 @@ export function revokeMandate(world: World, reason: string): World {
   return { ...world, revoked: { revokedAt: world.now, reason } };
 }
 
+/** The payment after revocation is always denied by design, so `settle` is never invoked. */
 export async function payAfterRevoke(world: World) {
   const offer = baseOffer(world, {});
-  return evaluateAndMaybeReceipt(world, offer, baseContext(world), 'normal', '$0.01');
+  return evaluateAndMaybeReceipt(world, offer, baseContext(world), 'normal');
+}
+
+/** Real on-chain anchoring for step 7 (devnet mode only): the `anchor_root` transaction that was
+ * actually sent, plus the mandate registry program id, so `verifyReceipt` can check it for real. */
+export interface OnchainAnchor {
+  action: OnchainAction;
+  seq: number;
+  chain: ChainClient;
+  programId: string;
 }
 
 /** Step 7 (Prove): anchor the receipt into a (single-leaf, in-memory) Merkle batch, then verify it
- * the same way `atlas verify` does. */
-export async function proveReceipt(world: World, receiptId: string): Promise<{ receipt: BoundReceipt; verification: ReceiptVerification }> {
+ * the same way `atlas verify` does. `onchain`, when given, means this batch was actually anchored via
+ * a real `anchor_root` call on Solana devnet — the receipt and the verification both reflect that
+ * instead of a synthetic signature, and ANCHOR_ONCHAIN/SETTLEMENT_ONCHAIN are checked for real rather
+ * than skipped. */
+export async function proveReceipt(
+  world: World,
+  receiptId: string,
+  onchain?: OnchainAnchor | null,
+): Promise<{ receipt: BoundReceipt; verification: ReceiptVerification }> {
   const receipt = world.receipts.find((r) => r.id === receiptId);
   if (!receipt) throw new Error('Receipt not found');
   const root = merkleRoot([receipt.receiptHash]);
@@ -398,12 +522,16 @@ export async function proveReceipt(world: World, receiptId: string): Promise<{ r
       leafCount: 1,
       leafIndex: 0,
       proof,
-      txSignature: syntheticTxSignature(),
+      txSignature: onchain?.action.txSignature ?? syntheticTxSignature(),
       network: SOLANA_DEVNET_CAIP2,
       anchoredAt: world.now,
       signer: world.keys.instance.publicKey,
+      ...(onchain ? { mechanism: 'root' as const, seq: onchain.seq } : {}),
     },
   };
-  const verification = await verifyReceipt(anchored, { trustedInstanceKeys: [world.keys.instance.publicKey] });
+  const verification = await verifyReceipt(anchored, {
+    trustedInstanceKeys: [world.keys.instance.publicKey],
+    ...(onchain ? { chain: onchain.chain, checkSettlementOnChain: true, requireAnchor: true, programId: onchain.programId } : {}),
+  });
   return { receipt: anchored, verification };
 }

@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { attack, humanDecision, initWorld, payAfterRevoke, payNormal, priceSpikeModerate, priceSpikeSevere, proveReceipt, revokeMandate, signMandateStep } from '@/lib/scenario';
-import { rateLimited, registerMandateOnchain, resolveDevnetCoreKeys, revokeMandateOnchain, withTimeout } from '@/lib/devnet';
+import {
+  OnchainAnchor,
+  SettleFn,
+  attack,
+  humanDecision,
+  initWorld,
+  payAfterRevoke,
+  payNormal,
+  priceSpikeModerate,
+  priceSpikeSevere,
+  proveReceipt,
+  revokeMandate,
+  signMandateStep,
+} from '@/lib/scenario';
+import { anchorRootOnchain, rateLimited, registerMandateOnchain, resolveDevnetCoreKeys, revokeMandateOnchain, settlePaymentOnchain, withTimeout } from '@/lib/devnet';
 import { StepRequest, StepResponse, World } from '@/lib/types';
 
 // Node runtime, not Edge: packages/mandate, packages/receipt and packages/solana use Node's
@@ -33,6 +46,12 @@ export async function POST(req: NextRequest) {
           const w = initWorld('instant', null).world;
           return respond({ ...w, devnetFallbackReason: 'Devnet mode is not configured on this deployment yet.' });
         }
+        // Decided once per run, here, and reused for every on-chain action this session attempts
+        // below (register, two settlements, an anchor, revoke) — so one full walkthrough counts as
+        // one run against the hourly limit, not five.
+        if (rateLimited(clientIp(req))) {
+          return respond({ ...initWorld('devnet', core, false).world, devnetFallbackReason: 'Devnet rate limit reached (5 runs/hour) — continuing without real on-chain actions.' });
+        }
         return respond(initWorld('devnet', core).world);
       }
 
@@ -41,10 +60,9 @@ export async function POST(req: NextRequest) {
         let next = await signMandateStep(world);
         if (next.mode === 'devnet' && next.mandate) {
           const core = resolveDevnetCoreKeys();
-          const ip = clientIp(req);
           if (!core) {
             next = { ...next, devnetFallbackReason: 'Devnet mode is not configured on this deployment.' };
-          } else if (rateLimited(ip)) {
+          } else if (!next.devnetAllowed) {
             next = { ...next, devnetFallbackReason: 'Devnet rate limit reached (5 runs/hour) — showing the signed mandate without an on-chain registration.' };
           } else {
             try {
@@ -60,7 +78,7 @@ export async function POST(req: NextRequest) {
 
       case 'pay-normal': {
         requireWorld(world);
-        const { world: next, outcome } = await payNormal(world);
+        const { world: next, outcome } = await payNormal(world, settleFor(world));
         return respond(next, outcome);
       }
 
@@ -84,7 +102,8 @@ export async function POST(req: NextRequest) {
 
       case 'human-decision': {
         requireWorld(world);
-        const { world: next, outcome } = await humanDecision(world, Boolean(action.approve));
+        const approve = Boolean(action.approve);
+        const { world: next, outcome } = await humanDecision(world, approve, approve ? settleFor(world) : undefined);
         return respond(next, outcome);
       }
 
@@ -92,8 +111,22 @@ export async function POST(req: NextRequest) {
         requireWorld(world);
         const receiptId = world.receipts[world.receipts.length - 1]?.id;
         if (!receiptId) return NextResponse.json({ error: 'No receipt to prove yet' }, { status: 400 });
-        const { receipt, verification } = await proveReceipt(world, receiptId);
-        const next: World = { ...world, receipts: world.receipts.map((r) => (r.id === receipt.id ? receipt : r)) };
+        let next = world;
+        let onchainAnchor: OnchainAnchor | null = null;
+        if (world.mode === 'devnet' && world.devnetAllowed && world.mandate && world.mandateOnchain) {
+          const core = resolveDevnetCoreKeys();
+          if (core) {
+            try {
+              const receipt = world.receipts.find((r) => r.id === receiptId);
+              if (!receipt) throw new Error('Receipt not found');
+              onchainAnchor = await withTimeout(anchorRootOnchain(world.mandate, receipt.receiptHash, 1, core));
+            } catch (err) {
+              next = { ...next, devnetFallbackReason: `Devnet anchoring failed (${messageOf(err)}) — this receipt is shown with a synthetic anchor instead.` };
+            }
+          }
+        }
+        const { receipt, verification } = await proveReceipt(world, receiptId, onchainAnchor);
+        next = { ...next, receipts: next.receipts.map((r) => (r.id === receipt.id ? receipt : r)) };
         return respond(next, undefined, verification);
       }
 
@@ -102,10 +135,9 @@ export async function POST(req: NextRequest) {
         let next = revokeMandate(world, 'Playground: visitor revoked the mandate');
         if (next.mode === 'devnet' && next.mandate) {
           const core = resolveDevnetCoreKeys();
-          const ip = clientIp(req);
           if (!core) {
             next = { ...next, devnetFallbackReason: 'Devnet mode is not configured on this deployment.' };
-          } else if (rateLimited(ip)) {
+          } else if (!next.devnetAllowed) {
             next = { ...next, devnetFallbackReason: 'Devnet rate limit reached (5 runs/hour) — the mandate is revoked locally but not on-chain.' };
           } else {
             try {
@@ -135,6 +167,17 @@ export async function POST(req: NextRequest) {
 
 function requireWorld(world: World | null): asserts world is World {
   if (!world) throw new Error('No session — start from the beginning');
+}
+
+/** A real settlement attempt for this world, if devnet mode is on and this run hasn't hit the
+ * hourly rate limit — undefined (synthetic settlement) otherwise. `evaluateAndMaybeReceipt` already
+ * falls back to synthetic with a visible reason if the attempt itself throws, so this only needs to
+ * decide whether to try at all. */
+function settleFor(world: World): SettleFn | undefined {
+  if (world.mode !== 'devnet' || !world.devnetAllowed) return undefined;
+  const core = resolveDevnetCoreKeys();
+  if (!core) return undefined;
+  return (offer) => withTimeout(settlePaymentOnchain(offer, core));
 }
 
 function messageOf(err: unknown): string {
