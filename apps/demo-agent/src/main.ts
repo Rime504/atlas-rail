@@ -24,6 +24,9 @@ Options (env vars in brackets):
   --keyring <path>       Devnet keyring file            [ATLAS_KEYRING_PATH, default .demo/keyring.json]
   --state <path>         Demo state file                [DEMO_STATE_FILE, default .demo/state.json]
   --cli <path>           Built atlas CLI                [default apps/cli/dist/main.js]
+  --agent-mode <scripted|llm>                            [AGENT_MODE, default scripted]
+  --agent-provider <openai|anthropic>                    [AGENT_PROVIDER, default anthropic]
+  --agent-model <id>     Required for --agent-provider openai [AGENT_MODEL]
 
 Devnet only. Refuses mainnet RPC endpoints.`;
 
@@ -63,6 +66,8 @@ async function main(argv: string[]): Promise<number> {
   if (command === 'run') {
     const state = readState(env.stateFile) ?? (await prepareDemo(env));
     const onlyArg = arg(args, '--only');
+    const agentMode = (arg(args, '--agent-mode') ?? process.env.AGENT_MODE ?? 'scripted') as 'scripted' | 'llm';
+    const agentProvider = (arg(args, '--agent-provider') ?? process.env.AGENT_PROVIDER ?? 'anthropic') as 'openai' | 'anthropic';
     const summary = await runScenes({
       env,
       state,
@@ -71,6 +76,9 @@ async function main(argv: string[]): Promise<number> {
       outDir: resolve(dirname(env.stateFile), 'receipts'),
       cliPath: resolve(arg(args, '--cli') ?? 'apps/cli/dist/main.js'),
       only: onlyArg ? onlyArg.split(',').map(Number) : undefined,
+      agentMode,
+      agentProvider,
+      agentModelOverride: arg(args, '--agent-model') ?? process.env.AGENT_MODEL,
     });
     const out = arg(args, '--json-out');
     if (out) {

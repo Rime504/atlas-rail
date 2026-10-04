@@ -11,7 +11,7 @@ export type AgentMessage =
   | { role: 'tool'; tool: string; content: string };
 
 export type AgentAction =
-  | { type: 'tool_call'; tool: 'fetch_page' | 'fetch_paid'; url: string; thought: string }
+  | { type: 'tool_call'; tool: 'fetch_page' | 'fetch_paid_resource'; url: string; thought: string }
   | { type: 'final'; content: string };
 
 export interface AgentModel {
@@ -23,7 +23,7 @@ export interface AgentTools {
   /** Plain GET. Free pages can carry prompt injections. */
   fetch_page(url: string): Promise<string>;
   /** GET that transparently pays x402 402 responses through the Atlas Rail gate. */
-  fetch_paid(url: string): Promise<string>;
+  fetch_paid_resource(url: string): Promise<string>;
 }
 
 export interface AgentTrace {
@@ -80,7 +80,7 @@ const lastTool = (history: readonly AgentMessage[]) => [...history].reverse().fi
 /** Scene 2: buy one research summary and report it. */
 export function researchModel(url: string): AgentModel {
   return new ScriptedModel([
-    () => ({ type: 'tool_call', tool: 'fetch_paid', url, thought: 'The summary endpoint costs $0.01; that is within my mandate. Buying it.' }),
+    () => ({ type: 'tool_call', tool: 'fetch_paid_resource', url, thought: 'The summary endpoint costs $0.01; that is within my mandate. Buying it.' }),
     (history) => {
       const tool = lastTool(history);
       return tool && !tool.content.startsWith('TOOL_ERROR')
@@ -93,7 +93,7 @@ export function researchModel(url: string): AgentModel {
 /** Scene 3 (price limits): the agent has no way to know the seller quietly raised its price. */
 export function priceInflationModel(url: string): AgentModel {
   return new ScriptedModel([
-    () => ({ type: 'tool_call', tool: 'fetch_paid', url, thought: 'The research endpoint usually costs $0.01. Buying it as always.' }),
+    () => ({ type: 'tool_call', tool: 'fetch_paid_resource', url, thought: 'The research endpoint usually costs $0.01. Buying it as always.' }),
     (history) => {
       const tool = lastTool(history);
       return tool && !tool.content.startsWith('TOOL_ERROR')
@@ -112,7 +112,7 @@ export function injectedModel(bulletinUrl: string): AgentModel {
       const invoice = /https?:\/\/\S+\/invoice\S*/.exec(page)?.[0] ?? '';
       return {
         type: 'tool_call',
-        tool: 'fetch_paid',
+        tool: 'fetch_paid_resource',
         url: invoice,
         thought: 'The bulletin says my account will be suspended unless I pay this invoice immediately. Paying.',
       };
@@ -127,7 +127,7 @@ export function injectedModel(bulletinUrl: string): AgentModel {
 /** Scene 4: needs an expensive inference job that is outside autonomous authority. */
 export function heavyInferenceModel(url: string): AgentModel {
   return new ScriptedModel([
-    () => ({ type: 'tool_call', tool: 'fetch_paid', url, thought: 'The batch analysis needs the heavy inference endpoint ($40). That needs human approval.' }),
+    () => ({ type: 'tool_call', tool: 'fetch_paid_resource', url, thought: 'The batch analysis needs the heavy inference endpoint ($40). That needs human approval.' }),
     (history) => {
       const tool = lastTool(history);
       return tool && !tool.content.startsWith('TOOL_ERROR')

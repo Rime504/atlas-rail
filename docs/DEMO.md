@@ -65,7 +65,35 @@ export interface AgentModel {
 }
 ```
 
-The default `ScriptedModel` is deterministic and calls no external API, which is why the demo can't fail because a model provider is down or rate-limited mid-pitch. To wire in a real model, implement `AgentModel.next` to map the message history to a `{ type: 'tool_call', tool: 'fetch_page' | 'fetch_paid', url, thought }` or a final answer, and pass your model into `runAgent` in place of `researchModel(...)` / `injectedModel(...)` / `heavyInferenceModel(...)` in `apps/demo-agent/src/scenes.ts`. Nothing about the mandate, the gate, or the receipt changes — the model only decides *what to ask for*; the gate still decides *whether it's allowed to pay*.
+The default `ScriptedModel` is deterministic and calls no external API, which is why the demo can't fail because a model provider is down or rate-limited mid-pitch. `AGENT_MODE=llm` switches every scripted-agent step to `LlmModel` (`apps/demo-agent/src/llm-model.ts`), which calls a real provider with tool calling instead:
+
+| Env var | Values | Default |
+|---|---|---|
+| `AGENT_MODE` | `scripted` \| `llm` | `scripted` |
+| `AGENT_PROVIDER` | `anthropic` \| `openai` | `anthropic` |
+| `AGENT_MODEL` | any model id | `claude-haiku-4-5-20251001` for `anthropic`; **required** for `openai` (no default is assumed current) |
+
+The model gets exactly two tools, `fetch_page(url)` and `fetch_paid_resource(url)`, and never sees a payment key — it can only ask for a fetch; the policy gate independently decides whether any resulting payment is allowed. The key comes from `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`; if it isn't set, the run falls back to the scripted agent for that step with a visible console notice instead of failing. Nothing about the mandate, the gate, or the receipt changes — the model only decides *what to ask for*; the gate still decides *whether it's allowed to pay*.
+
+## Running the full devnet e2e check (`pnpm agent:e2e`)
+
+Three commands, from the repo root:
+
+```bash
+pnpm install
+pnpm build
+pnpm agent:e2e
+```
+
+This forces real Solana devnet with on-chain anchoring (`ATLAS_ONCHAIN=1 ATLAS_ANCHOR_ROOT=1`), runs all six scenes unattended (`--no-docker --skip-web --auto-approve --exit`), and writes `reports/e2e-<date>.md` with every scene's Explorer link, p50/p95 gate-decision latency, payment confirmation latency, and the `anchor_root` transaction's compute units and fee. Exit code matches the underlying demo run (`0` = every scene behaved as designed).
+
+To exercise the real LLM agent instead of the scripted one, set `AGENT_MODE=llm` and a provider key first:
+
+```bash
+AGENT_MODE=llm ANTHROPIC_API_KEY=sk-... pnpm agent:e2e
+```
+
+Re-run it as many times as you like — like `pnpm demo`, it seeds idempotently rather than duplicating mandates or accounts.
 
 ## Troubleshooting
 
