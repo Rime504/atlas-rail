@@ -277,8 +277,13 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
       if (outcome.decision.record.decision !== 'ALLOW') throw new MandateDeniedError(outcome.decision);
     }
 
-    // 3. Only now does the wallet sign — and it re-verifies the gate's authorisation itself.
-    const signed = await config.signer.signWithAuthorization(transactionBase64, outcome.authorization);
+    // 3. Only now does the wallet sign — and it re-verifies the gate's authorisation + ALLOW decision.
+    const signed = await config.signer.signWithAuthorization(
+      transactionBase64,
+      outcome.authorization,
+      outcome.decision,
+      outcome.mandate,
+    );
     emit({ type: 'payment_signed', txMessageHash: outcome.authorization?.txMessageHash ?? '' });
 
     const paymentPayload = {

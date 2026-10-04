@@ -26,6 +26,7 @@ export class LocalGateClient implements GateClient {
             requiredRoles: outcome.approval.requiredRoles,
           }
         : null,
+      mandate: outcome.mandate,
       replayed: outcome.replayed,
     };
   }

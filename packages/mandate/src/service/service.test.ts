@@ -166,6 +166,8 @@ describe('gate service — the six demo scenes', () => {
         now: t.now(),
         txMessageHash: sha256Hex(req.transactionBase64!),
         agentPublicKey: signers.agent.publicKey,
+        decision: outcome.decision,
+        mandate: outcome.mandate,
       }).ok,
     ).toBe(true);
     const audit = (t.store.audit as unknown as { entries: { action: string }[] }).entries.map((e) => e.action);
