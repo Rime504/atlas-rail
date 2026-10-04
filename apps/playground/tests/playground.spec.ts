@@ -6,6 +6,21 @@ test('landing page has one clear call to action', async ({ page }) => {
   await expect(page.getByRole('link', { name: /start the demo/i })).toBeVisible();
 });
 
+test('progress bar announces the step count, with the percentage kept separate for screen readers', async ({ page }) => {
+  await page.goto('/demo');
+  const progressbar = page.getByRole('progressbar');
+  // The accessible name/value must read "Step 1 of 8" with no percentage mixed in — the percentage
+  // is sighted-only, decorative, and excluded from the accessibility tree (aria-hidden on its row).
+  await expect(progressbar).toHaveAccessibleName('Walkthrough progress');
+  await expect(progressbar).toHaveAttribute('aria-valuetext', 'Step 1 of 8');
+  await expect(progressbar).toHaveAttribute('aria-valuenow', '1');
+  await expect(progressbar).toHaveAttribute('aria-valuemin', '1');
+  await expect(progressbar).toHaveAttribute('aria-valuemax', '8');
+  // The visible "Step 1 of 8 / 13%" row must not also be exposed to the accessibility tree —
+  // otherwise it would be announced a second time, redundantly, right next to the progressbar.
+  await expect(page.locator('[aria-hidden="true"]').filter({ hasText: 'Step 1 of 8' })).toBeVisible();
+});
+
 test('walks through all 8 steps end to end', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('link', { name: /start the demo/i }).click();
