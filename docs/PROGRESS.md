@@ -65,3 +65,12 @@ A new phase sequence, starting over at Phase 0 — distinct from the phases abov
 - Tagged `v0.1.0` at master ("Hackathon baseline: on-chain mandates, anchor_root, public playground") with a GitHub Release; closed issue #30.
 - Plugin install (`/plugin`) is a chat-level command I can't run myself — gave Rime the commands to type. `code-review`/`security-review` already work for me as skills with no install needed.
 - Links: [PR #54](https://github.com/Rime504/atlas-rail/pull/54), [v0.1.0](https://github.com/Rime504/atlas-rail/releases/tag/v0.1.0).
+
+## R2 Phase 1 — Real AI agent + end-to-end devnet test (2026-10-04)
+
+- `apps/demo-agent/src/llm-model.ts`: a real, stateful Anthropic/OpenAI tool-calling `AgentModel` (raw `fetch`, no SDK). `AGENT_MODE=llm`/`AGENT_PROVIDER`/`AGENT_MODEL` select it; no key → falls back to the scripted agent per-step with a visible notice. The model gets exactly two tools (`fetch_page`, `fetch_paid_resource`) and never sees a payment key.
+- `scenes.ts` now tracks a full-run `timeline` of client events and reports `summary.metrics`: gate-decision and payment-confirmation latency (p50/p95), and — when `ATLAS_ANCHOR_ROOT` anchored this run — the `anchor_root` transaction's compute units and fee. Every scene's on-chain transaction (grant, pay, escalate, anchor, revoke) is now captured in the summary, not just printed to the console.
+- New `pnpm agent:e2e` (`scripts/agent-e2e.mjs`): forces real devnet with `ATLAS_ONCHAIN=1 ATLAS_ANCHOR_ROOT=1`, runs all six scenes unattended, and writes `reports/e2e-<date>.md` with every Explorer link and the latency/fee numbers above. 3-command guide for Divyesh added to `docs/DEMO.md`.
+- Tests: 11 new unit tests for `llm-model.ts` (tool-call parsing, final answers, malformed-arguments handling, API-error handling for both providers, no network/keys needed) — 296 vitest total, all passing. Full repo typecheck/lint/build clean.
+- **Not yet done:** the actual "green 3 times in a row on devnet in scripted mode" proof run — code is written and unit-tested but the devnet e2e run itself hasn't executed yet. LLM-mode devnet testing is blocked on an API key per the ground rules (STOP and ask) — will ask once scripted mode is proven.
+- Links: (PR not yet opened as of this entry).

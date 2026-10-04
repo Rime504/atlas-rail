@@ -10,7 +10,9 @@ Built: mandate spec v0.2 + rule 15 · 15-rule gate · owner + approver + agent s
 
 In progress (Divyesh): PRs #37 #39 #41 #43 #45 #47 · signer on-chain revoke check · on-chain spend counter.
 
-Planned: real LLM agent + e2e · red-team · reserve/capture/release · Layer 1 hard cap · npm SDK + registerPolicy + MCP · browser verifier · x402 policy-attestation extension · console upgrades.
+In progress (me): real LLM agent (`AGENT_MODE=llm`, Anthropic/OpenAI, no key seen by the model) and `pnpm agent:e2e` devnet harness — code written and unit-tested, scripted-mode devnet proof run not yet done.
+
+Planned: red-team · reserve/capture/release · Layer 1 hard cap · npm SDK + registerPolicy + MCP · browser verifier · x402 policy-attestation extension · console upgrades.
 
 ## Architecture: three layers
 
