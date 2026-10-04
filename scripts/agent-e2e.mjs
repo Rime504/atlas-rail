@@ -30,7 +30,8 @@ function renderLatency(label, stats) {
 
 function renderLink(label, link) {
   if (!link || !link.txSignature) return `- ${label}: (denied — nothing signed, no transaction)`;
-  return `- ${label}: [${link.txSignature}](${link.explorerUrl})`;
+  const memo = link.memo ? ` — memo: \`${link.memo}\`` : '';
+  return `- ${label}: [${link.txSignature}](${link.explorerUrl})${memo}`;
 }
 
 function buildReport(summary, { ok, exitCode }) {

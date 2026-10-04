@@ -9,6 +9,7 @@ import {
   AgentMandate,
   SOLANA_DEVNET_CAIP2,
   SignedDecision,
+  formatReceiptMemo,
   signMandate,
 } from '@atlas-rail/mandate';
 import { BoundReceipt } from '@atlas-rail/receipt';
@@ -343,6 +344,9 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       ok(`settled ${usd(paid.receipt.offer.amount)} on ${env.mode === 'devnet' ? 'Solana devnet' : 'the offline cluster'}`);
       kv('transaction', explorer(env.mode, paid.receipt.settlement.txSignature));
       kv('receipt', `${paid.receipt.id} — ${env.webUrl}/receipts`);
+      // Self-proving payment: the transaction's own memo named this receipt before it settled —
+      // open the Explorer link above and the memo is right there, no other context required.
+      if (paid.expectedReceiptId === paid.receipt.id) kv('memo', formatReceiptMemo(paid.receipt.id));
     } else {
       bad(`no receipt was issued${paid?.receiptError ? `: ${paid.receiptError}` : ''}`);
       summary.ok = false;
@@ -352,6 +356,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       receiptId: paid?.receipt?.id ?? null,
       txSignature: paid?.receipt?.settlement.txSignature ?? null,
       explorerUrl: paid?.receipt ? explorer(env.mode, paid.receipt.settlement.txSignature) : null,
+      memo: paid?.receipt && paid.expectedReceiptId === paid.receipt.id ? formatReceiptMemo(paid.receipt.id) : null,
     };
   }
 
@@ -442,6 +447,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     if (receipt) {
       ok(`human-approved payment settled: ${usd(receipt.amount)} (${receipt.decisionKind})`);
       kv('transaction', explorer(env.mode, receipt.txSignature));
+      kv('memo', formatReceiptMemo(receipt.id));
       scene4Receipt = await api.get<BoundReceipt>(`/v1/agent/receipts/${receipt.id}`, { token: owner });
     } else {
       bad('escalated payment did not settle');
@@ -452,6 +458,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       receiptId: receipt?.id ?? null,
       txSignature: receipt?.txSignature ?? null,
       explorerUrl: receipt ? explorer(env.mode, receipt.txSignature) : null,
+      memo: receipt ? formatReceiptMemo(receipt.id) : null,
     };
   }
 

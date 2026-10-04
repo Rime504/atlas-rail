@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { formatReceiptMemo } from '@atlas-rail/mandate';
 import { verifyReceipt } from '@atlas-rail/receipt';
 import { WORLD_ORG, TEST_MINT, World, createWorld } from '@atlas-rail/receipt/testing';
 import { AtlasFetch, GatedSignerAdapter, createAtlasFetch } from '@atlas-rail/x402';
@@ -91,6 +92,11 @@ describe('Atlas Rail agent client × official x402 seller and facilitator', () =
     expect(world.chain.tokenBalance(world.keys.merchant.publicKey, TEST_MINT)).toBe(10_000n);
     expect(res.atlas?.receipt).not.toBeNull();
     expect(events).toEqual(['payment_required', 'gate_decision', 'payment_signed', 'settled', 'receipt_issued']);
+
+    // The official @x402/svm facilitator accepted our self-proving memo (not just our own fake test
+    // seller) and the receipt the gate issued is the exact one the memo named.
+    expect(res.atlas?.expectedReceiptId).toBe(res.atlas!.receipt!.id);
+    expect(world.chain.memos).toContain(formatReceiptMemo(res.atlas!.receipt!.id));
 
     await world.anchorService.run();
     const stored = await world.receipts.get(WORLD_ORG, res.atlas!.receipt!.id);
