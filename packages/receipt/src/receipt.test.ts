@@ -1,8 +1,24 @@
-import { describe, expect, it } from 'vitest';
-import { hashOffer, verifyDecisionMatchesScope } from '@atlas-rail/mandate';
+import { Keypair, VersionedTransaction } from '@solana/web3.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  LocalEd25519Signer,
+  buildDecisionRecord,
+  evaluateGate,
+  hashMandate,
+  hashOffer,
+  signDecision,
+  verifyDecisionMatchesScope,
+} from '@atlas-rail/mandate';
+import { NOW, signedTestMandate, signers, testContext, testOffer as mandateTestOffer } from '@atlas-rail/mandate/testing';
+import { ChainClient, ChainTransactionSummary, DevnetKeypairSigner, fetchMandateAccount, findMandatePda, summarizeTransaction } from '@atlas-rail/solana';
 import { WORLD_ORG, World, createWorld, testOffer } from './testing';
-import { BoundReceipt, verifyReceipt } from './receipt';
-import { hashResponseBody } from './service';
+import { BoundReceipt, buildReceipt, verifyReceipt } from './receipt';
+import { AnchorService, InMemoryReceiptStore, hashResponseBody } from './service';
+
+vi.mock('@atlas-rail/solana', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@atlas-rail/solana')>();
+  return { ...actual, fetchMandateAccount: vi.fn() };
+});
 
 async function payOnce(world: World, amount = '10000') {
   const { outcome, transactionBase64, offer } = await world.requestGate({ amount });
@@ -227,5 +243,163 @@ describe('anchoring', () => {
     expect((await world.receipts.listUnanchored(10)).length).toBe(1);
     world.chain.sendAndConfirm = original;
     expect((await world.anchorService.run())?.anchored).toBe(1);
+  });
+});
+
+describe('anchoring (root mode)', () => {
+  const PROGRAM_ID = 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k';
+  const RPC_URL = 'https://api.devnet.solana.com';
+
+  // Same seed-from-label scheme as @atlas-rail/mandate/testing's seededSigner, so this signer's
+  // public key matches `signers.instance.publicKey` — the on-chain gate_authority is always the
+  // same key as the off-chain instance key that signs decisions and receipts.
+  function onchainInstanceSigner(): DevnetKeypairSigner {
+    const seed = new Uint8Array(32);
+    new TextEncoder().encode('instance').forEach((b, i) => (seed[i] = b));
+    const previous = process.env.ATLAS_ALLOW_MOCK_SIGNER;
+    process.env.ATLAS_ALLOW_MOCK_SIGNER = 'true';
+    try {
+      return new DevnetKeypairSigner(seed);
+    } finally {
+      if (previous === undefined) delete process.env.ATLAS_ALLOW_MOCK_SIGNER;
+      else process.env.ATLAS_ALLOW_MOCK_SIGNER = previous;
+    }
+  }
+
+  function stubChain(): { chain: ChainClient; sent: Map<string, VersionedTransaction> } {
+    const sent = new Map<string, VersionedTransaction>();
+    let n = 0;
+    const chain: ChainClient = {
+      async getLatestBlockhash() {
+        return { blockhash: Keypair.generate().publicKey.toBase58(), lastValidBlockHeight: 1 };
+      },
+      async getMintInfo() {
+        return null;
+      },
+      async simulate() {
+        throw new Error('not used in this test');
+      },
+      async sendAndConfirm(signedBase64: string) {
+        const tx = VersionedTransaction.deserialize(Buffer.from(signedBase64, 'base64'));
+        const signature = `sig_${++n}`;
+        sent.set(signature, tx);
+        return signature;
+      },
+      async getTransactionSummary(signature: string): Promise<ChainTransactionSummary | null> {
+        const tx = sent.get(signature);
+        if (!tx) return null;
+        return summarizeTransaction(signature, tx, { slot: n, blockTime: NOW, err: null });
+      },
+    };
+    return { chain, sent };
+  }
+
+  async function allowReceipt(): Promise<{ mandate: Awaited<ReturnType<typeof signedTestMandate>>; receipt: BoundReceipt }> {
+    const mandate = await signedTestMandate();
+    const instance = signers.instance;
+    const offer = mandateTestOffer();
+    const context = testContext();
+    const result = evaluateGate(mandate, offer, context);
+    expect(result.decision).toBe('ALLOW');
+    const decisionRecord = buildDecisionRecord({ id: 'dec_test', organizationId: WORLD_ORG, mandate, offer, result, context, request: null });
+    const signed = await signDecision(decisionRecord, instance);
+    const receipt = await buildReceipt(
+      {
+        id: 'rcp_test',
+        mandate,
+        decision: signed,
+        settlement: { txSignature: 'A'.repeat(64), network: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1', payer: mandate.agent.publicKey, settledAt: NOW, slot: 1 },
+        response: { status: 200, bodySha256: hashResponseBody('ok'), contentType: 'text/plain' },
+        issuedAt: NOW,
+      },
+      instance,
+    );
+    return { mandate, receipt };
+  }
+
+  function mockOnchainMandate(overrides: { nextRootSeq?: bigint } = {}) {
+    vi.mocked(fetchMandateAccount).mockResolvedValue({
+      mandateHash: '0'.repeat(64),
+      owner: signers.owner.publicKey,
+      approver: signers.approver.publicKey,
+      agent: signers.agent.publicKey,
+      gateAuthority: signers.instance.publicKey,
+      mint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+      maxPerPayment: 0n,
+      maxPerWindow: 0n,
+      windowSeconds: 0n,
+      maxTotal: 0n,
+      escalationThreshold: 0n,
+      notBefore: 0n,
+      expiresAt: 0n,
+      createdAt: 0n,
+      revoked: false,
+      revokedAt: 0n,
+      revokedBy: '',
+      nextRootSeq: overrides.nextRootSeq ?? 0n,
+      bump: 255,
+    });
+  }
+
+  it("anchors a mandate's pending receipts via anchor_root, using the on-chain next_root_seq", async () => {
+    const { mandate, receipt } = await allowReceipt();
+    const receipts = new InMemoryReceiptStore();
+    await receipts.insert({ organizationId: WORLD_ORG, receipt, createdAt: NOW, batchId: null });
+    mockOnchainMandate({ nextRootSeq: 3n });
+
+    const { chain } = stubChain();
+    const onchainSigner = onchainInstanceSigner();
+    expect(onchainSigner.publicKey).toBe(signers.instance.publicKey); // same key, two wrapper types
+    const service = new AnchorService({
+      receipts,
+      chain,
+      signer: onchainSigner,
+      clock: () => NOW,
+      newId: (p) => `${p}_1`,
+      mode: 'root',
+      rpcUrl: RPC_URL,
+      programId: PROGRAM_ID,
+    });
+
+    const result = await service.run();
+    expect(result?.anchored).toBe(1);
+    expect(result?.batch.status).toBe('ANCHORED');
+    const expectedPda = findMandatePda(PROGRAM_ID, Buffer.from(hashMandate(mandate), 'hex')).address;
+    expect(vi.mocked(fetchMandateAccount)).toHaveBeenCalledWith(RPC_URL, expectedPda);
+
+    const stored = (await receipts.get(WORLD_ORG, receipt.id))!.receipt;
+    expect(stored.anchor?.mechanism).toBe('root');
+    expect(stored.anchor?.seq).toBe(3);
+
+    const verification = await verifyReceipt(stored, {
+      chain,
+      trustedInstanceKeys: [signers.instance.publicKey],
+      programId: PROGRAM_ID,
+      checkSettlementOnChain: false, // this test's settlement signature is a fixture, not a real stub-chain transaction
+    });
+    expect(verification.checks.find((c) => c.id === 'ANCHOR_ONCHAIN')?.status).toBe('PASS');
+    expect(verification.checks.find((c) => c.id === 'ANCHOR_MERKLE')?.status).toBe('PASS');
+    expect(verification.checks.filter((c) => c.status === 'FAIL')).toEqual([]);
+  });
+
+  it('skips a mandate that is not registered on-chain, leaving its receipt pending', async () => {
+    const { receipt } = await allowReceipt();
+    const receipts = new InMemoryReceiptStore();
+    await receipts.insert({ organizationId: WORLD_ORG, receipt, createdAt: NOW, batchId: null });
+    vi.mocked(fetchMandateAccount).mockResolvedValue(null);
+
+    const { chain } = stubChain();
+    const service = new AnchorService({
+      receipts,
+      chain,
+      signer: onchainInstanceSigner(),
+      clock: () => NOW,
+      newId: (p) => `${p}_1`,
+      mode: 'root',
+      rpcUrl: RPC_URL,
+      programId: PROGRAM_ID,
+    });
+    expect(await service.run()).toBeNull();
+    expect((await receipts.listUnanchored(10)).length).toBe(1);
   });
 });

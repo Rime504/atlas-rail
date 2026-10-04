@@ -1,7 +1,9 @@
+import { createHash } from 'crypto';
 import { ComputeBudgetProgram, Keypair, PublicKey, TransactionInstruction, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID, createTransferCheckedInstruction, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { describe, expect, it } from 'vitest';
-import { checkMemoAnchor, checkSettlement, summarizeTransaction } from './chain';
+import { checkMemoAnchor, checkRootAnchor, checkSettlement, summarizeTransaction } from './chain';
+import { findMandatePda, findRootPda } from './mandate-registry';
 import { buildExactPaymentTransaction } from './x402-payment';
 
 const MINT = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
@@ -113,5 +115,87 @@ describe('checkMemoAnchor', () => {
     expect(checkMemoAnchor(summary, { memo: 'atlasrail:anchor:v1:abc', signer: Keypair.generate().publicKey.toBase58() }).ok).toBe(false);
     expect(checkMemoAnchor(memoTx(instance, 'atlasrail:anchor:v1:abc', { err: 1 }), { memo: 'atlasrail:anchor:v1:abc', signer: instance.publicKey.toBase58() }).ok).toBe(false);
     expect(checkMemoAnchor(null, { memo: 'x', signer: instance.publicKey.toBase58() }).ok).toBe(false);
+  });
+});
+
+describe('checkRootAnchor', () => {
+  const PROGRAM_ID = '11111111111111111111111111111112'; // any valid base58 pubkey works for a unit test
+  const mandateHash = new Uint8Array(32).fill(7);
+  const { address: mandatePda } = findMandatePda(PROGRAM_ID, mandateHash);
+  const merkleRootHex = 'a'.repeat(64);
+
+  function anchorRootTx(signer: Keypair, overrides: { seq?: bigint; merkleRootHex?: string; leafCount?: number; mandatePda?: string } = {}, err: unknown | null = null) {
+    const seq = overrides.seq ?? 0n;
+    const root = overrides.merkleRootHex ?? merkleRootHex;
+    const leafCount = overrides.leafCount ?? 3;
+    const targetMandatePda = overrides.mandatePda ?? mandatePda;
+    const { address: rootPda } = findRootPda(PROGRAM_ID, targetMandatePda, seq);
+
+    const discriminator = createHash('sha256').update('global:anchor_root').digest().subarray(0, 8);
+    const body = Buffer.alloc(8 + 32 + 4);
+    body.writeBigUInt64LE(seq, 0);
+    Buffer.from(root, 'hex').copy(body, 8);
+    body.writeUInt32LE(leafCount, 40);
+    const data = Buffer.concat([discriminator, body]);
+
+    const ix = new TransactionInstruction({
+      programId: new PublicKey(PROGRAM_ID),
+      keys: [
+        { pubkey: new PublicKey(targetMandatePda), isSigner: false, isWritable: true },
+        { pubkey: new PublicKey(rootPda), isSigner: false, isWritable: true },
+        { pubkey: signer.publicKey, isSigner: true, isWritable: true },
+        { pubkey: PublicKey.default, isSigner: false, isWritable: false },
+      ],
+      data,
+    });
+    const message = new TransactionMessage({ payerKey: signer.publicKey, recentBlockhash: blockhash, instructions: [ix] }).compileToV0Message();
+    return summarizeTransaction('anchor-root', new VersionedTransaction(message), { slot: 9, blockTime: 1_800_000_200, err });
+  }
+
+  const expected = (overrides: Partial<{ seq: bigint; merkleRoot: string; leafCount: number; signer: string }> = {}, signer: Keypair) => ({
+    programId: PROGRAM_ID,
+    mandatePda,
+    signer: signer.publicKey.toBase58(),
+    seq: 0n,
+    merkleRoot: merkleRootHex,
+    leafCount: 3,
+    ...overrides,
+  });
+
+  it('accepts a successful anchor_root transaction with matching seq, root and leaf count', () => {
+    const instance = Keypair.generate();
+    const result = checkRootAnchor(anchorRootTx(instance), expected({}, instance));
+    expect(result.ok).toBe(true);
+    expect(result.slot).toBe(9);
+  });
+
+  it('accepts a non-zero seq', () => {
+    const instance = Keypair.generate();
+    const result = checkRootAnchor(anchorRootTx(instance, { seq: 5n }), expected({ seq: 5n }, instance));
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects a mismatched seq, merkle root, or leaf count', () => {
+    const instance = Keypair.generate();
+    const tx = anchorRootTx(instance);
+    expect(checkRootAnchor(tx, expected({ seq: 1n }, instance)).ok).toBe(false);
+    expect(checkRootAnchor(tx, expected({ merkleRoot: 'b'.repeat(64) }, instance)).ok).toBe(false);
+    expect(checkRootAnchor(tx, expected({ leafCount: 4 }, instance)).ok).toBe(false);
+  });
+
+  it('rejects the wrong signer, wrong mandate PDA, a failed transaction, and a missing transaction', () => {
+    const instance = Keypair.generate();
+    const tx = anchorRootTx(instance);
+    expect(checkRootAnchor(tx, expected({}, Keypair.generate())).ok).toBe(false);
+    const otherMandate = findMandatePda(PROGRAM_ID, new Uint8Array(32).fill(9)).address;
+    expect(checkRootAnchor(tx, { ...expected({}, instance), mandatePda: otherMandate }).ok).toBe(false);
+    expect(checkRootAnchor(anchorRootTx(instance, {}, { err: 1 }), expected({}, instance)).ok).toBe(false);
+    expect(checkRootAnchor(null, expected({}, instance)).ok).toBe(false);
+  });
+
+  it('rejects a transaction that does not invoke the mandate registry at all', () => {
+    const instance = Keypair.generate();
+    const summary = paymentSummary();
+    expect(checkRootAnchor(summary, expected({}, instance)).ok).toBe(false);
   });
 });
