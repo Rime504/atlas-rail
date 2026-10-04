@@ -50,3 +50,18 @@ Running log of work toward the Colosseum hackathon submission (due 11 October). 
 
 - `docs/DEMO_VIDEO.md`: a timestamped script under 3 minutes for a screen recording of the playground (what to say, what to click, when, including an optional devnet-mode variant), plus a 2-minute pitch outline for talking about Atlas Rail without the screen.
 - Links: [PR #52](https://github.com/Rime504/atlas-rail/pull/52).
+
+---
+
+# Round 2: post-submission-prep build (Divyesh now a collaborator; deadline 12 Oct, treating 11 Oct as ours)
+
+A new phase sequence, starting over at Phase 0 — distinct from the phases above. See `docs/PRODUCT_SPEC.md` for the full product spec this round works from.
+
+## R2 Phase 0 — Setup and quick fixes (2026-10-04)
+
+- `docs/PRODUCT_SPEC.md` added, kept accurate going forward.
+- `/demo` progress bar: "Step X of 8" and the percentage are now clearly separate for screen readers (explicit `aria-valuetext`, the sighted-only row marked `aria-hidden` so it isn't announced twice) as well as visually (already were). New Playwright test.
+- Playground devnet key (`BdPp5AziMgiHg1JkdQRS1hyQ6cnWXCHLrAw3EMYCrB9C`) was already funded (2.5 SOL) by the time I checked — no transfer needed. "Use real Solana devnet" tested live: mandate registered on-chain ([tx](https://explorer.solana.com/tx/3KER4auM6ewNqDCrVC5knQvAtuP6uJCzJXGP6yN6CYRVj89kYLXS3nLVndPdnycC4jCTGaEx8LiitnVmA2Ea8ekG?cluster=devnet)) and revoked on-chain ([tx](https://explorer.solana.com/tx/tEgp7CdcEBst48LbnB4QhRTPpAnS1bR2ogQtTgkQsg3pxLkD8zjGP8guvFwMiF9FPoeY1d64WGGakgdkf11Jvbx?cluster=devnet)), both real, no fallback.
+- Tagged `v0.1.0` at master ("Hackathon baseline: on-chain mandates, anchor_root, public playground") with a GitHub Release; closed issue #30.
+- Plugin install (`/plugin`) is a chat-level command I can't run myself — gave Rime the commands to type. `code-review`/`security-review` already work for me as skills with no install needed.
+- Links: [PR #54](https://github.com/Rime504/atlas-rail/pull/54), [v0.1.0](https://github.com/Rime504/atlas-rail/releases/tag/v0.1.0).
