@@ -99,3 +99,72 @@ test('back button returns to the previous step without losing state', async ({ p
   await page.getByRole('button', { name: /^back$/i }).click();
   await expect(page.getByText('Meet the agent')).toBeVisible();
 });
+
+test('the mode badge is visible and consistent across steps, not just on the toggle step', async ({ page }) => {
+  await page.goto('/demo');
+  await expect(page.getByText('Instant mode (no chain)')).toBeVisible();
+  await page.getByRole('button', { name: /^next$/i }).click(); // step 1 -> 2
+  await expect(page.getByText('Instant mode (no chain)')).toBeVisible();
+  await page.getByRole('button', { name: /sign and register on solana/i }).click();
+  await page.getByRole('button', { name: /^next$/i }).click(); // step 2 -> 3
+  await expect(page.getByText('Instant mode (no chain)')).toBeVisible();
+});
+
+test('a vacuous price-limit pass (no limit configured for this resource) is shown as not applicable, never a plain pass', async ({ page }) => {
+  await page.goto('/demo');
+  await page.getByRole('button', { name: /^next$/i }).click(); // step 1 -> 2
+  await page.getByRole('button', { name: /sign and register on solana/i }).click();
+  await page.getByRole('button', { name: /^next$/i }).click(); // step 2 -> 3
+  await page.getByRole('button', { name: /run the payment/i }).click();
+  await page.getByRole('button', { name: /^next$/i }).click(); // step 3 -> 4
+  await page.getByRole('button', { name: /let the compromised agent try to pay/i }).click();
+  await page.getByRole('button', { name: /show the rules it was checked against/i }).click();
+  await expect(page.getByText('No price limit applies to this resource')).toBeVisible();
+});
+
+test('no step causes horizontal page overflow at a 360px viewport width', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  const assertNoOverflow = async () => {
+    const overflowing = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+    expect(overflowing).toBe(false);
+  };
+
+  await page.goto('/');
+  await assertNoOverflow();
+  await page.getByRole('link', { name: /start the demo/i }).click();
+
+  await assertNoOverflow(); // step 1
+  await page.getByRole('button', { name: /^next$/i }).click();
+  await assertNoOverflow(); // step 2
+  await page.getByRole('button', { name: /sign and register on solana/i }).click();
+  await page.getByRole('button', { name: /show the signed mandate/i }).click();
+  await assertNoOverflow(); // step 2, mandate expanded (full-length addresses rendered)
+  await page.getByRole('button', { name: /^next$/i }).click();
+  await assertNoOverflow(); // step 3
+  await page.getByRole('button', { name: /run the payment/i }).click();
+  await page.getByRole('button', { name: /show the rules it was checked against/i }).click();
+  await assertNoOverflow(); // step 3, rules expanded
+  await page.getByRole('button', { name: /^next$/i }).click();
+  await assertNoOverflow(); // step 4
+  await page.getByRole('button', { name: /let the compromised agent try to pay/i }).click();
+  await assertNoOverflow();
+  await page.getByRole('button', { name: /^next$/i }).click();
+  await assertNoOverflow(); // step 5
+  await page.getByRole('button', { name: /charge \$0\.02 instead/i }).click();
+  await page.getByRole('button', { name: /charge \$0\.05 instead/i }).click();
+  await assertNoOverflow();
+  await page.getByRole('button', { name: /^next$/i }).click();
+  await assertNoOverflow(); // step 6
+  await page.getByRole('button', { name: /^approve$/i }).click();
+  await assertNoOverflow();
+  await page.getByRole('button', { name: /^next$/i }).click();
+  await assertNoOverflow(); // step 7
+  await page.getByRole('button', { name: /verify this receipt/i }).click();
+  await assertNoOverflow();
+  await page.getByRole('button', { name: /show the raw receipt/i }).click();
+  await assertNoOverflow(); // raw receipt JSON dump, the longest content on the page
+  await page.getByRole('button', { name: /^next$/i }).click();
+  await assertNoOverflow(); // step 8
+  await page.getByRole('button', { name: /revoke on solana/i }).click();
+  await assertNoOverflow();
+});

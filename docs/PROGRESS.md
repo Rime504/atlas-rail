@@ -75,3 +75,29 @@ A new phase sequence, starting over at Phase 0 — distinct from the phases abov
 - Ran `pnpm agent:e2e` on real devnet 3 times in a row, scripted mode — all green: [run 1](https://explorer.solana.com/tx/gwgVYzDGjtfPEyNNeWJD4QFQ5GL4dNcySrZi79yN7sePJjetox1dwdAAS8UYAtCv5ZCwkEC31cngzW5G3CBdj5W?cluster=devnet), [run 2](https://explorer.solana.com/tx/4yAUWwmfsVbocVKKVu4AtvuZHtABpfgCrJxojmu7QMYDJuBJ1ys6qMR1XXiZWGwvr7xsK5hZKCz5an2PNM2FvFWr?cluster=devnet), [run 3](https://explorer.solana.com/tx/wMXziBrf8XCngu4KCY2TTpveuP9oykiwPfNGSr835traFRFEPs9W3g39U3hcfKs25uBHCAFdbWNtBg9eC3qUMj3?cluster=devnet) (each link is that run's revoke tx; the 3rd run's full report is committed at `reports/e2e-2026-10-04.md`). Gate latency across the 3 runs: p50 414–542ms, p95 776–1060ms. Done-when for scripted mode is met.
 - **Not yet done:** llm-mode devnet testing — blocked on an API key per the ground rules (STOP and ask). Asked Rime for one; will run it once provided.
 - Links: [PR #56](https://github.com/Rime504/atlas-rail/pull/56).
+
+---
+
+# Round 3: final build order (Crypto World's Fair, deadline 2026-10-13 06:59 UTC)
+
+Supersedes Round 2's phase numbering — see `AGENTS.md`/`GEMINI.md` for the handoff summary and `docs/COMPETITIVE.md` for the competitive research behind this round's priorities.
+
+## T0.1 — Handoff files (2026-10-04)
+
+- `AGENTS.md` and `GEMINI.md` (identical content): what Atlas Rail is, repo map, exact commands, the non-negotiable rules, the ownership table, and a pointer to continue from `docs/PROGRESS.md`.
+- Tests: docs-only, no code touched.
+- Links: [PR #58](https://github.com/Rime504/atlas-rail/pull/58).
+- Gaps: none — a fresh agent should be able to continue from these files alone.
+- Next: T0.2 (playground fixes).
+
+## T0.2 — Playground fixes (2026-10-04)
+
+- Rule list: amounts are formatted as dollars everywhere (`formatUsd`), never base units — including inside each rule's "show details" panel, which previously showed the gate's raw base-unit message. `PRICE_LIMIT`'s vacuous pass (no price limit configured for this resource, e.g. the attack step) now shows as "not applicable" with a neutral dash, not a green tick.
+- Fixed a real overflow bug: `NETWORK_ALLOWED`/`ASSET_ALLOWED`'s rule label embedded the full mint address / CAIP-2 network id as an unbreakable string, overflowing the page at 360px width. Gave them short human labels like every other rule; added `break-words` defensively to both the label and detail text. `MonoAddress` is now tap-to-copy. New Playwright test walks all 8 steps at 360px asserting no horizontal overflow — this is what caught the bug.
+- Landing headline gradient's purple end (`#9945FF`) was ~3.65:1 contrast against the background, short of WCAG AA; added `solana-gradient-text`, a lightened variant (`#B98CFF`→`#14F195`) that clears ~6.5:1 everywhere along the gradient.
+- Mode (Instant/Real devnet) now shows as a persistent badge on every step, not just the step-1 toggle; proven to persist in a new Playwright test.
+- Devnet mode now actually attempts real settlement (steps 3 and 6, an SPL `TransferChecked` on devnet) and real `anchor_root` anchoring (step 7), with Explorer links shown in the UI when they succeed, falling back to the synthetic path with a visible reason otherwise — same pattern already used for mandate register/revoke. Also fixed a latent bug: the devnet rate limit was being re-spent on every on-chain action (register, now also 2 settlements + an anchor + revoke = 5 instead of the intended "5 runs/hour"); it's now decided once per run and reused.
+- Rule 15 boundary: added a dedicated unit test (`amounts.test.ts`) asserting the moderate spike is in the escalate zone and the severe spike is unconditionally above the hard max — both already were, but nothing enforced it before.
+- Tests: 299 vitest (3 new), Playwright 7 tests × 2 projects = 14 (3 new: mode badge persists, not-applicable rendering, 360px no-overflow), all passing. Full repo typecheck/lint/build clean.
+- **Not yet proven:** the real devnet settlement/anchor code path has not been exercised against actual devnet yet — it needs `PLAYGROUND_DEVNET_AGENT_SECRET_KEY` funded with a small amount of devnet USDC, which I can't do myself (Circle's faucet is a browser-only flow). STOPPING to ask Rime for this before claiming devnet mode's proof step actually passes for real. Redeploy and phone/desktop screenshots are pending this.
+- Links: (PR not yet opened as of this entry).

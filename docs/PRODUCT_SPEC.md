@@ -10,7 +10,7 @@ Built: mandate spec v0.2 + rule 15 · 15-rule gate · owner + approver + agent s
 
 In progress (Divyesh): PRs #37 #39 #41 #43 #45 #47 · signer on-chain revoke check · on-chain spend counter.
 
-In progress (me): llm-mode devnet e2e proof — blocked on an API key (asked Rime).
+In progress (me): llm-mode devnet e2e proof (blocked on an API key, asked Rime) · playground devnet-mode real settlement + real anchor_root for the proof step (code done, blocked on funding `PLAYGROUND_DEVNET_AGENT_SECRET_KEY` with devnet USDC, asked Rime).
 
 Planned: red-team · reserve/capture/release · Layer 1 hard cap · npm SDK + registerPolicy + MCP · browser verifier · x402 policy-attestation extension · console upgrades.
 

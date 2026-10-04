@@ -12,7 +12,7 @@ export default function LandingPage() {
         <h1 className="font-display text-4xl font-semibold leading-tight sm:text-5xl">
           AI agents can now pay for things.
           <br />
-          <span className="bg-solana-gradient bg-clip-text text-transparent">Atlas Rail makes sure they only pay what they&rsquo;re allowed to</span>, and proves it.
+          <span className="bg-solana-gradient-text bg-clip-text text-transparent">Atlas Rail makes sure they only pay what they&rsquo;re allowed to</span>, and proves it.
         </h1>
         <p className="mt-6 max-w-lg text-base text-mutedText">
           An 8-step guided walkthrough, running the real policy gate and receipt code. No signup, nothing to install.

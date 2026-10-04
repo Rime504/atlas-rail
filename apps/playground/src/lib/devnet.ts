@@ -1,19 +1,37 @@
 /**
- * Devnet mode: the one part of the playground that can touch the real, deployed mandate registry
- * (programs/atlas-mandate) on Solana devnet. Everything else (the gate decision, the receipt) is
- * always computed with the real code regardless of mode — see scenario.ts — so devnet mode only
- * changes whether mandate registration/revocation also happens on-chain.
+ * Devnet mode: the part of the playground that can touch the real, deployed mandate registry
+ * (programs/atlas-mandate) and move real (tiny, devnet-only) amounts of devnet USDC on Solana devnet.
+ * The gate decision itself is always computed with the real code regardless of mode (see scenario.ts)
+ * — devnet mode changes whether mandate registration/revocation, the two payments that actually
+ * ALLOW (steps 3 and 6), and the step 7 receipt anchor also happen for real on-chain, each falling
+ * back to a synthetic result with a visible reason if it fails.
  *
  * Keys: `PLAYGROUND_DEVNET_OWNER_SECRET_KEY` must be a funded devnet keypair (base58, 32- or
- * 64-byte secret key) — it pays the rent for `create_mandate`/`revoke_mandate`. Approver, agent and
- * instance keys default to freshly generated ones (cached for this server instance's lifetime) if
- * their own env vars aren't set, since they only need to sign, never to pay. Devnet mode is simply
- * unavailable (silently falls back to instant mode) if the owner key isn't configured.
+ * 64-byte secret key) — it pays the rent and fees for `create_mandate`/`revoke_mandate`, for creating
+ * the agent's and each session's seller's token accounts, and for topping up the instance key's SOL
+ * before it pays for `anchor_root`. `PLAYGROUND_DEVNET_AGENT_SECRET_KEY` must ALSO be set and funded
+ * with a small amount of real devnet USDC (https://faucet.circle.com) for settlement to succeed —
+ * without it, payments fall back to a synthetic settlement with a visible reason, same as any other
+ * devnet failure. Approver and instance keys default to freshly generated ones (cached for this
+ * server instance's lifetime) if their own env vars aren't set, since they only need to sign, never
+ * to pay (the instance key's SOL is minted on demand from the owner key, see `anchorRootOnchain`).
+ * Devnet mode is simply unavailable (silently falls back to instant mode) if the owner key isn't
+ * configured.
  */
 import { Keypair, VersionedTransaction } from '@solana/web3.js';
-import { AgentMandate, fromBase58, fromHex, hashMandate, LocalEd25519Signer } from '@atlas-rail/mandate';
-import { buildCreateMandateTransaction, buildRevokeMandateTransaction, findMandatePda, Web3ChainClient } from '@atlas-rail/solana';
-import { DevnetCoreKeys, randomKeyInfo } from './scenario';
+import { AgentMandate, X402Offer, fromBase58, fromHex, hashMandate, LocalEd25519Signer } from '@atlas-rail/mandate';
+import {
+  Web3ChainClient,
+  buildAnchorRootTransaction,
+  buildCreateMandateTransaction,
+  buildExactPaymentTransaction,
+  buildRevokeMandateTransaction,
+  ensureAta,
+  ensureSol,
+  fetchMandateAccount,
+  findMandatePda,
+} from '@atlas-rail/solana';
+import { DevnetCoreKeys, OnchainAnchor, randomKeyInfo } from './scenario';
 import { KeyInfo, OnchainAction } from './types';
 
 const PROGRAM_ID = process.env.MANDATE_PROGRAM_ID ?? 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k';
@@ -136,4 +154,72 @@ export async function revokeMandateOnchain(mandate: AgentMandate, keys: DevnetCo
   tx.sign([keypairFromInfo(keys.owner)]);
   const signature = await chain.sendAndConfirm(Buffer.from(tx.serialize()).toString('base64'));
   return { txSignature: signature, explorerUrl: explorerTx(signature) };
+}
+
+/**
+ * Settles a step 3/6 payment for real: a genuine SPL `TransferChecked` from the agent's own token
+ * account to the seller's, on Solana devnet, real (tiny) devnet USDC amounts. The owner key — the
+ * only key this deployment keeps funded with SOL — pays rent and fees as `feePayer`; the agent signs
+ * as the transfer's source authority, same as every other x402 "exact" payment in this project
+ * (`@atlas-rail/solana`'s `buildExactPaymentTransaction`, the same builder the main demo uses).
+ *
+ * Each playground session gets a fresh random seller key (never funded, never needs to be — it only
+ * ever receives), so its associated token account is created here, idempotently, before every
+ * payment. The agent's own token account needs an actual devnet USDC balance to pay anything with —
+ * see `PLAYGROUND_DEVNET_AGENT_SECRET_KEY` in README/ops notes for how that key is funded.
+ */
+export async function settlePaymentOnchain(offer: Pick<X402Offer, 'payTo' | 'asset' | 'amount'>, keys: DevnetCoreKeys): Promise<OnchainAction> {
+  const chain = Web3ChainClient.fromUrl(RPC_URL);
+  const ownerKeypair = keypairFromInfo(keys.owner);
+  const agentKeypair = keypairFromInfo(keys.agent);
+  const mintInfo = await chain.getMintInfo(offer.asset);
+  if (!mintInfo) throw new Error(`Mint ${offer.asset} was not found on devnet`);
+  await ensureAta(chain, ownerKeypair, keys.agent.publicKey, offer.asset);
+  await ensureAta(chain, ownerKeypair, offer.payTo, offer.asset);
+  const { blockhash } = await chain.getLatestBlockhash();
+  const tx = buildExactPaymentTransaction({
+    payer: keys.agent.publicKey,
+    feePayer: keys.owner.publicKey,
+    mint: offer.asset,
+    decimals: mintInfo.decimals,
+    payTo: offer.payTo,
+    amountBaseUnits: offer.amount,
+    recentBlockhash: blockhash,
+  });
+  tx.sign([ownerKeypair, agentKeypair]);
+  const signature = await chain.sendAndConfirm(Buffer.from(tx.serialize()).toString('base64'));
+  return { txSignature: signature, explorerUrl: explorerTx(signature) };
+}
+
+/**
+ * Anchors a step 7 receipt for real: reads the mandate's next `anchor_root` sequence number straight
+ * from its on-chain account (the same source of truth `AnchorService` uses for the main demo) and
+ * submits a real `anchor_root` transaction for this one-receipt batch. The gate authority (instance
+ * key) must sign and pay for it; since that key is never meant to hold funds, it's topped up here
+ * from the owner key's existing SOL balance first (a few thousand lamports — negligible, and this
+ * is plain devnet SOL, which the public faucet already gives out for free).
+ */
+export async function anchorRootOnchain(mandate: AgentMandate, merkleRoot: string, leafCount: number, keys: DevnetCoreKeys): Promise<OnchainAnchor> {
+  const chain = Web3ChainClient.fromUrl(RPC_URL);
+  const ownerKeypair = keypairFromInfo(keys.owner);
+  const instanceKeypair = keypairFromInfo(keys.instance);
+  await ensureSol(chain, keys.instance.publicKey, 5_000_000n, { funder: ownerKeypair, preferFunder: true });
+  const mandateHash = Buffer.from(hashMandate(mandate), 'hex');
+  const { address: mandatePda } = findMandatePda(PROGRAM_ID, mandateHash);
+  const account = await fetchMandateAccount(RPC_URL, mandatePda);
+  if (!account) throw new Error('Mandate is not registered on-chain — nothing to anchor against');
+  const { blockhash } = await chain.getLatestBlockhash();
+  const unsigned = buildAnchorRootTransaction({
+    programId: PROGRAM_ID,
+    mandatePda,
+    gateAuthority: keys.instance.publicKey,
+    recentBlockhash: blockhash,
+    seq: account.nextRootSeq,
+    merkleRoot: fromHex(merkleRoot),
+    leafCount,
+  });
+  const tx = VersionedTransaction.deserialize(Buffer.from(unsigned, 'base64'));
+  tx.sign([instanceKeypair]);
+  const signature = await chain.sendAndConfirm(Buffer.from(tx.serialize()).toString('base64'));
+  return { action: { txSignature: signature, explorerUrl: explorerTx(signature) }, seq: Number(account.nextRootSeq), chain, programId: PROGRAM_ID };
 }
