@@ -76,6 +76,7 @@ export async function runVerify(options: VerifyCliOptions, out: (line: string) =
 
   const result = await verifyReceipt(document, {
     chain,
+    rpcUrl: rpc,
     trustedInstanceKeys: options.trustedKeys.length > 0 ? options.trustedKeys : undefined,
     checkSettlementOnChain: options.checkSettlement && chain !== null,
     requireAnchor: options.requireAnchor,

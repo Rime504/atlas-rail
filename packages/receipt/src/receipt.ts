@@ -16,7 +16,13 @@ import {
   verifyDomainHash,
   verifyMandateChain,
 } from '@atlas-rail/mandate';
-import { ChainClient, checkMemoAnchor, checkSettlement } from '@atlas-rail/solana';
+import {
+  ChainClient,
+  checkMemoAnchor,
+  checkSettlement,
+  fetchRootAccount,
+  findRootPda,
+} from '@atlas-rail/solana';
 import { MerkleStep, buildAnchorMemo, verifyMerkleProof } from './merkle';
 
 export const RECEIPT_TYPE = 'atlasrail.bound-receipt' as const;
@@ -49,6 +55,10 @@ export interface AnchorProof {
   anchoredAt: number | null;
   /** Key that signed the anchor transaction. Verification requires it to equal the receipt's instance key. */
   signer: string;
+  /** Present when anchored via `anchor_root` (Root PDA). Absent for legacy SPL Memo anchors. */
+  mandatePda?: string;
+  /** `anchor_root` sequence (decimal string). Present with `mandatePda`. */
+  seq?: string;
 }
 
 export interface BoundReceiptBody {
@@ -169,6 +179,8 @@ export interface VerifyReceiptOptions {
   trustedInstanceKeys?: readonly string[];
   /** Chain access for the anchor and settlement checks. Without it those checks are SKIPPED. */
   chain?: ChainClient | null;
+  /** RPC URL for Root PDA reads when the receipt was anchored via `anchor_root`. */
+  rpcUrl?: string | null;
   /** Verify the settlement transaction on-chain (requires `chain`). Default true when `chain` is given. */
   checkSettlementOnChain?: boolean;
   /** Fail (rather than skip) if the receipt has not been anchored yet. */
@@ -338,7 +350,35 @@ export async function verifyReceipt(input: unknown, options: VerifyReceiptOption
           : 'Merkle proof does not lead from this receipt to the anchored root',
       ),
     );
-    if (options.chain) {
+    if (anchor.mandatePda != null && anchor.seq != null) {
+      const rpcUrl = options.rpcUrl ?? null;
+      if (!rpcUrl) {
+        checks.push(skip('ANCHOR_ONCHAIN', 'Merkle root anchored on Solana devnet', 'no RPC available; run without --offline to check the Root account'));
+      } else {
+        const programId = process.env.MANDATE_PROGRAM_ID ?? 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k';
+        const { address: rootPda } = findRootPda(programId, anchor.mandatePda, BigInt(anchor.seq));
+        const root = await fetchRootAccount(rpcUrl, rootPda).catch(() => null);
+        const ok =
+          root != null &&
+          root.mandate === anchor.mandatePda &&
+          root.seq === BigInt(anchor.seq) &&
+          root.merkleRoot === anchor.merkleRoot &&
+          root.leafCount === anchor.leafCount &&
+          anchor.signer === receipt.instance.publicKey;
+        checks.push(
+          check(
+            'ANCHOR_ONCHAIN',
+            'Merkle root anchored on Solana devnet',
+            ok,
+            ok
+              ? `Root PDA matches mandate ${anchor.mandatePda.slice(0, 8)}… seq ${anchor.seq} (${anchor.txSignature.slice(0, 12)}…)`
+              : root == null
+                ? `Root account ${rootPda} not found on-chain`
+                : 'Root account does not match this receipt anchor (mandate/seq/root/count/signer)',
+          ),
+        );
+      }
+    } else if (options.chain) {
       const summary = await options.chain.getTransactionSummary(anchor.txSignature).catch(() => null);
       const memo = buildAnchorMemo({ merkleRoot: anchor.merkleRoot, leafCount: anchor.leafCount, batchId: anchor.batchId });
       const onChain = checkMemoAnchor(summary, { memo, signer: receipt.instance.publicKey });

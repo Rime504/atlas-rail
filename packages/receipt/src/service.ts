@@ -8,8 +8,11 @@ import {
 import {
   ChainClient,
   SignerAdapter,
+  buildAnchorRootTransaction,
   buildAnchorTransaction,
   checkSettlement,
+  fetchMandateAccount,
+  findMandatePda,
 } from '@atlas-rail/solana';
 import { AnchorProof, BoundReceipt, ReceiptResponse, buildReceipt } from './receipt';
 import { buildAnchorMemo, merkleProof, merkleRoot } from './merkle';
@@ -154,6 +157,11 @@ export interface AnchorServiceOptions {
   newId: (prefix: string) => string;
   network?: string;
   maxBatchSize?: number;
+  /**
+   * When set, batches are anchored with `anchor_root` (Root PDA) per mandate instead of SPL Memo.
+   * The signer must be the mandate's on-chain `gate_authority`.
+   */
+  onchainRoot?: { programId: string; rpcUrl: string };
 }
 
 export interface AnchorRunResult {
@@ -162,30 +170,62 @@ export interface AnchorRunResult {
 }
 
 /**
- * Batches unanchored receipts into a Merkle tree and anchors the root on Solana devnet with a Memo
- * instruction signed by the instance key. Receipts keep their inclusion proofs so anyone can verify
- * them later with `atlas verify`.
+ * Batches unanchored receipts into a Merkle tree and anchors the root on Solana devnet — either via
+ * SPL Memo (default) or `anchor_root` Root PDAs when {@link AnchorServiceOptions.onchainRoot} is set.
+ * Receipts keep their inclusion proofs so anyone can verify them later with `atlas verify`.
  */
 export class AnchorService {
   constructor(private readonly deps: AnchorServiceOptions) {}
 
   /** Anchors up to `maxBatchSize` pending receipts. Returns null when there is nothing to anchor. */
   async run(): Promise<AnchorRunResult | null> {
-    const { receipts, chain, signer, clock, newId } = this.deps;
-    const pending = await receipts.listUnanchored(this.deps.maxBatchSize ?? 256);
-    if (pending.length === 0) return null;
+    const { receipts, chain, signer, clock, newId, onchainRoot } = this.deps;
+    const pendingAll = await receipts.listUnanchored(this.deps.maxBatchSize ?? 256);
+    if (pendingAll.length === 0) return null;
+
+    // On-chain roots are per-mandate; Memo may still batch across mandates.
+    const pending = onchainRoot
+      ? pendingAll.filter((p) => p.receipt.hashes.mandateHash === pendingAll[0].receipt.hashes.mandateHash)
+      : pendingAll;
 
     const leaves = pending.map((p) => p.receipt.receiptHash);
     const root = merkleRoot(leaves);
     const batchId = newId('anc');
-    const memo = buildAnchorMemo({ merkleRoot: root, leafCount: leaves.length, batchId });
     const network = this.deps.network ?? 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1';
 
     try {
       const { blockhash } = await chain.getLatestBlockhash();
-      const unsigned = buildAnchorTransaction({ signer: signer.publicKey, memo, recentBlockhash: blockhash });
-      const signed = await signer.signTransaction(unsigned);
-      const txSignature = await chain.sendAndConfirm(signed.signedBase64);
+      let txSignature: string;
+      let mandatePda: string | undefined;
+      let seq: string | undefined;
+
+      if (onchainRoot) {
+        const mandateHash = Buffer.from(pending[0].receipt.hashes.mandateHash, 'hex');
+        mandatePda = findMandatePda(onchainRoot.programId, mandateHash).address;
+        const onchain = await fetchMandateAccount(onchainRoot.rpcUrl, mandatePda);
+        if (!onchain) {
+          throw new Error(`On-chain mandate account ${mandatePda} not found; register the mandate before anchoring with ATLAS_ONCHAIN_ANCHOR`);
+        }
+        const seqBig = onchain.nextRootSeq;
+        seq = seqBig.toString();
+        const unsigned = buildAnchorRootTransaction({
+          programId: onchainRoot.programId,
+          mandatePda,
+          gateAuthority: signer.publicKey,
+          recentBlockhash: blockhash,
+          seq: seqBig,
+          merkleRoot: Buffer.from(root, 'hex'),
+          leafCount: leaves.length,
+        });
+        const signed = await signer.signTransaction(unsigned);
+        txSignature = await chain.sendAndConfirm(signed.signedBase64);
+      } else {
+        const memo = buildAnchorMemo({ merkleRoot: root, leafCount: leaves.length, batchId });
+        const unsigned = buildAnchorTransaction({ signer: signer.publicKey, memo, recentBlockhash: blockhash });
+        const signed = await signer.signTransaction(unsigned);
+        txSignature = await chain.sendAndConfirm(signed.signedBase64);
+      }
+
       const summary = await chain.getTransactionSummary(txSignature);
       const anchoredAt = summary?.blockTime ?? clock();
 
@@ -211,6 +251,7 @@ export class AnchorService {
           network,
           anchoredAt,
           signer: signer.publicKey,
+          ...(mandatePda != null && seq != null ? { mandatePda, seq } : {}),
         },
       }));
       await receipts.saveBatch(batch, anchors);

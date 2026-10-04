@@ -87,11 +87,12 @@ Either command seeds two agent mandates and runs six scripted scenes end to end 
 
 ### On-chain mandate registry (devnet)
 
-A mandate's existence and revocation are also recorded on-chain, so anyone can check them independently of Atlas Rail's own database. See [`programs/atlas-mandate`](programs/atlas-mandate) for the Anchor program (`create_mandate`, `revoke_mandate`).
+A mandate's existence and revocation are also recorded on-chain, so anyone can check them independently of Atlas Rail's own database. See [`programs/atlas-mandate`](programs/atlas-mandate) for the Anchor program (`create_mandate`, `revoke_mandate`, `anchor_root`).
 
 - **Program ID (devnet):** `CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k` — [view on Solana Explorer](https://explorer.solana.com/address/CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k?cluster=devnet)
 - 10 Rust unit tests + 18 TypeScript integration tests (LiteSVM) pass; see the program's own README for details.
 - **Not yet wired into the policy gate or the console** — today the gate's decisions still come entirely from Atlas Rail's own database. Making the gate check this on-chain record (and showing it with an Explorer link in the console) is in progress.
+- **Receipt anchoring:** set `ATLAS_ONCHAIN_ANCHOR=true` to write Merkle roots with `anchor_root` (Root PDA per mandate + seq) instead of SPL Memo. `atlas verify` then checks that Root account. Default remains Memo until the deployed program exposes `anchor_root`.
 
 ## ⚠️ Safety Boundary — Read This First
 
