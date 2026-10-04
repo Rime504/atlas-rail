@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { AddressInfo } from 'net';
 import { spawnSync } from 'child_process';
 import { dirname, join } from 'path';
+import { envBoolean } from '@atlas-rail/config';
 import {
   AgentMandate,
   SOLANA_DEVNET_CAIP2,
@@ -357,7 +358,12 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       bad('no escalated receipt to verify (run scene 4 first)');
       summary.ok = false;
     } else {
-      step('Anchoring pending receipts: batching them into a Merkle tree and writing the root to Solana with a Memo transaction…');
+      const anchorRootOn = envBoolean.safeParse(process.env.ATLAS_ANCHOR_ROOT).data === true;
+      step(
+        anchorRootOn
+          ? 'Anchoring pending receipts: batching them into a Merkle tree and writing the root to the mandate registry’s anchor_root instruction…'
+          : 'Anchoring pending receipts: batching them into a Merkle tree and writing the root to Solana with a Memo transaction…',
+      );
       const anchored = await api.post<{ batch: { merkleRoot: string; txSignature: string; leafCount: number } | null; anchored: number }>('/v1/agent/anchor', { token: owner });
       if (anchored.batch) {
         ok(`anchored ${anchored.anchored} receipt(s) under root ${short(anchored.batch.merkleRoot, 10, 6)}`);
