@@ -62,6 +62,10 @@ export async function processPayoutExecutionJob(job: Job<PayoutExecutionJobData>
   if (payout.status !== PayoutStatus.QUEUED_FOR_EXECUTION) {
     return;
   }
+  // Already submitted on-chain — never build/sign/submit again.
+  if (payout.transactionSignature) {
+    return;
+  }
 
   assertValidTransition(payout.status as PayoutStatus, PayoutStatus.SIMULATING);
   await prisma.payout.update({ where: { id: payout.id }, data: { status: PayoutStatus.SIMULATING } });
@@ -161,6 +165,14 @@ export async function processPayoutExecutionJob(job: Job<PayoutExecutionJobData>
       PAYOUT_CONFIRMATION_JOB_OPTIONS,
     );
   } catch (err: any) {
+    const current = await prisma.payout.findUnique({
+      where: { id: payout.id },
+      select: { status: true, transactionSignature: true },
+    });
+    // Post-submit side effects failed after the chain saw the tx — keep SUBMITTED so retries cannot double-pay.
+    if (current?.transactionSignature || current?.status === PayoutStatus.SUBMITTED) {
+      throw err;
+    }
     await prisma.payout.update({
       where: { id: payout.id },
       data: {

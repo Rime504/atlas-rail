@@ -227,6 +227,11 @@ export class PayoutService {
 
   async queueExecution(orgId: string, userId: string, payoutId: string) {
     const payout = await this.findOne(orgId, payoutId);
+    if (payout.transactionSignature) {
+      throw new BadRequestException(
+        'Payout already has an on-chain transaction signature and cannot be re-queued for execution.',
+      );
+    }
     assertValidTransition(payout.status as PayoutStatus, PayoutStatus.QUEUED_FOR_EXECUTION);
 
     const queued = await prisma.payout.update({
