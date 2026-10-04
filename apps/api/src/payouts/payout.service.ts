@@ -1,8 +1,47 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { prisma, generateUlid, PayoutStatus } from '@atlas-rail/database';
-import { evaluatePolicy, assertValidTransition, PolicyRules } from '@atlas-rail/domain';
+import { evaluatePolicy, assertValidTransition, PolicyRules, addBaseUnits } from '@atlas-rail/domain';
 import { WEBHOOK_EVENT_TYPES } from '@atlas-rail/config';
 import { QueueService } from '../common/queue.service';
+
+/** Statuses that still count against daily/monthly limits (in-flight + confirmed). */
+const ROLLING_SPEND_STATUSES: PayoutStatus[] = [
+  PayoutStatus.PENDING_APPROVAL,
+  PayoutStatus.APPROVED,
+  PayoutStatus.QUEUED_FOR_EXECUTION,
+  PayoutStatus.SIMULATING,
+  PayoutStatus.READY_TO_SIGN,
+  PayoutStatus.SUBMITTED,
+  PayoutStatus.CONFIRMED,
+];
+
+async function rollingSpendForTreasury(treasuryId: string): Promise<{
+  dailyTotalBaseUnits: string;
+  monthlyTotalBaseUnits: string;
+}> {
+  const now = new Date();
+  const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+  const rows = await prisma.payout.findMany({
+    where: {
+      treasuryId,
+      status: { in: ROLLING_SPEND_STATUSES },
+      createdAt: { gte: monthStart },
+    },
+    select: { amountBaseUnits: true, createdAt: true },
+  });
+
+  let dailyTotalBaseUnits = '0';
+  let monthlyTotalBaseUnits = '0';
+  for (const row of rows) {
+    monthlyTotalBaseUnits = addBaseUnits(monthlyTotalBaseUnits, row.amountBaseUnits);
+    if (row.createdAt >= dayStart) {
+      dailyTotalBaseUnits = addBaseUnits(dailyTotalBaseUnits, row.amountBaseUnits);
+    }
+  }
+  return { dailyTotalBaseUnits, monthlyTotalBaseUnits };
+}
 
 @Injectable()
 export class PayoutService {
@@ -62,6 +101,8 @@ export class PayoutService {
     const activePolicy = treasury.policies[0];
     if (!activePolicy) throw new BadRequestException('No active policy configured for treasury.');
 
+    const rollingSpend = await rollingSpendForTreasury(treasury.id);
+
     // Initial policy evaluation preview
     const evalResult = evaluatePolicy({
       policy: { version: activePolicy.version, rules: activePolicy.rules as unknown as PolicyRules },
@@ -73,7 +114,7 @@ export class PayoutService {
         memo: data.memo,
         createdByUserId: userId,
       },
-      rollingSpend: { dailyTotalBaseUnits: '0', monthlyTotalBaseUnits: '0' },
+      rollingSpend,
     });
 
     const initialStatus = evalResult.decision === 'BLOCK' ? PayoutStatus.BLOCKED : PayoutStatus.PENDING_APPROVAL;
