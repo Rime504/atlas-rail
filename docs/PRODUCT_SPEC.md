@@ -6,11 +6,11 @@ Team: Rime, Kamelia, and Divyesh.
 
 ## Status
 
-Built: mandate spec v0.2 + rule 15 · 15-rule gate · owner + approver + agent signatures · human escalation bound to exact tx bytes · Merkle receipts + atlas verify · Anchor program (create_mandate, revoke_mandate, anchor_root) on devnet CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k · gate respects on-chain revoke · public 8-step playground · README/HACKATHON/THREAT_MODEL/DEMO_VIDEO.
+Built: mandate spec v0.2 + rule 15 · 15-rule gate · owner + approver + agent signatures · human escalation bound to exact tx bytes · Merkle receipts + atlas verify · Anchor program (create_mandate, revoke_mandate, anchor_root) on devnet CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k · gate respects on-chain revoke · public 8-step playground · README/HACKATHON/THREAT_MODEL/DEMO_VIDEO · real LLM agent (`AGENT_MODE=llm`, Anthropic/OpenAI, no key seen by the model) + `pnpm agent:e2e` devnet harness, proven green 3x in a row on real devnet in scripted mode.
 
 In progress (Divyesh): PRs #37 #39 #41 #43 #45 #47 · signer on-chain revoke check · on-chain spend counter.
 
-In progress (me): real LLM agent (`AGENT_MODE=llm`, Anthropic/OpenAI, no key seen by the model) and `pnpm agent:e2e` devnet harness — code written and unit-tested, scripted-mode devnet proof run not yet done.
+In progress (me): llm-mode devnet e2e proof — blocked on an API key (asked Rime).
 
 Planned: red-team · reserve/capture/release · Layer 1 hard cap · npm SDK + registerPolicy + MCP · browser verifier · x402 policy-attestation extension · console upgrades.
 
