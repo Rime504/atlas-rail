@@ -36,3 +36,17 @@ Running log of work toward the Colosseum hackathon submission (due 11 October). 
 - Ran the real demo end to end on devnet with `ATLAS_ONCHAIN=1 ATLAS_ANCHOR_ROOT=1`: `atlas verify` reports `PASS — anchor_root recorded this Merkle root on-chain for mandate 79EvgAgQbBMSNc4kCadRnfVVGA1yPtQLnF9P7ckSCHC at seq 0`. Anchor tx: https://explorer.solana.com/tx/2PTLcdZ5ghZ4axrGhEyYzihRnaM7cLKSZWAVVcZEAXJubRoJnHA7MteRNcAUGuCs996JxakuHS6mychAXUrGKF6?cluster=devnet
 - Deleted the two leftover `.patch` files in the repo root and moved `data_pipeline/` out to `C:\Users\pc\Documents\cryptoproject\data_pipeline\` (unrelated scaffold, not part of this repo).
 - Links: [PR #34](https://github.com/Rime504/atlas-rail/pull/34), [PR #48](https://github.com/Rime504/atlas-rail/pull/48), [PR #49](https://github.com/Rime504/atlas-rail/pull/49).
+
+## Phase 3 — Judge-ready polish (2026-10-04)
+
+- README top rewritten: playground link first, a recorded GIF (`docs/assets/playground-demo.gif`, via Playwright video capture + ffmpeg), a 30-second pitch, a compact architecture mermaid diagram, the devnet program ID with its Explorer link, the one-command local run, and first-name team credits (Rime, Kamelia, Divyesh). Also fixed a stale claim further down that the on-chain registry was "not yet wired into the policy gate" — it has been since Phase 1/2.
+- `apps/site`'s hero CTA now links to the live playground instead of a disabled "video coming soon" placeholder. Verified locally (lint/typecheck/build clean, screenshotted).
+- New `docs/HACKATHON.md`: before/during-the-hackathon split with real commit links, matching the actual git history (treasury engine 7 Sept, Agent Mandates first pass 24–25 Sept, everything from 28 Sept onward built during the hackathon).
+- New `docs/THREAT_MODEL.md`: a judge-facing companion to the existing formal threat table — the specific attacks requested (overpay, wrong seller, wrong asset, budget drain, seller price inflation/creep, revoked mandate, tampered receipt, replayed approval, prompt injection) each mapped to the exact gate rule and where to see it in the playground, plus an honest limits section.
+- CI green on master throughout.
+- Links: [PR #51](https://github.com/Rime504/atlas-rail/pull/51).
+
+## Phase 4 — Demo video script (2026-10-04)
+
+- `docs/DEMO_VIDEO.md`: a timestamped script under 3 minutes for a screen recording of the playground (what to say, what to click, when, including an optional devnet-mode variant), plus a 2-minute pitch outline for talking about Atlas Rail without the screen.
+- Links: [PR #52](https://github.com/Rime504/atlas-rail/pull/52).
