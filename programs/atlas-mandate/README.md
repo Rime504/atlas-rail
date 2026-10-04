@@ -27,7 +27,9 @@ Status: written against `anchor-lang` 1.2.0. Program ID (synced via `anchor keys
   `anchor test` would be the wrong tool regardless. Run the command above directly.
 - `anchor build` succeeds (SBF `.so` built).
 
-## Next steps
-1. Deploy to devnet; put the program ID in `.env.example` and the root README.
-2. Policy gate: new rule that denies when the on-chain mandate is missing, revoked, not yet valid or expired (behind `ATLAS_ONCHAIN=1`).
-3. Demo scene 6 (Revoke) sends `revoke_mandate` and prints the Solana Explorer link.
+Deployed to devnet; upgraded in place (same program ID) to add `anchor_root`. The policy gate
+denies when the on-chain mandate is missing, revoked, not yet valid or expired, behind
+`ATLAS_ONCHAIN=1`. Demo scenes 1 and 6 (Grant, Revoke) send `create_mandate`/`revoke_mandate` and
+print the Solana Explorer link. Receipt anchoring uses `anchor_root` instead of an SPL Memo behind
+`ATLAS_ANCHOR_ROOT=1` (also requires `ATLAS_ONCHAIN=1`) — see `packages/receipt/src/service.ts`'s
+`AnchorService` and the root `.env.example`.

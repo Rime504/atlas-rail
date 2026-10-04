@@ -671,6 +671,9 @@ importers:
       '@atlas-rail/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      '@solana/web3.js':
+        specifier: ^1.95.8
+        version: 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@types/node':
         specifier: ^22.10.1
         version: 22.20.1

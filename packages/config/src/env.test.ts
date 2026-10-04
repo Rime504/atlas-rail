@@ -48,6 +48,11 @@ describe('validateEnv', () => {
   it('defaults MANDATE_PROGRAM_ID to the deployed devnet program', () => {
     expect(validateEnv(baseEnv).MANDATE_PROGRAM_ID).toBe('CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k');
   });
+
+  it('defaults ATLAS_ANCHOR_ROOT to false so anchoring stays on the Memo path', () => {
+    expect(validateEnv(baseEnv).ATLAS_ANCHOR_ROOT).toBe(false);
+    expect(validateEnv({ ...baseEnv, ATLAS_ANCHOR_ROOT: 'true' }).ATLAS_ANCHOR_ROOT).toBe(true);
+  });
 });
 
 describe('ALLOWED_SOLANA_PROGRAM_IDS', () => {

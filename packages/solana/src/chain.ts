@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { Connection, PublicKey, VersionedTransaction } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync, getMint } from '@solana/spl-token';
 import { ALLOWED_SOLANA_PROGRAM_IDS } from '@atlas-rail/config';
@@ -17,6 +18,17 @@ export interface ChainTokenTransfer {
   authority: string;
 }
 
+/** A compiled instruction, generic across any program — used to check program-specific instructions
+ * (e.g. the mandate registry's `anchor_root`) without baking every program into this file the way
+ * the token-transfer and Memo special cases below already are. */
+export interface ChainInstruction {
+  programId: string;
+  /** Raw instruction data, base64. */
+  dataBase64: string;
+  /** Account addresses in instruction order. */
+  accounts: string[];
+}
+
 export interface ChainTransactionSummary {
   signature: string;
   slot: number | null;
@@ -28,6 +40,7 @@ export interface ChainTransactionSummary {
   signers: string[];
   tokenTransfers: ChainTokenTransfer[];
   memos: string[];
+  instructions: ChainInstruction[];
   programIds: string[];
 }
 
@@ -70,11 +83,13 @@ export function summarizeMessage(
   const tokenTransfers: ChainTokenTransfer[] = [];
   const memos: string[] = [];
   const programIds: string[] = [];
+  const instructions: ChainInstruction[] = [];
 
   for (const ix of message.compiledInstructions) {
     const programId = keys[ix.programIdIndex].toBase58();
     if (!programIds.includes(programId)) programIds.push(programId);
     const accounts = ix.accountKeyIndexes.map((i) => keys[i].toBase58());
+    instructions.push({ programId, accounts, dataBase64: Buffer.from(ix.data).toString('base64') });
     if (programId === TOKEN_ID && ix.data.length === 10 && ix.data[0] === 12) {
       const amount = new DataView(ix.data.buffer, ix.data.byteOffset, ix.data.byteLength).getBigUint64(1, true);
       tokenTransfers.push({
@@ -99,6 +114,7 @@ export function summarizeMessage(
     tokenTransfers,
     memos,
     programIds,
+    instructions,
   };
 }
 
@@ -179,6 +195,44 @@ export function checkMemoAnchor(
     return { ...base, ok: false, reason: 'anchor transaction does not carry the expected Merkle root memo' };
   }
   return { ...base, ok: true, reason: 'Merkle root memo is on-chain in a transaction signed by the instance key' };
+}
+
+const ANCHOR_ROOT_DISCRIMINATOR = createHash('sha256').update('global:anchor_root').digest().subarray(0, 8);
+// seq (u64 LE, 8 bytes) + merkle_root (32 bytes) + leaf_count (u32 LE, 4 bytes), after the 8-byte
+// discriminator. Field order/widths mirror `encodeAnchorRootArgs` in mandate-registry.ts exactly.
+const ANCHOR_ROOT_ARGS_LEN = 8 + 32 + 4;
+
+/**
+ * Confirms a transaction succeeded, was signed by `signer`, and invoked the mandate registry's
+ * `anchor_root` instruction for `mandatePda` with exactly the expected seq, Merkle root and leaf
+ * count. The alternative to {@link checkMemoAnchor} once a receipt batch is anchored via the
+ * program's per-mandate Root PDA instead of an SPL Memo.
+ */
+export function checkRootAnchor(
+  summary: ChainTransactionSummary | null,
+  expected: { programId: string; mandatePda: string; signer: string; seq: bigint; merkleRoot: string; leafCount: number },
+): AnchorCheck {
+  if (!summary) return { ok: false, reason: 'anchor transaction not found on the cluster', slot: null, blockTime: null };
+  const base = { slot: summary.slot, blockTime: summary.blockTime };
+  if (summary.err !== null) return { ...base, ok: false, reason: `anchor transaction failed: ${JSON.stringify(summary.err)}` };
+  if (!summary.signers.includes(expected.signer)) {
+    return { ...base, ok: false, reason: 'anchor transaction was not signed by the expected gate authority key' };
+  }
+  const ix = summary.instructions.find((i) => i.programId === expected.programId && i.accounts[0] === expected.mandatePda);
+  if (!ix) {
+    return { ...base, ok: false, reason: 'anchor transaction does not invoke the mandate registry for this mandate' };
+  }
+  const data = Buffer.from(ix.dataBase64, 'base64');
+  if (data.length !== 8 + ANCHOR_ROOT_ARGS_LEN || !data.subarray(0, 8).equals(ANCHOR_ROOT_DISCRIMINATOR)) {
+    return { ...base, ok: false, reason: 'instruction is not an anchor_root call' };
+  }
+  const seq = data.readBigUInt64LE(8);
+  const merkleRoot = data.subarray(16, 48).toString('hex');
+  const leafCount = data.readUInt32LE(48);
+  if (seq !== expected.seq || merkleRoot !== expected.merkleRoot || leafCount !== expected.leafCount) {
+    return { ...base, ok: false, reason: 'anchor_root instruction does not carry the expected seq, Merkle root or leaf count' };
+  }
+  return { ...base, ok: true, reason: `anchor_root recorded this Merkle root on-chain for mandate ${expected.mandatePda} at seq ${seq}` };
 }
 
 /** {@link ChainClient} over a web3.js Connection. Refuses mainnet endpoints (ADR 0004). */
