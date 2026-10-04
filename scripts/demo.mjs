@@ -263,7 +263,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  if (error instanceof Abort) return;
   try {
     fatal(error instanceof Error ? error.stack ?? error.message : String(error));
   } catch {
