@@ -20,7 +20,7 @@ import {
   createAtlasFetch,
 } from '@atlas-rail/x402';
 import { ConsoleApi, DEMO_PASSWORD, DEMO_USERS } from './console-api';
-import { AgentTools, heavyInferenceModel, injectedModel, researchModel, runAgent } from './model';
+import { AgentTools, heavyInferenceModel, injectedModel, priceInflationModel, researchModel, runAgent } from './model';
 import { DemoEnv, DemoState } from './setup';
 import { bad, c, info, kv, ok, say, scene, short, step, usd } from './ui';
 
@@ -186,7 +186,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
   /* -------------------------------------------------------------------------------------------- */
   if (run(1)) {
     scene(1, 'GRANT', 'The org owner and an independent approver sign a mandate for the Research Agent; the agent accepts it.');
-    step(`Owner ${c.bold('Elena Rostova')} drafts the mandate: $5.00/day autonomous budget, $50.00 hard ceiling per payment, $100.00 lifetime cap, human approval above $1.00, research endpoints only, expires in 3 days.`);
+    step(`Owner ${c.bold('Elena Rostova')} drafts the mandate: $5.00/day autonomous budget, $50.00 hard ceiling per payment, $100.00 lifetime cap, human approval above $1.00, research endpoints only, a $0.01 research price limit, expires in 3 days.`);
     const drafted = await api.post<{ id: string }>('/v1/agent/mandates', { token: owner }, {
       label: 'Research Agent',
       agentPublicKey: state.agent,
@@ -197,6 +197,9 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       maxTotal: '100000000',
       allowedPayTo: [state.merchant],
       allowedResources: [`${env.demoApiUrl}/research/*`],
+      priceLimits: [
+        { resource: `${env.demoApiUrl}/research/*`, expectedPriceBaseUnits: '10000', tolerancePct: 10, hardMaxBaseUnits: '20000' },
+      ],
       escalation: {
         thresholdBaseUnits: '1000000',
         resources: [`${env.demoApiUrl}/inference/*`],
@@ -276,6 +279,24 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     } finally {
       await seller.close();
     }
+
+    say();
+    step('A subtler attack: the research seller itself quietly raises its price, fivefold, on an endpoint it was already allowed to charge for.');
+    events.length = 0;
+    const priceTrace = await runAgent(priceInflationModel(`${env.demoApiUrl}/research/summary-premium`), tools(), 'Fetch one more research summary.');
+    for (const s of priceTrace.steps) if (s.action.type === 'tool_call') info(`agent: ${s.action.thought}`);
+    const priceDenied = last.denied;
+    if (priceDenied?.failedRules.includes('PRICE_LIMIT')) {
+      bad(`payment ${c.red('DENIED')}: PRICE_LIMIT`);
+      narrateDecision(priceDenied.decision);
+      ok('the recipient, resource and budget were all fine — the price limit is what caught this');
+      summary.scenes.priceLimit = { denied: true, failedRules: priceDenied.failedRules };
+    } else {
+      bad('EXPECTED the inflated price to be denied by PRICE_LIMIT');
+      summary.ok = false;
+      summary.scenes.priceLimit = { denied: false };
+    }
+    say(c.dim('  (Rule 15, spec/agent-mandate-v0.1.md §3.4 — credit to Felix for finding this gap: every other rule\n   was satisfied, so only a price limit, fixed at signing time, stops a seller creeping its price up.)'));
   }
 
   /* -------------------------------------------------------------------------------------------- */

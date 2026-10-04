@@ -58,6 +58,32 @@ async function build() {
   const heavy = testOffer({ resourceUrl: `${TEST_ORIGIN}/inference/heavy`, amount: '40000000' });
   const mid = testOffer({ amount: '2000000' });
 
+  // Rule 15 (price limits): expected 1,000,000 · 10% tolerance -> ceiling 1,100,000 · hard max 2,000,000.
+  // expectedPriceBaseUnits is fixed at signing time and never updated from past payments -- see the
+  // "price creep" case below, which is the attack this rule exists to stop.
+  const priceLimits = [
+    { resource: `${TEST_ORIGIN}/research/*`, expectedPriceBaseUnits: '1000000', tolerancePct: 10, hardMaxBaseUnits: '2000000' },
+  ];
+  // threshold == maxPerPayment so ESCALATION_THRESHOLD never fires here; every result below comes
+  // from PRICE_LIMIT alone.
+  const pricedMandate = await signedTestMandate({ priceLimits, threshold: '50000000' });
+  const pricedGateCase = (name: string, offer: X402Offer, context: GateContext) => {
+    const result = evaluateGate(pricedMandate, offer, context);
+    return {
+      name,
+      offer,
+      offerHash: hashOffer(offer),
+      context,
+      expected: {
+        decision: result.decision,
+        kind: result.kind,
+        failedRule: result.failedRule,
+        escalationRules: result.escalationRules,
+        rules: result.rulesEvaluated.map((r) => `${r.id}:${r.status}`),
+      },
+    };
+  };
+
   const resourceCases: Array<[string, string[], string]> = [
     ['http://localhost:4402/research/summary', ['http://localhost:4402/research/*'], 'trailing /* is a prefix match on a segment boundary'],
     ['http://localhost:4402/research/a/b', ['http://localhost:4402/research/*'], 'deeper paths under the prefix match'],
@@ -83,6 +109,7 @@ async function build() {
       signed,
       verification: verifyMandateChain(signed),
     },
+    pricedMandate: { priceLimits, signed: pricedMandate },
     resources: resourceCases.map(([url, patterns, why]) => ({ url, patterns, why, matches: matchesAnyResourcePattern(url, patterns) })),
     gate: [
       gateCase('autonomous allow', testOffer(), testContext()),
@@ -93,6 +120,20 @@ async function build() {
       gateCase('deny: hard per-payment ceiling', testOffer({ amount: '60000000' }), testContext()),
       gateCase('deny: revoked', testOffer(), testContext({ revoked: { revokedAt: NOW - 10, reason: 'compromised' } })),
       gateCase('escalate: inference endpoint always needs a human', heavy, testContext()),
+      pricedGateCase('price limit: at the expected price allows', testOffer({ amount: '1000000' }), testContext()),
+      pricedGateCase('price limit: within the 10% tolerance still allows', testOffer({ amount: '1050000' }), testContext()),
+      pricedGateCase('price limit: above tolerance escalates to a human', testOffer({ amount: '1500000' }), testContext()),
+      pricedGateCase(
+        'price limit: above tolerance, human approval releases it',
+        testOffer({ amount: '1500000' }),
+        testContext({ approval: testApproval(testOffer({ amount: '1500000' })) }),
+      ),
+      pricedGateCase('price limit: above the hard max denies, no approval can release it', testOffer({ amount: '2500000' }), testContext()),
+      pricedGateCase(
+        'price creep attack: five rising-but-individually-small payments are each checked against the one fixed expected price, not the last payment',
+        testOffer({ amount: '1095000' }),
+        testContext(),
+      ),
     ],
   };
 }
@@ -111,7 +152,22 @@ describe('spec/agent-mandate-v0.1 test vectors', () => {
   it('are self-consistent: the signed mandate verifies and every gate vector replays', async () => {
     const vectors = await build();
     expect(vectors.mandate.verification.valid).toBe(true);
-    expect(vectors.gate.map((g) => g.expected.decision)).toEqual(['ALLOW', 'ESCALATE', 'ALLOW', 'DENY', 'DENY', 'DENY', 'DENY', 'ESCALATE']);
+    expect(vectors.gate.map((g) => g.expected.decision)).toEqual([
+      'ALLOW',
+      'ESCALATE',
+      'ALLOW',
+      'DENY',
+      'DENY',
+      'DENY',
+      'DENY',
+      'ESCALATE',
+      'ALLOW',
+      'ALLOW',
+      'ESCALATE',
+      'ALLOW',
+      'DENY',
+      'ALLOW',
+    ]);
     expect(vectors.resources.map((r) => r.matches)).toEqual([true, true, false, false, false, false]);
   });
 });

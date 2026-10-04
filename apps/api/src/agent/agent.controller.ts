@@ -22,6 +22,7 @@ import {
   addressSchema,
   approverRoleSchema,
   baseUnitsSchema,
+  resourcePriceLimitSchema,
   verifyMandateChain,
 } from '@atlas-rail/mandate';
 import { verifyReceipt } from '@atlas-rail/receipt';
@@ -39,6 +40,8 @@ const createMandateSchema = z.object({
   maxTotal: baseUnitsSchema,
   allowedPayTo: z.array(addressSchema).min(1).max(256),
   allowedResources: z.array(z.string().min(1).max(2048)).min(1).max(256),
+  /** Rule 15: per-resource price ceilings. Resources without an entry have no price check. */
+  priceLimits: z.array(resourcePriceLimitSchema).max(64).default([]),
   escalation: z
     .object({
       thresholdBaseUnits: baseUnitsSchema,
@@ -107,6 +110,7 @@ export class AgentController {
           windowSeconds: input.windowSeconds,
           maxTotal: input.maxTotal,
         },
+        priceLimits: input.priceLimits,
       },
       escalation: input.escalation,
       notBefore,
