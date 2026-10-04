@@ -90,6 +90,18 @@ export function evaluatePolicy(input: PayoutEvaluationInput): PolicyEvaluationOu
     });
   }
 
+  if (
+    rules.recipients.allowedRecipientIds.length > 0 &&
+    !rules.recipients.allowedRecipientIds.includes(recipient.id)
+  ) {
+    isBlocked = true;
+    reasons.push({
+      code: 'RECIPIENT_NOT_ALLOWED',
+      message: 'Recipient is not on the organizational allowlist.',
+      severity: 'BLOCK',
+    });
+  }
+
   // 5. Amount & Spend Limits Checks
   if (compareBaseUnits(payout.amountBaseUnits, '0') <= 0) {
     isBlocked = true;
