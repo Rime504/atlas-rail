@@ -15,6 +15,7 @@ import { assertNotMainnet } from './guards';
  */
 
 const MANDATE_SEED = Buffer.from('mandate');
+const ROOT_SEED = Buffer.from('root');
 
 function discriminator(namespace: 'global' | 'account', name: string): Buffer {
   return createHash('sha256').update(`${namespace}:${name}`).digest().subarray(0, 8);
@@ -27,6 +28,21 @@ export interface MandatePda {
 
 export function findMandatePda(programId: string, mandateHash: Uint8Array): MandatePda {
   const [pda, bump] = PublicKey.findProgramAddressSync([MANDATE_SEED, Buffer.from(mandateHash)], new PublicKey(programId));
+  return { address: pda.toBase58(), bump };
+}
+
+export interface RootPda {
+  address: string;
+  bump: number;
+}
+
+export function findRootPda(programId: string, mandatePda: string, seq: bigint): RootPda {
+  const seqBytes = Buffer.alloc(8);
+  seqBytes.writeBigUInt64LE(seq);
+  const [pda, bump] = PublicKey.findProgramAddressSync(
+    [ROOT_SEED, new PublicKey(mandatePda).toBuffer(), seqBytes],
+    new PublicKey(programId),
+  );
   return { address: pda.toBase58(), bump };
 }
 
@@ -80,15 +96,17 @@ export interface MandateAccountOnChain {
   revoked: boolean;
   revokedAt: bigint;
   revokedBy: string;
+  nextRootSeq: bigint;
   bump: number;
 }
 
 const MANDATE_ACCOUNT_DISCRIMINATOR = discriminator('account', 'Mandate');
 // mandate_hash + 5 pubkeys (owner, approver, agent, gate_authority, mint) + 8 numeric fields
 // (max_per_payment, max_per_window, window_seconds, max_total, escalation_threshold, not_before,
-// expires_at, created_at) + revoked(bool) + revoked_at(i64) + revoked_by(pubkey) + bump(u8),
-// after the 8-byte account discriminator. Matches `Mandate` in programs/atlas-mandate/src/lib.rs.
-const MANDATE_ACCOUNT_BODY_LEN = 32 + 32 * 5 + 8 * 8 + 1 + 8 + 32 + 1;
+// expires_at, created_at) + revoked(bool) + revoked_at(i64) + revoked_by(pubkey) +
+// next_root_seq(u64) + bump(u8), after the 8-byte account discriminator.
+// Matches `Mandate` in programs/atlas-mandate/src/lib.rs.
+const MANDATE_ACCOUNT_BODY_LEN = 32 + 32 * 5 + 8 * 8 + 1 + 8 + 32 + 8 + 1;
 
 /** Decodes a raw `Mandate` account's data (as returned by `getAccountInfo`). */
 export function decodeMandateAccount(data: Buffer): MandateAccountOnChain {
@@ -131,6 +149,7 @@ export function decodeMandateAccount(data: Buffer): MandateAccountOnChain {
   o += 1;
   const revokedAt = i64();
   const revokedBy = pubkey();
+  const nextRootSeq = u64();
   const bump = data.readUInt8(o);
   return {
     mandateHash,
@@ -150,8 +169,63 @@ export function decodeMandateAccount(data: Buffer): MandateAccountOnChain {
     revoked,
     revokedAt,
     revokedBy,
+    nextRootSeq,
     bump,
   };
+}
+
+export interface RootAccountOnChain {
+  mandate: string;
+  seq: bigint;
+  /** Hex-encoded 32-byte Merkle root. */
+  merkleRoot: string;
+  leafCount: number;
+  anchoredAt: bigint;
+  bump: number;
+}
+
+const ROOT_ACCOUNT_DISCRIMINATOR = discriminator('account', 'Root');
+// mandate(32) + seq(8) + merkle_root(32) + leaf_count(4) + anchored_at(8) + bump(1)
+const ROOT_ACCOUNT_BODY_LEN = 32 + 8 + 32 + 4 + 8 + 1;
+
+/** Decodes a raw `Root` account's data (as returned by `getAccountInfo`). */
+export function decodeRootAccount(data: Buffer): RootAccountOnChain {
+  if (data.length < 8 + ROOT_ACCOUNT_BODY_LEN) throw new Error('Root account data is too short');
+  if (!data.subarray(0, 8).equals(ROOT_ACCOUNT_DISCRIMINATOR)) {
+    throw new Error('Account discriminator does not match Root — wrong program ID or account type');
+  }
+  let o = 8;
+  const mandate = new PublicKey(data.subarray(o, o + 32)).toBase58();
+  o += 32;
+  const seq = data.readBigUInt64LE(o);
+  o += 8;
+  const merkleRoot = data.subarray(o, o + 32).toString('hex');
+  o += 32;
+  const leafCount = data.readUInt32LE(o);
+  o += 4;
+  const anchoredAt = data.readBigInt64LE(o);
+  o += 8;
+  const bump = data.readUInt8(o);
+  return { mandate, seq, merkleRoot, leafCount, anchoredAt, bump };
+}
+
+export interface AnchorRootOnChainArgs {
+  seq: bigint;
+  merkleRoot: Uint8Array;
+  leafCount: number;
+}
+
+function encodeAnchorRootArgs(args: AnchorRootOnChainArgs): Buffer {
+  if (args.merkleRoot.length !== 32) throw new Error('merkleRoot must be 32 bytes');
+  if (!Number.isInteger(args.leafCount) || args.leafCount < 0 || args.leafCount > 0xffff_ffff) {
+    throw new Error('leafCount must be a u32');
+  }
+  const body = Buffer.alloc(8 + 32 + 4);
+  let o = 0;
+  body.writeBigUInt64LE(args.seq, o); o += 8;
+  Buffer.from(args.merkleRoot).copy(body, o); o += 32;
+  body.writeUInt32LE(args.leafCount, o);
+  return Buffer.concat([discriminator('global', 'anchor_root'), body]);
 }
 
 export interface BuildCreateMandateTransactionParams extends CreateMandateOnChainArgs {
@@ -206,6 +280,35 @@ export function buildRevokeMandateTransaction(params: BuildRevokeMandateTransact
   });
   const message = new TransactionMessage({
     payerKey: authority,
+    recentBlockhash: params.recentBlockhash,
+    instructions: [ix],
+  }).compileToV0Message();
+  return Buffer.from(new VersionedTransaction(message).serialize()).toString('base64');
+}
+
+export interface BuildAnchorRootTransactionParams extends AnchorRootOnChainArgs {
+  programId: string;
+  mandatePda: string;
+  gateAuthority: string;
+  recentBlockhash: string;
+}
+
+/** Builds the unsigned v0 transaction for `anchor_root`. Only the gate authority may sign. */
+export function buildAnchorRootTransaction(params: BuildAnchorRootTransactionParams): string {
+  const gateAuthority = new PublicKey(params.gateAuthority);
+  const { address: rootPda } = findRootPda(params.programId, params.mandatePda, params.seq);
+  const ix = new TransactionInstruction({
+    programId: new PublicKey(params.programId),
+    keys: [
+      { pubkey: new PublicKey(params.mandatePda), isSigner: false, isWritable: true },
+      { pubkey: new PublicKey(rootPda), isSigner: false, isWritable: true },
+      { pubkey: gateAuthority, isSigner: true, isWritable: true },
+      { pubkey: new PublicKey(ALLOWED_SOLANA_PROGRAM_IDS.SYSTEM_PROGRAM), isSigner: false, isWritable: false },
+    ],
+    data: encodeAnchorRootArgs(params),
+  });
+  const message = new TransactionMessage({
+    payerKey: gateAuthority,
     recentBlockhash: params.recentBlockhash,
     instructions: [ix],
   }).compileToV0Message();
