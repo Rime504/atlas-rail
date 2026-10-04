@@ -33,7 +33,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Malformed request body' }, { status: 400 });
   }
 
-  const { world, action } = body;
+  const { action } = body;
+  // Each step's devnet fallback notice describes THIS step's own on-chain attempt, never a previous
+  // one's — without this, a step-3 RPC hiccup would keep showing on top of a fully-passing step 7.
+  const world: World | null = body.world ? { ...body.world, devnetFallbackReason: null } : body.world;
 
   try {
     switch (action.type) {
