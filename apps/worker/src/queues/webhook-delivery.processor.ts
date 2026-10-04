@@ -23,7 +23,7 @@ export async function processWebhookDeliveryJob(job: Job<WebhookDeliveryJobData>
   }
 
   const endpoint = delivery.webhookEndpoint;
-  const allowPrivateNetworks = process.env.WEBHOOK_ALLOW_PRIVATE_NETWORKS !== 'false';
+  const allowPrivateNetworks = process.env.WEBHOOK_ALLOW_PRIVATE_NETWORKS === 'true';
   const attemptCount = delivery.attemptCount + 1;
   const attemptsExhausted = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
 

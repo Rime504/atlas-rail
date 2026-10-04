@@ -50,7 +50,7 @@ export const envSchema = z.object({
   ATLAS_ONCHAIN: envBoolean.default(false),
   MANDATE_PROGRAM_ID: z.string().min(32).default('CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k'),
 
-  WEBHOOK_ALLOW_PRIVATE_NETWORKS: envBoolean.default(true),
+  WEBHOOK_ALLOW_PRIVATE_NETWORKS: envBoolean.default(false),
   WEBHOOK_MAX_ATTEMPTS: z.coerce.number().default(6),
   WEBHOOK_TIMEOUT_MS: z.coerce.number().default(10000),
 
