@@ -386,11 +386,13 @@ describe('gate service — safety properties', () => {
     expect(later.decision.record.decision).toBe('ALLOW');
   });
 
-  it('unsettled reservations expire after the reservation TTL so a failed payment does not lock the budget', async () => {
+  it('unsettled reservations keep counting after the reservation TTL until explicitly released', async () => {
     const t = await setup();
-    await t.gate.evaluate(ORG, await t.request({ amount: '1000000' }));
+    const outcome = await t.gate.evaluate(ORG, await t.request({ amount: '1000000' }));
     expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400, 300)).totalBaseUnits).toBe('1000000');
     t.advance(300);
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400, 300)).totalBaseUnits).toBe('1000000');
+    await t.store.spend.release(outcome.decision.record.id);
     expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400, 300)).totalBaseUnits).toBe('0');
   });
 

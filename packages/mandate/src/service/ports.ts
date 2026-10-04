@@ -86,9 +86,9 @@ export interface SpendTotals {
 
 export interface SpendStore {
   /**
-   * Sums SETTLED entries plus RESERVED entries younger than `reservationTtlSeconds`. Autonomous
-   * entries created after `now - windowSeconds` count towards the window (strictly after: an entry
-   * exactly `windowSeconds` old has rolled out).
+   * Sums SETTLED and RESERVED entries (RELEASED are excluded). Autonomous entries created after
+   * `now - windowSeconds` count towards the window (strictly after: an entry exactly `windowSeconds`
+   * old has rolled out). `reservationTtlSeconds` is retained for call-site compatibility.
    */
   totals(
     mandateId: string,
