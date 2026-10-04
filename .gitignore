@@ -57,3 +57,5 @@ playwright/.cache/
 
 # Local agent instructions (not part of the shared repo)
 CLAUDE.md
+.vercel
+.env*
