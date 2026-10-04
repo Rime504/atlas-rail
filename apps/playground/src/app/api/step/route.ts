@@ -15,6 +15,7 @@ import {
 } from '@/lib/scenario';
 import { anchorRootOnchain, rateLimited, registerMandateOnchain, resolveDevnetCoreKeys, revokeMandateOnchain, settlePaymentOnchain, withTimeout } from '@/lib/devnet';
 import { StepRequest, StepResponse, World } from '@/lib/types';
+import { merkleRoot } from '@atlas-rail/receipt';
 
 // Node runtime, not Edge: packages/mandate, packages/receipt and packages/solana use Node's
 // `crypto` and `@solana/web3.js`, neither of which runs on the Edge runtime.
@@ -32,7 +33,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Malformed request body' }, { status: 400 });
   }
 
-  const { world, action } = body;
+  const { action } = body;
+  // Each step's devnet fallback notice describes THIS step's own on-chain attempt, never a previous
+  // one's — without this, a step-3 RPC hiccup would keep showing on top of a fully-passing step 7.
+  const world: World | null = body.world ? { ...body.world, devnetFallbackReason: null } : body.world;
 
   try {
     switch (action.type) {
@@ -119,7 +123,11 @@ export async function POST(req: NextRequest) {
             try {
               const receipt = world.receipts.find((r) => r.id === receiptId);
               if (!receipt) throw new Error('Receipt not found');
-              onchainAnchor = await withTimeout(anchorRootOnchain(world.mandate, receipt.receiptHash, 1, core));
+              // Must be the actual Merkle root over the leaf (merkleRoot([receiptHash])), not the raw
+              // receipt hash itself — proveReceipt computes the same root independently below, and the
+              // two have to match exactly for ANCHOR_ONCHAIN to verify against what's really on-chain.
+              const root = merkleRoot([receipt.receiptHash]);
+              onchainAnchor = await withTimeout(anchorRootOnchain(world.mandate, root, 1, core));
             } catch (err) {
               next = { ...next, devnetFallbackReason: `Devnet anchoring failed (${messageOf(err)}) — this receipt is shown with a synthetic anchor instead.` };
             }
