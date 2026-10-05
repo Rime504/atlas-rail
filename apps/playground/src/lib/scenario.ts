@@ -64,7 +64,10 @@ const ESCALATION_THRESHOLD = MAX_PER_PAYMENT; // schema requires threshold <= ma
 /** A step 3/6 payment settling for real on Solana devnet (devnet mode only). Returns the on-chain
  * transaction so it can be bound into the receipt; throwing falls back to a synthetic settlement
  * with a visible reason (see evaluateAndMaybeReceipt). */
-export type SettleFn = (offer: X402Offer) => Promise<OnchainAction>;
+/** `receiptId` is the id this payment's receipt WILL have (decided before settlement, same as the
+ * main demo's `createAtlasFetch`) — implementations that settle for real embed it in the
+ * transaction's memo (`formatReceiptMemo`) so the payment is self-proving, same as N1. */
+export type SettleFn = (offer: X402Offer, receiptId: string) => Promise<OnchainAction>;
 
 function randomBytes(length: number): Uint8Array {
   const bytes = new Uint8Array(length);
@@ -335,11 +338,14 @@ async function evaluateAndMaybeReceipt(
   let onchain: OnchainAction | null = null;
 
   if (gate.decision === 'ALLOW') {
+    // Decided before settlement, same as the main demo's createAtlasFetch, so a real settlement can
+    // embed it in the transaction's memo and this receipt ends up with the exact id that memo names.
+    const receiptId = `rcp_${randomId()}`;
     let txSignature = syntheticTxSignature();
     let devnetFallbackReason: string | null = null;
     if (settle) {
       try {
-        onchain = await settle(offer);
+        onchain = await settle(offer, receiptId);
         txSignature = onchain.txSignature;
       } catch (error) {
         devnetFallbackReason = `Devnet settlement failed (${error instanceof Error ? error.message : String(error)}) — this payment is shown without a real on-chain transfer.`;
@@ -359,7 +365,7 @@ async function evaluateAndMaybeReceipt(
     const bodySha256 = toHex(sha256Bytes(`Paid response for ${offer.resourceUrl}`));
     receipt = await buildReceipt(
       {
-        id: `rcp_${randomId()}`,
+        id: receiptId,
         mandate,
         decision: signed,
         settlement: { txSignature, network: SOLANA_DEVNET_CAIP2, payer: mandate.agent.publicKey, settledAt: context.now, slot: null },

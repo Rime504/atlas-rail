@@ -185,7 +185,7 @@ function settleFor(world: World): SettleFn | undefined {
   if (world.mode !== 'devnet' || !world.devnetAllowed) return undefined;
   const core = resolveDevnetCoreKeys();
   if (!core) return undefined;
-  return (offer) => withTimeout(settlePaymentOnchain(offer, core));
+  return (offer, receiptId) => withTimeout(settlePaymentOnchain(offer, core, receiptId));
 }
 
 function messageOf(err: unknown): string {

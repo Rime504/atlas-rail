@@ -531,6 +531,24 @@ model BoundReceipt {
   @@index([batchId])
 }
 
+/// N2: the public, unauthenticated receipt store ("proof of permission" is meant to be checkable by
+/// anyone with no account) — a stranger with only a devnet transaction signature reads its memo,
+/// looks the id up here, and runs the same checks `atlas verify` does. Deliberately separate from
+/// `BoundReceipt` (the org-scoped operational table): no organization FK, so both the main
+/// demo-agent (apps/api, same process) and the playground (a separate deployment, over HTTP) can
+/// publish into it without needing a seeded org either side depends on. `source` is purely
+/// informational (which deployment issued it); every row has already passed verifyReceipt's
+/// structural checks (schema, hash binding, instance signature) before being accepted.
+model PublicReceipt {
+  id          String   @id
+  receiptHash String   @unique
+  document    Json
+  source      String
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 model AnchorBatch {
   id          String            @id
   merkleRoot  String
