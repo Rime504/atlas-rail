@@ -369,6 +369,29 @@ describe('gate service — safety properties', () => {
     expect(totals.totalBaseUnits).toBe('0');
   });
 
+  it('serialises concurrent near-cap ALLOW reservations so they cannot jointly overspend the window', async () => {
+    const t = await setup();
+    // Fill to $4 of the $5 autonomous window with settled spend, then race three $1 ALLOWs.
+    for (let i = 0; i < 4; i++) {
+      const outcome = await t.gate.evaluate(ORG, await t.request({ amount: '1000000' }));
+      expect(outcome.decision.record.decision).toBe('ALLOW');
+      await t.store.spend.markSettled(outcome.decision.record.id, `pre${i}`);
+    }
+
+    const requests = await Promise.all(Array.from({ length: 3 }, () => t.request({ amount: '1000000' })));
+    const outcomes = await Promise.all(requests.map((r) => t.gate.evaluate(ORG, r)));
+    const allows = outcomes.filter((o) => o.decision.record.decision === 'ALLOW');
+    const escalates = outcomes.filter((o) => o.decision.record.decision === 'ESCALATE');
+    const totals = await t.store.spend.totals(t.mandate.id, t.now(), 86_400, 300);
+
+    expect(allows).toHaveLength(1);
+    expect(escalates).toHaveLength(2);
+    expect(escalates.every((o) => o.decision.record.escalationRules.includes('WINDOW_BUDGET'))).toBe(true);
+    // Exactly one more $1 reservation may land; RESERVED still counts, so totals stay at the $5 cap.
+    expect(totals.totalBaseUnits).toBe('5000000');
+    expect(totals.windowAutonomousBaseUnits).toBe('5000000');
+  });
+
   it('rolling window: autonomous spend fills the daily budget, escalates, then rolls out after the window', async () => {
     const t = await setup();
     // Five $1.00 autonomous payments fill the $5 window (threshold is exactly $1, allowed).
