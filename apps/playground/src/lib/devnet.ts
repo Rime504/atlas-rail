@@ -19,7 +19,7 @@
  * configured.
  */
 import { Keypair, VersionedTransaction } from '@solana/web3.js';
-import { AgentMandate, X402Offer, fromBase58, fromHex, hashMandate, LocalEd25519Signer } from '@atlas-rail/mandate';
+import { AgentMandate, X402Offer, formatReceiptMemo, fromBase58, fromHex, hashMandate, LocalEd25519Signer } from '@atlas-rail/mandate';
 import {
   Web3ChainClient,
   buildAnchorRootTransaction,
@@ -167,8 +167,14 @@ export async function revokeMandateOnchain(mandate: AgentMandate, keys: DevnetCo
  * ever receives), so its associated token account is created here, idempotently, before every
  * payment. The agent's own token account needs an actual devnet USDC balance to pay anything with —
  * see `PLAYGROUND_DEVNET_AGENT_SECRET_KEY` in README/ops notes for how that key is funded.
+ *
+ * Self-proving, same as the main demo (N1): `receiptId` — decided by the caller before this
+ * settlement, so `evaluateAndMaybeReceipt` can give the eventual receipt that exact id — goes in the
+ * transaction's memo (`formatReceiptMemo`). Nothing here reads the memo back to confirm it, unlike
+ * `ReceiptService.issue`; the playground's receipt id is simply set to `receiptId` directly by the
+ * caller either way, so the two are equal by construction whenever settlement succeeds for real.
  */
-export async function settlePaymentOnchain(offer: Pick<X402Offer, 'payTo' | 'asset' | 'amount'>, keys: DevnetCoreKeys): Promise<OnchainAction> {
+export async function settlePaymentOnchain(offer: Pick<X402Offer, 'payTo' | 'asset' | 'amount'>, keys: DevnetCoreKeys, receiptId: string): Promise<OnchainAction> {
   const chain = Web3ChainClient.fromUrl(RPC_URL);
   const ownerKeypair = keypairFromInfo(keys.owner);
   const agentKeypair = keypairFromInfo(keys.agent);
@@ -185,6 +191,7 @@ export async function settlePaymentOnchain(offer: Pick<X402Offer, 'payTo' | 'ass
     payTo: offer.payTo,
     amountBaseUnits: offer.amount,
     recentBlockhash: blockhash,
+    memo: formatReceiptMemo(receiptId),
   });
   tx.sign([ownerKeypair, agentKeypair]);
   const signature = await chain.sendAndConfirm(Buffer.from(tx.serialize()).toString('base64'));
