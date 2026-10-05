@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { prisma, generateUlid, PayoutStatus } from '@atlas-rail/database';
+import { prisma, generateUlid, PayoutStatus, runExclusive } from '@atlas-rail/database';
 import { evaluatePolicy, assertValidTransition, PolicyRules, addBaseUnits } from '@atlas-rail/domain';
 import { WEBHOOK_EVENT_TYPES } from '@atlas-rail/config';
 import { QueueService } from '../common/queue.service';
@@ -101,61 +101,66 @@ export class PayoutService {
     const activePolicy = treasury.policies[0];
     if (!activePolicy) throw new BadRequestException('No active policy configured for treasury.');
 
-    const rollingSpend = await rollingSpendForTreasury(treasury.id);
+    // Serialize load-spend + evaluate + insert per org so concurrent creates cannot both pass on
+    // the same rolling totals and jointly exceed daily/monthly limits.
+    const payout = await runExclusive(prisma, `payout-create:${orgId}`, async () => {
+      const rollingSpend = await rollingSpendForTreasury(treasury.id);
 
-    // Initial policy evaluation preview
-    const evalResult = evaluatePolicy({
-      policy: { version: activePolicy.version, rules: activePolicy.rules as unknown as PolicyRules },
-      treasury: { status: treasury.status, network: treasury.network },
-      recipient: { id: recipient.id, status: recipient.status, riskLevel: recipient.riskLevel },
-      payout: {
-        amountBaseUnits: data.amountBaseUnits,
-        mintAddress: treasury.mintAddress,
-        memo: data.memo,
-        createdByUserId: userId,
-      },
-      rollingSpend,
-    });
+      const evalResult = evaluatePolicy({
+        policy: { version: activePolicy.version, rules: activePolicy.rules as unknown as PolicyRules },
+        treasury: { status: treasury.status, network: treasury.network },
+        recipient: { id: recipient.id, status: recipient.status, riskLevel: recipient.riskLevel },
+        payout: {
+          amountBaseUnits: data.amountBaseUnits,
+          mintAddress: treasury.mintAddress,
+          memo: data.memo,
+          createdByUserId: userId,
+        },
+        rollingSpend,
+      });
 
-    const initialStatus = evalResult.decision === 'BLOCK' ? PayoutStatus.BLOCKED : PayoutStatus.PENDING_APPROVAL;
+      const initialStatus = evalResult.decision === 'BLOCK' ? PayoutStatus.BLOCKED : PayoutStatus.PENDING_APPROVAL;
 
-    const payout = await prisma.payout.create({
-      data: {
-        id: generateUlid('pay'),
-        organizationId: orgId,
-        treasuryId: treasury.id,
-        recipientId: recipient.id,
-        idempotencyKey,
-        externalReference: data.externalReference,
-        invoiceReference: data.invoiceReference,
-        amountBaseUnits: data.amountBaseUnits,
-        decimals: 6,
-        assetSymbol: 'USDC',
-        mintAddress: treasury.mintAddress,
-        memo: data.memo,
-        status: initialStatus,
-        riskLevel: recipient.riskLevel,
-        policyEvaluation: JSON.parse(JSON.stringify(evalResult)),
-        createdByUserId: userId,
-      },
-    });
+      const created = await prisma.payout.create({
+        data: {
+          id: generateUlid('pay'),
+          organizationId: orgId,
+          treasuryId: treasury.id,
+          recipientId: recipient.id,
+          idempotencyKey,
+          externalReference: data.externalReference,
+          invoiceReference: data.invoiceReference,
+          amountBaseUnits: data.amountBaseUnits,
+          decimals: 6,
+          assetSymbol: 'USDC',
+          mintAddress: treasury.mintAddress,
+          memo: data.memo,
+          status: initialStatus,
+          riskLevel: recipient.riskLevel,
+          policyEvaluation: JSON.parse(JSON.stringify(evalResult)),
+          createdByUserId: userId,
+        },
+      });
 
-    await prisma.auditEvent.create({
-      data: {
-        id: generateUlid('aud'),
-        organizationId: orgId,
-        actorType: 'USER',
-        actorId: userId,
-        action: 'PAYOUT_CREATED',
-        resourceType: 'PAYOUT',
-        resourceId: payout.id,
-        metadata: { idempotencyKey, initialStatus, amountBaseUnits: data.amountBaseUnits },
-      },
+      await prisma.auditEvent.create({
+        data: {
+          id: generateUlid('aud'),
+          organizationId: orgId,
+          actorType: 'USER',
+          actorId: userId,
+          action: 'PAYOUT_CREATED',
+          resourceType: 'PAYOUT',
+          resourceId: created.id,
+          metadata: { idempotencyKey, initialStatus, amountBaseUnits: data.amountBaseUnits },
+        },
+      });
+
+      return created;
     });
 
     await this.queueService.dispatchWebhookEvent(
       orgId,
-      initialStatus === PayoutStatus.BLOCKED ? WEBHOOK_EVENT_TYPES.PAYOUT_BLOCKED : WEBHOOK_EVENT_TYPES.PAYOUT_CREATED,
+      payout.status === PayoutStatus.BLOCKED ? WEBHOOK_EVENT_TYPES.PAYOUT_BLOCKED : WEBHOOK_EVENT_TYPES.PAYOUT_CREATED,
       { payoutId: payout.id, status: payout.status, amountBaseUnits: payout.amountBaseUnits },
     );
 

@@ -27,6 +27,7 @@ import type {
   StoredReceipt,
 } from '@atlas-rail/receipt';
 import { generateUlid } from './ulid';
+import { runExclusive as withAdvisoryLock } from './run-exclusive';
 
 /**
  * Postgres implementations of the agent-mandate storage ports. Semantics match the in-memory
@@ -353,13 +354,7 @@ export class PrismaAgentStore implements AgentStore {
    * connections, which is fine because every writer takes the same lock first.
    */
   runExclusive<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    return this.db.$transaction(
-      async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
-        return fn();
-      },
-      { timeout: 60_000, maxWait: 15_000 },
-    );
+    return withAdvisoryLock(this.db, key, fn);
   }
 }
 
