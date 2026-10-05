@@ -40,8 +40,18 @@ function isPrivateOrLocalHostname(hostname: string): boolean {
 
   if (host.includes(':')) {
     if (host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd')) return true;
-    const mapped = host.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i);
-    if (mapped) return isPrivateOrLocalHostname(mapped[1]);
+    // Node's URL parser may keep dotted form (::ffff:127.0.0.1) or rewrite to hex (::ffff:7f00:1).
+    const mappedDotted = host.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i);
+    if (mappedDotted) return isPrivateOrLocalHostname(mappedDotted[1]);
+    const mappedHex = host.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+    if (mappedHex) {
+      const hi = Number.parseInt(mappedHex[1], 16);
+      const lo = Number.parseInt(mappedHex[2], 16);
+      if (Number.isFinite(hi) && Number.isFinite(lo) && hi <= 0xffff && lo <= 0xffff) {
+        const dotted = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+        return isPrivateOrLocalHostname(dotted);
+      }
+    }
   }
 
   return false;
