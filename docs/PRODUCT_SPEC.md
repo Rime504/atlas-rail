@@ -6,11 +6,11 @@ Team: Rime, Kamelia, and Divyesh.
 
 ## Status
 
-Built: mandate spec v0.2 + rule 15 · 15-rule gate · owner + approver + agent signatures · human escalation bound to exact tx bytes · Merkle receipts + atlas verify · Anchor program (create_mandate, revoke_mandate, anchor_root) on devnet CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k · gate respects on-chain revoke · public 8-step playground · README/HACKATHON/THREAT_MODEL/DEMO_VIDEO · real LLM agent (`AGENT_MODE=llm`, Anthropic/OpenAI, no key seen by the model) + `pnpm agent:e2e` devnet harness, proven green 3x in a row on real devnet in scripted mode.
+Built: mandate spec v0.2 + rule 15 · 15-rule gate · owner + approver + agent signatures · human escalation bound to exact tx bytes · Merkle receipts + atlas verify · Anchor program (create_mandate, revoke_mandate, anchor_root) on devnet CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k · gate respects on-chain revoke · public 8-step playground, devnet-mode proof step verified passing live · README/HACKATHON/THREAT_MODEL/DEMO_VIDEO · real LLM agent (`AGENT_MODE=llm`, Anthropic/OpenAI, no key seen by the model) + `pnpm agent:e2e` devnet harness, proven green 3x in a row on real devnet in scripted mode · self-proving payments (receipt named in its own payment memo) for the main demo-agent flow, verified on real devnet with an independent `getTransaction` RPC read.
 
 In progress (Divyesh): PRs #37 #39 #41 #43 #45 #47 · signer on-chain revoke check · on-chain spend counter.
 
-In progress (me): llm-mode devnet e2e proof (blocked on an API key, asked Rime) · playground devnet-mode real settlement + real anchor_root for the proof step (code done, blocked on funding `PLAYGROUND_DEVNET_AGENT_SECRET_KEY` with devnet USDC, asked Rime).
+In progress (me): llm-mode devnet e2e proof (blocked on an API key, asked Rime) · N2 "verify any payment" + public receipt store.
 
 Planned: red-team · reserve/capture/release · Layer 1 hard cap · npm SDK + registerPolicy + MCP · browser verifier · x402 policy-attestation extension · console upgrades.
 

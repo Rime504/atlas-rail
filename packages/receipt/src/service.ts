@@ -5,6 +5,7 @@ import {
   AgentStore,
   MessageSigner,
   hashMandate,
+  parseReceiptMemo,
   sha256Hex,
 } from '@atlas-rail/mandate';
 import {
@@ -109,9 +110,18 @@ export class ReceiptService {
       throw new AgentServiceError('INVALID_STATE', 'Settlement was not paid by the mandate agent key');
     }
 
+    // Self-proving payments: the transaction itself may already name this receipt's id in its Memo
+    // instruction (written by the client before it signed — see packages/x402-client/src/fetch.ts).
+    // Using that id instead of minting a fresh one is what lets someone who only has the transaction
+    // signature, with no other context, find this exact receipt. A memo that collides with an
+    // existing receipt (replay, or a client bug) is never trusted — mint a fresh id instead, same as
+    // if there were no memo at all.
+    const memoReceiptId = parseReceiptMemo(summary?.memos ?? []);
+    const receiptId = memoReceiptId && !(await receipts.get(organizationId, memoReceiptId)) ? memoReceiptId : newId('rcp');
+
     const receipt = await buildReceipt(
       {
-        id: newId('rcp'),
+        id: receiptId,
         mandate: mandateRecord.mandate,
         decision,
         settlement: {

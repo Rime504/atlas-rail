@@ -20,12 +20,20 @@ import { ALLOWED_SOLANA_PROGRAM_IDS } from '@atlas-rail/config';
  *
  *   [ SetComputeUnitLimit, SetComputeUnitPrice, TransferChecked, Memo ]
  *
- * fee-paid by the facilitator (`extra.feePayer`), signed by the payer, carrying either the seller's
- * `extra.memo` or a random 16-byte hex nonce. Builder and analyzer live side by side so the layout
- * the client produces is exactly the layout the gate verifies.
+ * fee-paid by the facilitator (`extra.feePayer`), signed by the payer, carrying the seller's
+ * `extra.memo`, an Atlas Rail self-proving receipt pointer (`@atlas-rail/mandate`'s
+ * `formatReceiptMemo` — see `packages/x402-client/src/fetch.ts`), or, failing both, a random
+ * 16-byte hex nonce. Builder and analyzer live side by side so the layout the client produces is
+ * exactly the layout the gate verifies.
  */
 
-export const X402_DEFAULT_COMPUTE_UNIT_LIMIT = 20_000;
+// A plain SPL TransferChecked plus a short Memo already uses most of a tight budget; the memo's own
+// length pushes it further (the Memo program's cost scales with the data it logs). 20_000 was tuned
+// against only the shortest case (a 32-byte random nonce) and failed simulation outright
+// (ProgramFailedToComplete on the Memo instruction) against the ~54-byte self-proving receipt
+// pointer — found running a real devnet payment, not by inspection. 40_000 leaves real headroom for
+// any memo this scheme actually writes, still a small fraction of X402_MAX_COMPUTE_UNIT_LIMIT.
+export const X402_DEFAULT_COMPUTE_UNIT_LIMIT = 40_000;
 export const X402_DEFAULT_COMPUTE_UNIT_PRICE_MICROLAMPORTS = 1;
 export const X402_MAX_COMPUTE_UNIT_LIMIT = 400_000;
 export const X402_MAX_COMPUTE_UNIT_PRICE_MICROLAMPORTS = 5_000_000;

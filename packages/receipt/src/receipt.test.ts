@@ -4,6 +4,7 @@ import {
   LocalEd25519Signer,
   buildDecisionRecord,
   evaluateGate,
+  formatReceiptMemo,
   hashMandate,
   hashOffer,
   signDecision,
@@ -85,6 +86,43 @@ describe('receipt issuance', () => {
         response: { status: 200, bodySha256: hashResponseBody('x'), contentType: null },
       }),
     ).rejects.toThrow(/Settlement not verified/);
+  });
+});
+
+describe('self-proving payments: the memo names the receipt that gets issued', () => {
+  const response = { status: 200, bodySha256: hashResponseBody('{"summary":"ok"}'), contentType: 'application/json' };
+
+  async function issueWithMemo(world: World, memo: string | null) {
+    const { outcome, transactionBase64 } = await world.requestGate({ memo });
+    const txSignature = await world.settle(transactionBase64);
+    return world.receiptService.issue(WORLD_ORG, { decisionId: outcome.decision.record.id, txSignature, response });
+  }
+
+  it('uses the id a well-formed memo on the settled transaction names, instead of minting a fresh one', async () => {
+    const world = await createWorld();
+    const id = 'rcp_' + 'b'.repeat(32);
+    const receipt = await issueWithMemo(world, formatReceiptMemo(id));
+    expect(receipt.id).toBe(id);
+  });
+
+  it('mints a fresh id when there is no memo, or it is not an Atlas Rail receipt pointer', async () => {
+    const world = await createWorld();
+    const noMemo = await issueWithMemo(world, null);
+    expect(noMemo.id).toMatch(/^rcp_\d{6}$/); // this world's test newId(), not a memo-derived id
+
+    const sellerMemo = await issueWithMemo(world, 'invoice #4821');
+    expect(sellerMemo.id).toMatch(/^rcp_\d{6}$/);
+  });
+
+  it('never trusts a memo naming an id that already belongs to another receipt (replay or a buggy client) — mints a fresh one instead', async () => {
+    const world = await createWorld();
+    const id = 'rcp_' + 'c'.repeat(32);
+    const first = await issueWithMemo(world, formatReceiptMemo(id));
+    expect(first.id).toBe(id);
+
+    const second = await issueWithMemo(world, formatReceiptMemo(id));
+    expect(second.id).not.toBe(id); // the existing receipt under `id` is never overwritten or reused
+    expect(second.id).toMatch(/^rcp_\d{6}$/);
   });
 });
 

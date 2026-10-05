@@ -3,10 +3,12 @@ import {
   SOLANA_DEVNET_CAIP2,
   SignedDecision,
   X402Offer,
+  formatReceiptMemo,
   normalizeNetwork,
   offerFromRequirements,
   sha256Hex,
   signGateRequest,
+  toHex,
 } from '@atlas-rail/mandate';
 import { BoundReceipt } from '@atlas-rail/receipt';
 import { ChainClient, buildExactPaymentTransaction } from '@atlas-rail/solana';
@@ -23,6 +25,26 @@ import { GateClient, GateResponse } from './gate-client';
 import { GatedSignerAdapter } from './gated-signer';
 
 const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+
+/**
+ * Self-proving payments: every payment the gate allows carries a pointer to its own future receipt
+ * in the transaction's Memo instruction (the x402 SVM "exact" layout already requires one — see
+ * `@atlas-rail/solana`'s `buildExactPaymentTransaction`), in the format `formatReceiptMemo` defines
+ * in `@atlas-rail/mandate`. Anyone who finds this transaction on-chain, with no other context, can
+ * read the memo, fetch the receipt it names, and independently verify everything about the payment
+ * from there — see `ReceiptService.issue`, which reads this same memo back off the settled
+ * transaction and uses it as the receipt's actual id.
+ *
+ * Only possible when the seller hasn't already claimed the (single) memo slot for itself via
+ * `extra.memo` — the exact layout allows exactly one Memo instruction, so a seller-mandated memo
+ * always wins and this payment is settled without a receipt pointer (still a perfectly valid
+ * payment; it just isn't self-proving from the memo alone).
+ */
+function newReceiptId(): string {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return `rcp_${toHex(bytes)}`;
+}
 
 /* -------------------------------------------------------------------------------------------------
  * x402 v2 wire types and header codecs (base64 of UTF-8 JSON, per the x402 v2 HTTP transport)
@@ -101,6 +123,10 @@ export interface AtlasPaymentInfo {
   receipt: BoundReceipt | null;
   /** Set if the resource was paid for and delivered but the receipt could not be issued yet. */
   receiptError: string | null;
+  /** The receipt id this payment's on-chain memo points to, iff the seller hadn't already claimed
+   * the memo slot for itself (null in that case — a valid payment, just not self-proving from the
+   * memo alone). Matches `receipt.id` once the receipt comes back — see {@link RECEIPT_MEMO_PREFIX}. */
+  expectedReceiptId: string | null;
 }
 
 export type AtlasResponse = Response & { atlas?: AtlasPaymentInfo };
@@ -130,7 +156,9 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
   let nonceCounter = 0;
   const newNonce = () => `${clock()}-${Math.random().toString(36).slice(2, 10)}-${++nonceCounter}`;
 
-  async function buildPayment(requirement: X402Requirement, offer: X402Offer): Promise<string> {
+  /** `receiptId` is only actually used as the memo when the seller hasn't claimed that slot itself
+   * (`offer.memo` set) — see {@link RECEIPT_MEMO_PREFIX}. */
+  async function buildPayment(requirement: X402Requirement, offer: X402Offer, receiptId: string): Promise<string> {
     const mint = await config.chain.getMintInfo(requirement.asset);
     if (!mint) throw new UnsupportedPaymentError(`Asset ${requirement.asset} does not exist on this cluster`);
     if (mint.tokenProgram !== TOKEN_PROGRAM) {
@@ -146,7 +174,7 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
       payTo: offer.payTo,
       amountBaseUnits: offer.amount,
       recentBlockhash: blockhash,
-      memo: offer.memo,
+      memo: offer.memo ?? formatReceiptMemo(receiptId),
     });
     return Buffer.from(tx.serialize()).toString('base64');
   }
@@ -258,8 +286,14 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
     }
     emit({ type: 'payment_required', url: offer.resourceUrl, amount: offer.amount, payTo: offer.payTo });
 
+    // Generated once and reused across an escalation rebuild (same logical payment attempt, even
+    // though the transaction itself gets a fresh blockhash) — null once the seller's own memo
+    // claims the slot instead, so callers never see an id that isn't actually on-chain.
+    const receiptId = newReceiptId();
+    const expectedReceiptId = offer.memo ? null : receiptId;
+
     // 2. Build the exact transaction we would sign and ask the gate about *that*.
-    let transactionBase64 = await buildPayment(requirement, offer);
+    let transactionBase64 = await buildPayment(requirement, offer, receiptId);
     let outcome = await askGate(offer, transactionBase64, null);
     let escalated = false;
     let approvalId: string | null = null;
@@ -271,8 +305,9 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
       approvalId = outcome.approval?.id ?? null;
       if (!approvalId) throw new AtlasPaymentError('GATE_UNAVAILABLE', 'Gate escalated without creating an approval');
       await waitForApproval(approvalId, outcome.decision);
-      // Approved: rebuild with a fresh blockhash and ask again, presenting the approval.
-      transactionBase64 = await buildPayment(requirement, offer);
+      // Approved: rebuild with a fresh blockhash and ask again, presenting the approval. Same
+      // receiptId as the first attempt — still one logical payment, just re-blockhashed.
+      transactionBase64 = await buildPayment(requirement, offer, receiptId);
       outcome = await askGate(offer, transactionBase64, approvalId);
       if (outcome.decision.record.decision !== 'ALLOW') throw new MandateDeniedError(outcome.decision);
     }
@@ -316,7 +351,7 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
       receiptError = 'Seller response carried no settlement (PAYMENT-RESPONSE) header';
     }
 
-    paid.atlas = { decision: outcome.decision, approvalId, escalated, txSignature, receipt, receiptError };
+    paid.atlas = { decision: outcome.decision, approvalId, escalated, txSignature, receipt, receiptError, expectedReceiptId };
     return paid;
   };
 }

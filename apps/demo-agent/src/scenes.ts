@@ -9,6 +9,7 @@ import {
   AgentMandate,
   SOLANA_DEVNET_CAIP2,
   SignedDecision,
+  formatReceiptMemo,
   signMandate,
 } from '@atlas-rail/mandate';
 import { BoundReceipt } from '@atlas-rail/receipt';
@@ -23,7 +24,7 @@ import {
 } from '@atlas-rail/x402';
 import { ConsoleApi, DEMO_PASSWORD, DEMO_USERS } from './console-api';
 import { DEFAULT_ANTHROPIC_MODEL, LlmProvider, resolveLlmModel } from './llm-model';
-import { AgentModel, AgentTools, heavyInferenceModel, injectedModel, priceInflationModel, researchModel, runAgent } from './model';
+import { AgentModel, AgentTools, AgentTrace, heavyInferenceModel, injectedModel, priceInflationModel, researchModel, runAgent } from './model';
 import { DemoEnv, DemoState } from './setup';
 import { bad, c, info, kv, ok, say, scene, short, step, usd } from './ui';
 
@@ -175,6 +176,16 @@ async function startMaliciousSeller(state: DemoState): Promise<{ url: string; cl
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   return { url, close: () => new Promise<void>((resolve) => server.close(() => resolve())) };
+}
+
+/** `runAgent` catches a tool's own exception and records it as a `TOOL_ERROR:` result instead of
+ * propagating it — exactly right for the agent's own flow (a failed fetch is just something to
+ * report back to the model), but it means a genuine infrastructure failure (devnet RPC, settlement
+ * timeout) is otherwise invisible in the narration: `paid` stays null with no detail at all. This
+ * surfaces it so a PAY/ESCALATE scene that unexpectedly comes back empty-handed says why. */
+function toolError(trace: AgentTrace): string | null {
+  const failed = trace.steps.find((s) => s.result?.startsWith('TOOL_ERROR:'));
+  return failed?.result?.slice('TOOL_ERROR:'.length).trim() ?? null;
 }
 
 function narrateDecision(decision: SignedDecision): void {
@@ -343,8 +354,12 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       ok(`settled ${usd(paid.receipt.offer.amount)} on ${env.mode === 'devnet' ? 'Solana devnet' : 'the offline cluster'}`);
       kv('transaction', explorer(env.mode, paid.receipt.settlement.txSignature));
       kv('receipt', `${paid.receipt.id} — ${env.webUrl}/receipts`);
+      // Self-proving payment: the transaction's own memo named this receipt before it settled —
+      // open the Explorer link above and the memo is right there, no other context required.
+      if (paid.expectedReceiptId === paid.receipt.id) kv('memo', formatReceiptMemo(paid.receipt.id));
     } else {
-      bad(`no receipt was issued${paid?.receiptError ? `: ${paid.receiptError}` : ''}`);
+      const reason = paid?.receiptError ?? toolError(trace);
+      bad(`no receipt was issued${reason ? `: ${reason}` : ''}`);
       summary.ok = false;
     }
     summary.scenes.pay = {
@@ -352,6 +367,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       receiptId: paid?.receipt?.id ?? null,
       txSignature: paid?.receipt?.settlement.txSignature ?? null,
       explorerUrl: paid?.receipt ? explorer(env.mode, paid.receipt.settlement.txSignature) : null,
+      memo: paid?.receipt && paid.expectedReceiptId === paid.receipt.id ? formatReceiptMemo(paid.receipt.id) : null,
     };
   }
 
@@ -437,21 +453,30 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       clearInterval(sniff);
     }
     for (const s of trace.steps) if (s.action.type === 'tool_call') info(`agent: ${s.action.thought}`);
-    const receipts = await api.get<Array<{ id: string; txSignature: string; amount: string; decisionKind: string | null }>>('/v1/agent/receipts?limit=10', { token: owner });
-    const receipt = receipts.find((r) => r.amount === '40000000');
-    if (receipt) {
-      ok(`human-approved payment settled: ${usd(receipt.amount)} (${receipt.decisionKind})`);
-      kv('transaction', explorer(env.mode, receipt.txSignature));
-      scene4Receipt = await api.get<BoundReceipt>(`/v1/agent/receipts/${receipt.id}`, { token: owner });
+    // This run's own record of what happened — never a lookup by amount, which could silently match
+    // an unrelated receipt left over from an earlier run (the embedded Postgres persists between
+    // `pnpm agent:e2e` invocations, and $40.00 is always this scene's amount).
+    const escalatePaid = last.paid;
+    const receipt = escalatePaid?.receipt ?? null;
+    // Only claim the memo when the client's OWN record of what it wrote actually matches the id the
+    // server settled on — never assume the memo mechanism worked just because a receipt exists.
+    const escalateMemoVerified = receipt && escalatePaid?.expectedReceiptId === receipt.id ? formatReceiptMemo(receipt.id) : null;
+    if (receipt && escalatePaid?.txSignature) {
+      ok(`human-approved payment settled: ${usd(receipt.offer.amount)} (${receipt.decision.record.kind})`);
+      kv('transaction', explorer(env.mode, escalatePaid.txSignature));
+      if (escalateMemoVerified) kv('memo', escalateMemoVerified);
+      scene4Receipt = receipt;
     } else {
-      bad('escalated payment did not settle');
+      const reason = escalatePaid?.receiptError ?? toolError(trace);
+      bad(`escalated payment did not settle${reason ? `: ${reason}` : ''}`);
       summary.ok = false;
     }
     summary.scenes.escalate = {
       final: trace.final,
       receiptId: receipt?.id ?? null,
-      txSignature: receipt?.txSignature ?? null,
-      explorerUrl: receipt ? explorer(env.mode, receipt.txSignature) : null,
+      txSignature: escalatePaid?.txSignature ?? null,
+      explorerUrl: escalatePaid?.txSignature ? explorer(env.mode, escalatePaid.txSignature) : null,
+      memo: escalateMemoVerified,
     };
   }
 
