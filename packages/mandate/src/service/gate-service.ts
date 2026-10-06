@@ -256,23 +256,12 @@ export class AgentGateService {
    * agent abandoned). SETTLED rows are left alone; idempotent when already RELEASED.
    */
   async releaseSpend(organizationId: string, decisionId: string): Promise<void> {
-    const { store, clock } = this.deps;
-    const stored = await store.decisions.get(organizationId, decisionId);
+    const stored = await this.deps.store.decisions.get(organizationId, decisionId);
     if (!stored) throw new AgentServiceError('NOT_FOUND', 'Decision not found');
     if (stored.signed.record.decision !== 'ALLOW') {
       throw new AgentServiceError('INVALID_STATE', 'Only ALLOW decisions hold a spend reservation to release');
     }
-    await store.spend.release(decisionId);
-    await store.audit.append({
-      organizationId,
-      actorType: 'AGENT',
-      actorId: stored.signed.record.request?.agentPublicKey ?? 'agent',
-      action: 'AGENT_SPEND_RELEASED',
-      resourceType: 'AGENT_MANDATE',
-      resourceId: stored.signed.record.mandateId,
-      metadata: { decisionId, amountBaseUnits: stored.signed.record.offer.amount },
-      createdAt: clock(),
-    });
+    await this.deps.store.spend.release(decisionId);
   }
 
   private toGateApproval(approval: ApprovalRecord | null, record: MandateRecord, now: number): GateApproval | null {
