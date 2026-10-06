@@ -171,7 +171,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     .toUpperCase();
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="hidden items-center gap-3 border-b border-white/[0.06] p-6 lg:flex">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-solana-gradient font-display text-base font-bold text-[#05060f] shadow-glow">
@@ -193,7 +193,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         </nav>
       </div>
 
-      <div className="space-y-3 border-t border-white/[0.06] p-4">
+      <div className="shrink-0 space-y-3 border-t border-white/[0.06] p-4">
         <HealthPill />
         <a
           href={`${api.baseUrl}/docs`}
@@ -230,7 +230,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -264,6 +264,28 @@ function MobileBar({ open, onToggle }: { open: boolean; onToggle: () => void }) 
         </button>
       </div>
     </header>
+  );
+}
+
+/** Brand + close inside the drawer panel so Home is not clipped under the sticky top bar. */
+function DrawerHeader({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="flex shrink-0 items-center justify-between border-b border-white/[0.06] px-4 py-3">
+      <Link href="/" onClick={onClose} className="flex items-center gap-2.5">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-solana-gradient font-display text-sm font-bold text-[#05060f] shadow-glow">
+          A
+        </span>
+        <span className="font-display text-base font-bold tracking-tight text-white">Atlas Rail</span>
+      </Link>
+      <button
+        type="button"
+        onClick={onClose}
+        className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-slate-300 transition-colors hover:bg-white/[0.06]"
+        aria-label="Close navigation"
+      >
+        <X className="h-5 w-5" />
+      </button>
+    </div>
   );
 }
 
@@ -317,9 +339,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         <DevnetWarningBanner />
         <MobileBar open={drawerOpen} onToggle={() => setDrawerOpen((o) => !o)} />
 
-        {/* Mobile drawer */}
+        {/* Mobile drawer overlays the page; brand + X + Home all live in this panel. */}
         <div
-          className={`fixed inset-0 z-30 lg:hidden ${drawerOpen ? '' : 'pointer-events-none'}`}
+          className={`fixed inset-0 z-50 lg:hidden ${drawerOpen ? '' : 'pointer-events-none'}`}
           aria-hidden={!drawerOpen}
         >
           <div
@@ -329,10 +351,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
             onClick={() => setDrawerOpen(false)}
           />
           <aside
-            className={`absolute inset-y-0 left-0 flex w-[82%] max-w-xs flex-col border-r border-white/[0.06] bg-[#070818] pt-16 transition-transform duration-200 ${
+            className={`absolute inset-y-0 left-0 flex w-[82%] max-w-xs flex-col border-r border-white/[0.06] bg-[#070818] transition-transform duration-200 ${
               drawerOpen ? 'translate-x-0' : '-translate-x-full'
             }`}
           >
+            <DrawerHeader onClose={() => setDrawerOpen(false)} />
             <SidebarBody onNavigate={() => setDrawerOpen(false)} />
           </aside>
         </div>
