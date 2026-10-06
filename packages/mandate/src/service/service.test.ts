@@ -31,7 +31,7 @@ class FakeSimulator implements PaymentSimulator {
   }
 }
 
-async function setup() {
+async function setup(mandateOptions: Parameters<typeof unsignedTestMandate>[0] = {}) {
   const store = new InMemoryAgentStore();
   let now = NOW;
   let counter = 0;
@@ -45,7 +45,7 @@ async function setup() {
   const lifecycle = new MandateLifecycleService({ store, clock, notify });
   const gate = new AgentGateService({ store, instanceSigner: signers.instance, simulator, clock, newId, notify });
 
-  const base = unsignedTestMandate();
+  const base = unsignedTestMandate(mandateOptions);
   const draft = await lifecycle.createDraft(ORG, 'usr_owner', {
     issuer: base.issuer,
     agent: base.agent,
@@ -179,7 +179,7 @@ describe('gate service — the six demo scenes', () => {
     expect(outcome.decision.record.failedRules).toEqual(expect.arrayContaining(['PAYTO_ALLOWED', 'MAX_PER_PAYMENT']));
     expect(outcome.authorization).toBeNull();
     expect(t.simulator.calls).toBe(0); // a clear denial never costs an RPC simulation
-    const totals = await t.store.spend.totals(t.mandate.id, t.now(), 86_400, 300);
+    const totals = await t.store.spend.totals(t.mandate.id, t.now(), 86_400);
     expect(totals.totalBaseUnits).toBe('0');
     expect(t.events).toContain('agent.decision.deny');
   });
@@ -217,7 +217,7 @@ describe('gate service — the six demo scenes', () => {
     expect(reuse.decision.record.decision).toBe('DENY');
 
     // Approved spend counts against the lifetime cap but not the autonomous window.
-    const totals = await t.store.spend.totals(t.mandate.id, t.now(), 86_400, 300);
+    const totals = await t.store.spend.totals(t.mandate.id, t.now(), 86_400);
     expect(totals).toEqual({ windowAutonomousBaseUnits: '0', totalBaseUnits: '40000000' });
   });
 
@@ -306,7 +306,7 @@ describe('gate service — safety properties', () => {
     const second = await t.gate.evaluate(ORG, req);
     expect(second.replayed).toBe(true);
     expect(second.decision.record.id).toBe(first.decision.record.id);
-    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400, 300)).totalBaseUnits).toBe('10000');
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('10000');
     expect(t.simulator.calls).toBe(1);
   });
 
@@ -348,7 +348,7 @@ describe('gate service — safety properties', () => {
     t.simulator.success = false;
     const failed = await t.gate.evaluate(ORG, await t.request());
     expect(failed.decision.record.failedRule).toBe('TRANSACTION_SIMULATION');
-    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400, 300)).totalBaseUnits).toBe('0');
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('0');
   });
 
   it('DENIES a request that carries no transaction to simulate', async () => {
@@ -363,7 +363,7 @@ describe('gate service — safety properties', () => {
     // Lifetime cap is 100 USDC; ten concurrent 11 USDC approved-scale payments... use small autonomous ones near the cap instead.
     const requests = await Promise.all(Array.from({ length: 12 }, () => t.request({ amount: '9000000', resourceUrl: `${TEST_ORIGIN}/research/big` })));
     const outcomes = await Promise.all(requests.map((r) => t.gate.evaluate(ORG, r)));
-    const totals = await t.store.spend.totals(t.mandate.id, t.now(), 86_400, 300);
+    const totals = await t.store.spend.totals(t.mandate.id, t.now(), 86_400);
     // Each 9 USDC payment is above the $1 threshold, so all escalate and none may reserve; totals must stay 0 (no overspend).
     expect(outcomes.every((o) => o.decision.record.decision === 'ESCALATE')).toBe(true);
     expect(totals.totalBaseUnits).toBe('0');
@@ -382,7 +382,7 @@ describe('gate service — safety properties', () => {
     const outcomes = await Promise.all(requests.map((r) => t.gate.evaluate(ORG, r)));
     const allows = outcomes.filter((o) => o.decision.record.decision === 'ALLOW');
     const escalates = outcomes.filter((o) => o.decision.record.decision === 'ESCALATE');
-    const totals = await t.store.spend.totals(t.mandate.id, t.now(), 86_400, 300);
+    const totals = await t.store.spend.totals(t.mandate.id, t.now(), 86_400);
 
     expect(allows).toHaveLength(1);
     expect(escalates).toHaveLength(2);
@@ -409,14 +409,35 @@ describe('gate service — safety properties', () => {
     expect(later.decision.record.decision).toBe('ALLOW');
   });
 
-  it('unsettled reservations keep counting after the reservation TTL until explicitly released', async () => {
+  it('unsettled reservations keep counting until explicitly released', async () => {
     const t = await setup();
     const outcome = await t.gate.evaluate(ORG, await t.request({ amount: '1000000' }));
-    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400, 300)).totalBaseUnits).toBe('1000000');
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('1000000');
     t.advance(300);
-    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400, 300)).totalBaseUnits).toBe('1000000');
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('1000000');
     await t.store.spend.release(outcome.decision.record.id);
-    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400, 300)).totalBaseUnits).toBe('0');
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('0');
+  });
+
+  it('failed payment path: releaseSpend frees the reservation so a later payment fits the cap', async () => {
+    // $1 lifetime / window / threshold so a single autonomous ALLOW fills the hard cap.
+    const t = await setup({ maxTotal: '1000000', maxPerWindow: '1000000', maxPerPayment: '1000000', threshold: '1000000' });
+    const failed = await t.gate.evaluate(ORG, await t.request({ amount: '1000000' }));
+    expect(failed.decision.record.decision).toBe('ALLOW');
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('1000000');
+
+    const blocked = await t.gate.evaluate(ORG, await t.request({ amount: '1000000' }));
+    expect(blocked.decision.record.decision).toBe('DENY');
+    expect(blocked.decision.record.failedRule).toBe('MAX_TOTAL');
+
+    await t.gate.releaseSpend(ORG, failed.decision.record.id);
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('0');
+    const audit = (t.store.audit as unknown as { entries: { action: string }[] }).entries.map((e) => e.action);
+    expect(audit).toContain('AGENT_SPEND_RELEASED');
+
+    const retry = await t.gate.evaluate(ORG, await t.request({ amount: '1000000' }));
+    expect(retry.decision.record.decision).toBe('ALLOW');
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('1000000');
   });
 
   it('expired approvals cannot be decided and are not honoured', async () => {

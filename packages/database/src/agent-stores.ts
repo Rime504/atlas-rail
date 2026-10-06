@@ -188,7 +188,7 @@ class PrismaDecisionStore implements DecisionStore {
 class PrismaSpendStore implements SpendStore {
   constructor(private readonly db: Db) {}
 
-  async totals(mandateId: string, now: number, windowSeconds: number, _reservationTtlSeconds: number): Promise<SpendTotals> {
+  async totals(mandateId: string, now: number, windowSeconds: number): Promise<SpendTotals> {
     const windowStart = toDate(now - windowSeconds);
     const rows = await this.db.$queryRaw<Array<{ window_autonomous: string; total: string }>>(Prisma.sql`
       SELECT

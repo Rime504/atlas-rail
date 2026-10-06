@@ -278,7 +278,23 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
     }
 
     // 3. Only now does the wallet sign — and it re-verifies the gate's authorisation itself.
-    const signed = await config.signer.signWithAuthorization(transactionBase64, outcome.authorization);
+    // ALLOW already reserved budget; free it if sign or settlement fails before a receipt can settle.
+    const decisionId = outcome.decision.record.id;
+    const releaseReservation = async () => {
+      try {
+        await config.gate.releaseSpend(decisionId);
+      } catch {
+        // best-effort: do not mask the original payment failure
+      }
+    };
+
+    let signed: Awaited<ReturnType<GatedSignerAdapter['signWithAuthorization']>>;
+    try {
+      signed = await config.signer.signWithAuthorization(transactionBase64, outcome.authorization);
+    } catch (error) {
+      await releaseReservation();
+      throw error;
+    }
     emit({ type: 'payment_signed', txMessageHash: outcome.authorization?.txMessageHash ?? '' });
 
     const paymentPayload = {
@@ -293,8 +309,9 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
     const paid = (await doFetch(retryRequest)) as AtlasResponse;
 
     if (paid.status >= 400) {
+      await releaseReservation();
       throw new PaymentSettlementError(
-        `Seller rejected the payment with HTTP ${paid.status}; the reserved budget is released automatically after the reservation TTL`,
+        `Seller rejected the payment with HTTP ${paid.status}; the reserved budget was released`,
         paid,
       );
     }
@@ -311,8 +328,9 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
     let receipt: BoundReceipt | null = null;
     let receiptError: string | null = null;
     if (txSignature) {
-      ({ receipt, error: receiptError } = await issueReceipt(outcome.decision.record.id, txSignature, paid));
+      ({ receipt, error: receiptError } = await issueReceipt(decisionId, txSignature, paid));
     } else {
+      // Paid HTTP without a settlement proof: do not release — money may still settle on-chain.
       receiptError = 'Seller response carried no settlement (PAYMENT-RESPONSE) header';
     }
 

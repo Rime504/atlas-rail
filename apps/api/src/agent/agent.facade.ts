@@ -249,7 +249,7 @@ export class AgentFacade {
     });
     const names = new Map(users.map((u) => [u.id, u.displayName]));
     const limits = record.mandate.scope.limits;
-    const spend = await this.store.spend.totals(record.mandate.id, this.now(), limits.windowSeconds, 300);
+    const spend = await this.store.spend.totals(record.mandate.id, this.now(), limits.windowSeconds);
     return {
       id: record.mandate.id,
       status: effectiveMandateStatus(record, this.now()),

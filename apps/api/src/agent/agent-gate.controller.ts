@@ -34,6 +34,10 @@ const receiptSchema = z.object({
   }),
 });
 
+const releaseSchema = z.object({
+  decisionId: z.string().min(1).max(64),
+});
+
 const acceptSchema = z.object({ link: delegationLinkSchema });
 
 /**
@@ -90,6 +94,15 @@ export class AgentGateController {
   @ApiOperation({ summary: 'Report a settled payment; returns the bound receipt once the settlement is verified on-chain' })
   async receipt(@Req() req: any, @Body() body: unknown) {
     return this.agent.receiptService.issue(req.user.organizationId, receiptSchema.parse(body));
+  }
+
+  @Post('spend/release')
+  @RequirePermission('agent:gate')
+  @ApiOperation({ summary: 'Release a RESERVED spend hold when an ALLOW will not settle (frees the mandate cap)' })
+  async releaseSpend(@Req() req: any, @Body() body: unknown) {
+    const { decisionId } = releaseSchema.parse(body);
+    await this.agent.gate.releaseSpend(req.user.organizationId, decisionId);
+    return { released: true, decisionId };
   }
 
   @Get('mandates/:mandateId')

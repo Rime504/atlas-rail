@@ -105,7 +105,7 @@ class InMemoryDecisionStore implements DecisionStore {
 class InMemorySpendStore implements SpendStore {
   private readonly entries: SpendEntry[] = [];
 
-  async totals(mandateId: string, now: number, windowSeconds: number, _reservationTtlSeconds: number): Promise<SpendTotals> {
+  async totals(mandateId: string, now: number, windowSeconds: number): Promise<SpendTotals> {
     let windowAutonomous = '0';
     let total = '0';
     for (const entry of this.entries) {
