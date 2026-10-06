@@ -86,16 +86,11 @@ export interface SpendTotals {
 
 export interface SpendStore {
   /**
-   * Sums SETTLED entries plus RESERVED entries younger than `reservationTtlSeconds`. Autonomous
-   * entries created after `now - windowSeconds` count towards the window (strictly after: an entry
-   * exactly `windowSeconds` old has rolled out).
+   * Sums SETTLED and RESERVED entries (RELEASED are excluded). Autonomous entries created after
+   * `now - windowSeconds` count towards the window (strictly after: an entry exactly `windowSeconds`
+   * old has rolled out). Budget frees only via settle (still counts as SETTLED) or explicit release().
    */
-  totals(
-    mandateId: string,
-    now: number,
-    windowSeconds: number,
-    reservationTtlSeconds: number,
-  ): Promise<SpendTotals>;
+  totals(mandateId: string, now: number, windowSeconds: number): Promise<SpendTotals>;
   reserve(entry: SpendEntry): Promise<void>;
   markSettled(decisionId: string, txSignature: string): Promise<void>;
   release(decisionId: string): Promise<void>;

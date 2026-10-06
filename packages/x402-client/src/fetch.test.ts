@@ -246,6 +246,12 @@ describe('createAtlasFetch — unsupported and failing sellers', () => {
     await expect(r.atlasFetch(`${r.origin}/research/summary`)).rejects.toBeInstanceOf(PaymentSettlementError);
   });
 
+  it('releases the reserved spend when the seller rejects after ALLOW', async () => {
+    const r = await rig({ seller: { rejectPayments: true } });
+    await expect(r.atlasFetch(`${r.origin}/research/summary`)).rejects.toBeInstanceOf(PaymentSettlementError);
+    expect((await r.world.store.spend.totals(r.world.mandate.id, r.world.clock.now, 86_400)).totalBaseUnits).toBe('0');
+  });
+
   it('still returns the paid resource if receipt issuance fails, reporting receiptError', async () => {
     const r = await rig();
     r.gate.issueReceipt = async () => {

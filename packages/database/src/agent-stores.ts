@@ -189,9 +189,8 @@ class PrismaDecisionStore implements DecisionStore {
 class PrismaSpendStore implements SpendStore {
   constructor(private readonly db: Db) {}
 
-  async totals(mandateId: string, now: number, windowSeconds: number, reservationTtlSeconds: number): Promise<SpendTotals> {
+  async totals(mandateId: string, now: number, windowSeconds: number): Promise<SpendTotals> {
     const windowStart = toDate(now - windowSeconds);
-    const reservationCutoff = toDate(now - reservationTtlSeconds);
     const rows = await this.db.$queryRaw<Array<{ window_autonomous: string; total: string }>>(Prisma.sql`
       SELECT
         COALESCE(SUM(CAST("amountBaseUnits" AS NUMERIC)) FILTER (WHERE "autonomous" AND "createdAt" > ${windowStart}), 0)::text AS window_autonomous,
@@ -199,7 +198,6 @@ class PrismaSpendStore implements SpendStore {
       FROM "AgentSpend"
       WHERE "mandateId" = ${mandateId}
         AND "status" <> 'RELEASED'
-        AND NOT ("status" = 'RESERVED' AND "createdAt" <= ${reservationCutoff})
     `);
     const row = rows[0];
     return { windowAutonomousBaseUnits: row?.window_autonomous ?? '0', totalBaseUnits: row?.total ?? '0' };

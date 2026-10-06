@@ -42,8 +42,6 @@ export interface GateServiceOptions {
   requireSimulation?: boolean;
   /** Maximum difference between the agent's `requestedAt` and the server clock. */
   requestSkewSeconds?: number;
-  /** How long a reserved (unsettled) payment keeps counting against the caps. */
-  reservationTtlSeconds?: number;
   /** How long a gate authorisation stays usable by the wallet. */
   authorizationTtlSeconds?: number;
 }
@@ -59,13 +57,11 @@ export interface GateOutcome {
 export class AgentGateService {
   private readonly requireSimulation: boolean;
   private readonly requestSkewSeconds: number;
-  private readonly reservationTtlSeconds: number;
   private readonly authorizationTtlSeconds: number;
 
   constructor(private readonly deps: GateServiceOptions) {
     this.requireSimulation = deps.requireSimulation ?? true;
     this.requestSkewSeconds = deps.requestSkewSeconds ?? 120;
-    this.reservationTtlSeconds = deps.reservationTtlSeconds ?? 300;
     this.authorizationTtlSeconds = deps.authorizationTtlSeconds ?? 120;
     if (this.requireSimulation && !deps.simulator) {
       throw new Error('AgentGateService requires a PaymentSimulator when simulation is required');
@@ -125,7 +121,7 @@ export class AgentGateService {
     const approval = this.toGateApproval(approvalRecord, record, now);
 
     const limits = mandate.scope.limits;
-    const spend = await store.spend.totals(mandate.id, now, limits.windowSeconds, this.reservationTtlSeconds);
+    const spend = await store.spend.totals(mandate.id, now, limits.windowSeconds);
     let revoked = record.revocation ? { revokedAt: record.revocation.revokedAt, reason: record.revocation.reason } : null;
     if (!revoked && this.deps.onchainRevocationCheck) {
       revoked = await this.deps.onchainRevocationCheck(record.mandateHash);
@@ -253,6 +249,19 @@ export class AgentGateService {
     await this.emit(organizationId, result, decisionId, mandate.id, offer.amount, createdApproval);
 
     return { decision: signed, authorization, approval: createdApproval, replayed: false };
+  }
+
+  /**
+   * Frees a RESERVED spend hold for an ALLOW that will not settle (seller rejected, sign failed,
+   * agent abandoned). SETTLED rows are left alone; idempotent when already RELEASED.
+   */
+  async releaseSpend(organizationId: string, decisionId: string): Promise<void> {
+    const stored = await this.deps.store.decisions.get(organizationId, decisionId);
+    if (!stored) throw new AgentServiceError('NOT_FOUND', 'Decision not found');
+    if (stored.signed.record.decision !== 'ALLOW') {
+      throw new AgentServiceError('INVALID_STATE', 'Only ALLOW decisions hold a spend reservation to release');
+    }
+    await this.deps.store.spend.release(decisionId);
   }
 
   private toGateApproval(approval: ApprovalRecord | null, record: MandateRecord, now: number): GateApproval | null {
