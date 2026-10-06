@@ -103,4 +103,47 @@ describe('Policy Engine', () => {
     expect(result.decision).toBe('BLOCK');
     expect(result.reasons.some((r) => r.code === 'UNKNOWN_PROGRAM_ID_DETECTED')).toBe(true);
   });
+
+  it('blocks payout when recipient is not on a non-empty allowlist', () => {
+    const result = evaluatePolicy({
+      ...baseInput,
+      policy: {
+        version: 1,
+        rules: {
+          ...defaultRules,
+          recipients: {
+            ...defaultRules.recipients,
+            allowedRecipientIds: ['rec_allowed'],
+          },
+        },
+      },
+      recipient: { ...baseInput.recipient, id: 'rec_1' },
+    });
+    expect(result.decision).toBe('BLOCK');
+    expect(result.reasons.some((r) => r.code === 'RECIPIENT_NOT_ALLOWED')).toBe(true);
+  });
+
+  it('allows payout when recipient is on the allowlist', () => {
+    const result = evaluatePolicy({
+      ...baseInput,
+      policy: {
+        version: 1,
+        rules: {
+          ...defaultRules,
+          recipients: {
+            ...defaultRules.recipients,
+            allowedRecipientIds: ['rec_1'],
+          },
+        },
+      },
+    });
+    expect(result.decision).toBe('REQUIRE_APPROVAL');
+    expect(result.reasons.some((r) => r.code === 'RECIPIENT_NOT_ALLOWED')).toBe(false);
+  });
+
+  it('does not apply allowlist when allowedRecipientIds is empty', () => {
+    const result = evaluatePolicy(baseInput);
+    expect(result.decision).toBe('REQUIRE_APPROVAL');
+    expect(result.reasons.some((r) => r.code === 'RECIPIENT_NOT_ALLOWED')).toBe(false);
+  });
 });
