@@ -267,6 +267,8 @@ model Payout {
   ledgerEntries LedgerEntry[]
 
   @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, createdAt])
+  @@index([status, updatedAt])
 }
 
 model PayoutApproval {
@@ -300,6 +302,8 @@ model LedgerEntry {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   treasury     Treasury     @relation(fields: [treasuryId], references: [id], onDelete: Cascade)
   payout       Payout?      @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
 }
 
 model AuditEvent {
@@ -319,6 +323,8 @@ model AuditEvent {
   createdAt      DateTime  @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
 }
 
 model ApiKey {
@@ -336,6 +342,8 @@ model ApiKey {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy    User         @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([keyPrefix, keyHash])
 }
 
 model WebhookEndpoint {
@@ -382,6 +390,7 @@ model IdempotencyRecord {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, key])
+  @@index([expiresAt])
 }
 
 // ---------------------------------------------------------------------------------------------

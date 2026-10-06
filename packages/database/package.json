@@ -14,11 +14,11 @@
     "build": "prisma generate && tsc --build",
     "typecheck": "prisma generate && tsc --noEmit",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate deploy",
-    "db:push": "prisma db push",
-    "db:seed": "prisma db seed",
+    "db:migrate": "node --env-file=../../.env ./node_modules/prisma/build/index.js migrate deploy",
+    "db:push": "node --env-file=../../.env ./node_modules/prisma/build/index.js db push",
+    "db:seed": "node --env-file=../../.env ./node_modules/prisma/build/index.js db seed",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
-    "db:migrate:dev": "prisma migrate dev"
+    "db:migrate:dev": "node --env-file=../../.env ./node_modules/prisma/build/index.js migrate dev"
   },
   "prisma": {
     "seed": "node -r ts-node/register prisma/seed.ts"
