@@ -1,0 +1,60 @@
+# Git / CI / IDE
+.git
+.github
+.vscode
+.idea
+**/.DS_Store
+**/Thumbs.db
+
+# Dependencies & package-manager caches (reinstalled in the image)
+**/node_modules
+.pnpm-store
+
+# Build outputs & caches (rebuilt in the image)
+**/dist
+**/.next
+**/out
+**/build
+**/*.tsbuildinfo
+.turbo
+coverage
+.vitest
+test-results
+playwright-report
+blob-report
+playwright/.cache
+
+# Secrets & local demo material — never send into the build context
+.env
+.env.*
+!.env.example
+.demo
+
+# Rust / Anchor (not used by Node image builds)
+programs
+target
+.anchor
+Cargo.toml
+Cargo.lock
+Anchor.toml
+
+# Docs & misc not needed at build time (keep workspace package dirs —
+# excluding them breaks `pnpm install --frozen-lockfile`)
+docs
+spec
+reports
+scripts
+*.md
+!README.md
+LICENSE
+CHANGELOG.md
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+ROADMAP.md
+SECURITY.md
+Makefile
+vitest.config.ts
+CLAUDE.md
+AGENTS.md
+docker-compose.yml
+Dockerfile.*
