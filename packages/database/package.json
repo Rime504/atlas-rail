@@ -12,7 +12,7 @@
   },
   "scripts": {
     "build": "prisma generate && tsc --build",
-    "typecheck": "prisma generate && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "node --env-file=../../.env ./node_modules/prisma/build/index.js migrate deploy",
     "db:push": "node --env-file=../../.env ./node_modules/prisma/build/index.js db push",
