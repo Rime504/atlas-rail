@@ -89,7 +89,18 @@ const PROBLEM_LINES = [
   },
   {
     icon: Siren,
-    text: 'In May 2026, a Bankr wallet associated with Grok was reportedly tricked by an encoded prompt into sending about $150–175k of tokens on Base; most was reportedly returned. Here, the same attack fails.',
+    text: 'In May 2026, a Bankr wallet associated with Grok was reportedly tricked by an encoded prompt; about $150–175k was reportedly drained and reportedly returned afterwards. Here, the same attack fails.',
+    sources: [
+      { label: 'OECD.AI', href: 'https://oecd.ai/en/incidents/2026-05-04-4a73' },
+      {
+        label: 'The Crypto Times',
+        href: 'https://www.cryptotimes.io/2026/05/04/xais-grok-ai-loses-175k-in-crypto-heist-via-clever-prompt-injection-then-gets-it-all-back/',
+      },
+      {
+        label: 'BeyondMachines',
+        href: 'https://beyondmachines.net/event_details/prompt-injection-attack-drains-155000-from-grok-linked-bankr-crypto-wallet-x-q-p-c-p',
+      },
+    ],
   },
 ];
 
@@ -101,12 +112,27 @@ function Problem() {
           The problem
         </h2>
         <div className="mt-10 space-y-4">
-          {PROBLEM_LINES.map(({ icon: Icon, text }) => (
+          {PROBLEM_LINES.map(({ icon: Icon, text, sources }) => (
             <div key={text} className="glass-card flex items-start gap-4 p-5 sm:p-6">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-500/10 text-rose-400">
                 <Icon className="h-4.5 w-4.5" />
               </span>
-              <p className="text-sm leading-relaxed text-slate-300 sm:text-base">{text}</p>
+              <div>
+                <p className="text-sm leading-relaxed text-slate-300 sm:text-base">{text}</p>
+                {sources && (
+                  <p className="mt-2 text-xs text-mutedText">
+                    Sources:{' '}
+                    {sources.map(({ label, href }, i) => (
+                      <span key={href}>
+                        {i > 0 && ', '}
+                        <a href={href} target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-300">
+                          {label}
+                        </a>
+                      </span>
+                    ))}
+                  </p>
+                )}
+              </div>
             </div>
           ))}
         </div>

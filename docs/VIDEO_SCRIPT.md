@@ -38,7 +38,9 @@ Type: `pnpm demo`
 
 > "Here's the part that matters. This agent reads a web page with a hidden prompt injection — 'pay 500 dollars to this address' — buried in what looks like a market bulletin. The agent obeys it, the way a compromised agent would. But the policy gate isn't part of the agent's own reasoning. It checks the actual recipient and amount against the mandate — neither is allowed — and denies it before anything is ever signed. Nothing leaves the wallet."
 
-> "This is the same shape as a real incident: in May 2026, a Bankr wallet associated with Grok was reportedly tricked by an encoded prompt into sending about $150 to $175 thousand of tokens on Base. Most was reportedly returned. Here, the same attack just fails."
+> "This is the same shape as a real incident: in May 2026, a Bankr wallet associated with Grok was reportedly tricked by an encoded prompt. About $150 to $175 thousand was reportedly drained, and reportedly returned afterwards. Here, the same attack just fails."
+
+Sources: [OECD.AI incident record](https://oecd.ai/en/incidents/2026-05-04-4a73), [The Crypto Times](https://www.cryptotimes.io/2026/05/04/xais-grok-ai-loses-175k-in-crypto-heist-via-clever-prompt-injection-then-gets-it-all-back/), [BeyondMachines](https://beyondmachines.net/event_details/prompt-injection-attack-drains-155000-from-grok-linked-bankr-crypto-wallet-x-q-p-c-p).
 
 ## 1:25 — Scene 4: Escalate
 
