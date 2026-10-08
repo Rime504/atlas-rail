@@ -56,7 +56,7 @@ function Hero() {
           <span className="gradient-text">Your treasury shouldn&rsquo;t be.</span>
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-mutedText sm:text-lg">
-          Atlas Rail is an open-source policy and evidence layer for agent payments on Solana.
+          Atlas Rail gives every AI agent payment on Solana a proof of permission: a signed mandate, a gate the wallet cannot skip, and a receipt anyone can check from the chain.
         </p>
         <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a href={PLAYGROUND_URL} target="_blank" rel="noreferrer" className="btn-gradient w-full sm:w-auto">
@@ -69,6 +69,11 @@ function Hero() {
           </a>
         </div>
         <p className="mt-4 text-xs text-mutedText">No signup, nothing to install &mdash; runs in your browser.</p>
+        <p className="mt-2 text-xs">
+          <a href={`${PLAYGROUND_URL}/verify`} target="_blank" rel="noreferrer" className="text-slate-300 underline hover:text-white">
+            Verify a real devnet payment from its transaction
+          </a>
+        </p>
       </div>
       <div
         aria-hidden
@@ -274,7 +279,7 @@ function SafetyFooter() {
           </p>
         </div>
         <div className="mt-8 flex flex-col items-center justify-between gap-4 text-sm text-mutedText sm:flex-row">
-          <p>Rime Khatib</p>
+          <p>Rime (lead engineer) &middot; Kamelia (co-founder) &middot; Divyesh (on-chain engineer)</p>
           <a
             href={GITHUB_URL}
             target="_blank"

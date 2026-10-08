@@ -12,19 +12,19 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: 'Atlas Rail — Your AI agent can be tricked. Your treasury shouldn’t be.',
   description:
-    'Atlas Rail is an open-source policy and evidence layer for agent payments on Solana: signed mandates, a policy gate, human approval and verifiable receipts. Devnet only.',
+    'Proof of permission for every AI agent payment on Solana: a signed mandate, a 15-rule gate before any signature, human approval for edge cases, and a receipt anyone can verify from the chain. Open source, devnet only.',
   metadataBase: new URL('https://atlasrail.dev'),
   openGraph: {
     title: 'Atlas Rail',
     description:
-      'An open-source policy and evidence layer for agent payments on Solana. Devnet only.',
+      'Proof of permission for every AI agent payment on Solana. Open source, devnet only.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Atlas Rail',
     description:
-      'An open-source policy and evidence layer for agent payments on Solana. Devnet only.',
+      'Proof of permission for every AI agent payment on Solana. Open source, devnet only.',
   },
 };
 

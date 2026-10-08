@@ -40,6 +40,7 @@ Status: **Sourced** (backed as written), **Fixed** (wording changed in this audi
 | `/break`: the real gate decides, $5 per payment, $20 an hour, two sellers | `/break` | `tryToBreak` (`scenario.ts`), `amounts.ts`; `break.spec.ts` | Sourced |
 | Spec test vectors are generated from the implementation and checked in CI | site | `spec/test-vectors`, `packages/mandate/src/vectors.test.ts` | Sourced |
 | May 2026: a Bankr wallet associated with Grok was reportedly tricked by an encoded prompt; about $150–175k reportedly drained, reportedly returned afterwards | site (sources linked next to the line), `apps/demo-agent` scene 3 narration, `docs/VIDEO_SCRIPT.md` | [OECD.AI incident record](https://oecd.ai/en/incidents/2026-05-04-4a73), [The Crypto Times](https://www.cryptotimes.io/2026/05/04/xais-grok-ai-loses-175k-in-crypto-heist-via-clever-prompt-injection-then-gets-it-all-back/), [BeyondMachines](https://beyondmachines.net/event_details/prompt-injection-attack-drains-155000-from-grok-linked-bankr-crypto-wallet-x-q-p-c-p); all three checked to load | Fixed: sources added, wording aligned with them ("reportedly returned afterwards" replaces "most was reportedly returned") |
+| Positioning: proof of permission for every AI agent payment on Solana; team Rime, Kamelia, Divyesh | site hero, metadata and footer, playground metadata | Aligned with README_NEW (was "policy and evidence layer"; the site footer named only Rime) | Fixed |
 | Answers x402 issue #3500 (not endorsed) | site | [x402-foundation/x402#3500](https://github.com/x402-foundation/x402/issues/3500), checked to exist | Sourced |
 
 ## Needs a source or a decision
@@ -47,4 +48,3 @@ Status: **Sourced** (backed as written), **Fixed** (wording changed in this audi
 | Claim | Where | Problem |
 |---|---|---|
 | "Organizations are giving agents tools, keys and money faster than they can prove what those agents were allowed to do" | site | An opinion, not a measurement; fine as framing but reads like a fact. |
-| Site and playground landing positioning | site, playground landing | Still the earlier positioning ("policy and evidence layer"); to be aligned with README_NEW after the swap. Site footer names only Rime; the README names all three. |

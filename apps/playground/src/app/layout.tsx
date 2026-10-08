@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://playground.atlasrail.dev'),
   openGraph: {
     title: 'Atlas Rail Playground',
-    description: 'Watch a policy gate allow, escalate and block an AI agent’s payments in real time.',
+    description: 'Proof of permission for every AI agent payment on Solana. Watch payments get allowed, escalated and blocked, then verify one from the chain.',
     type: 'website',
   },
 };
