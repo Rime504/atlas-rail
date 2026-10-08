@@ -26,7 +26,7 @@ In: purpose, agent key, per-payment max, hourly/daily budgets, lifetime total, a
 
 ## Gate
 
-In: x402 PaymentRequirements, agent ID, unsigned tx, agent proof. Out: ALLOW (reserve, authorise, receipt) / ESCALATE (human) / DENY (stable reason codes, webhook, receipt). Targets: p95 < 50 ms measured; no overspend under concurrency.
+In: x402 PaymentRequirements, agent ID, unsigned tx, agent proof. Out: ALLOW (reserve, authorise, receipt) / ESCALATE (human) / DENY (stable reason codes, webhook, signed decision record). Measured on devnet, end to end including the RPC simulation: p50 351 ms, p95 1,613 ms (reports/e2e-2026-10-08.md). The rule evaluation alone is not yet timed separately. No overspend under concurrency: 100 simultaneous payments against a $5 cap spend $5.00 (reports/redteam-2026-10-08.md).
 
 ## Signer trust (#28)
 
