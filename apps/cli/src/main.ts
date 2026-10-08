@@ -1,10 +1,13 @@
 #!/usr/bin/env node
+import { runProveTx } from './prove';
 import { runVerify, runVerifyMandate } from './verify';
 
 const USAGE = `atlas — verify Atlas Rail agent-payment evidence
 
 Usage:
   atlas verify <receipt.json> [options]     Verify a bound receipt
+  atlas verify --tx <signature> [options]   Prove a devnet payment from its transaction alone:
+                                            memo -> published receipt -> every check
   atlas mandate <mandate.json>              Verify a mandate's delegation chain
 
 Options for verify:
@@ -13,6 +16,7 @@ Options for verify:
   --trusted-key <pubkey> Pin the Atlas Rail instance key (repeatable). Strongly recommended.
   --check-settlement     Also read the settlement transaction and confirm it matches the offer
   --require-anchor       Fail (instead of skip) if the receipt is not yet anchored
+  --store <url>          Receipt store for --tx (default: $ATLAS_RECEIPT_STORE or https://atlas-rail-playground.vercel.app)
   --json                 Machine-readable output
   --no-color             Disable colours
 
@@ -30,6 +34,8 @@ async function main(argv: string[]): Promise<number> {
   const trustedKeys: string[] = [];
   const positional: string[] = [];
   let rpc: string | null = null;
+  let tx: string | null = null;
+  let store: string | null = null;
   let offline = false;
   let checkSettlement = false;
   let requireAnchor = false;
@@ -39,6 +45,8 @@ async function main(argv: string[]): Promise<number> {
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (arg === '--rpc') rpc = rest[++i] ?? null;
+    else if (arg === '--tx') tx = rest[++i] ?? null;
+    else if (arg === '--store') store = rest[++i] ?? null;
     else if (arg === '--trusted-key') {
       const key = rest[++i];
       if (key) trustedKeys.push(key);
@@ -52,6 +60,10 @@ async function main(argv: string[]): Promise<number> {
       console.error(`Unknown option ${arg}\n\n${USAGE}`);
       return 2;
     } else positional.push(arg);
+  }
+
+  if (command === 'verify' && tx) {
+    return runProveTx({ txSignature: tx, rpc, store, trustedKeys, json, color });
   }
 
   const file = positional[0];
