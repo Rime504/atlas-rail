@@ -23,7 +23,12 @@ describe('isPayoutStuck', () => {
 
   it('respects a custom timeout', () => {
     const updatedAt = new Date(now.getTime() - 5000);
-    expect(isPayoutStuck('SUBMITTED', updatedAt, now, 1000)).toBe(true);
-    expect(isPayoutStuck('SUBMITTED', updatedAt, now, 10000)).toBe(false);
+    expect(isPayoutStuck('SIMULATING', updatedAt, now, 1000)).toBe(true);
+    expect(isPayoutStuck('SIMULATING', updatedAt, now, 10000)).toBe(false);
+  });
+
+  it('does not flag SUBMITTED as stuck (post-submit must not fail-and-retry)', () => {
+    const veryOld = new Date(now.getTime() - STUCK_EXECUTION_TIMEOUT_MS * 100);
+    expect(isPayoutStuck('SUBMITTED', veryOld, now)).toBe(false);
   });
 });

@@ -18,7 +18,7 @@ import {
   RuleResult,
   evaluateGate,
 } from './gate';
-import { VerificationCheck, hashMandate } from './mandate';
+import { VerificationCheck, hashMandate, verifyMandateChain } from './mandate';
 import { X402Offer, hashOffer } from './offer';
 import { AgentMandate } from './schema';
 
@@ -266,6 +266,10 @@ export function verifyGateAuthorization(
     now: number;
     txMessageHash: string;
     agentPublicKey: string;
+    /** The signed ALLOW decision the authorization claims to reference. */
+    decision: SignedDecision;
+    /** The mandate document the decision was evaluated under (owner/approver/agent chain). */
+    mandate: AgentMandate;
   },
 ): GateAuthorizationCheck {
   const { instance, ...body } = authorization;
@@ -287,5 +291,33 @@ export function verifyGateAuthorization(
     hashGateAuthorization(body),
     instance.signature,
   );
-  return valid ? { ok: true, error: null } : { ok: false, error: 'Authorization signature does not verify' };
+  if (!valid) return { ok: false, error: 'Authorization signature does not verify' };
+
+  const { decision, mandate } = expected;
+  if (decision.record.decision !== 'ALLOW') {
+    return { ok: false, error: 'Authorization does not reference an ALLOW decision' };
+  }
+  if (decision.record.id !== body.decisionId || decision.decisionHash !== body.decisionHash) {
+    return { ok: false, error: 'Authorization does not match the referenced decision' };
+  }
+  if (decision.instance.publicKey !== instance.publicKey) {
+    return { ok: false, error: 'Decision and authorization were not issued by the same instance key' };
+  }
+  if (!expected.trustedInstanceKeys.includes(decision.instance.publicKey)) {
+    return { ok: false, error: 'Decision was not issued by a trusted Atlas Rail instance key' };
+  }
+  if (body.mandateHash !== decision.record.mandateHash || body.mandateHash !== hashMandate(mandate)) {
+    return { ok: false, error: 'Authorization mandate hash does not match the decision or mandate' };
+  }
+  if (body.offerHash !== decision.record.offerHash) {
+    return { ok: false, error: 'Authorization offer hash does not match the decision' };
+  }
+  const decisionSig = verifyDecisionSignature(decision);
+  if (!decisionSig.ok) return { ok: false, error: decisionSig.message };
+  if (!verifyMandateChain(mandate).valid) {
+    return { ok: false, error: 'Mandate delegation chain is not valid' };
+  }
+  const scope = verifyDecisionMatchesScope(mandate, decision);
+  if (!scope.ok) return { ok: false, error: scope.message };
+  return { ok: true, error: null };
 }

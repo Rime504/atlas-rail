@@ -36,8 +36,19 @@ function onchainEnabled(): boolean {
   return result.success && result.data === true;
 }
 
+/** Same pattern as {@link onchainEnabled}. Switches anchoring from an SPL Memo to the mandate
+ * registry's `anchor_root` instruction. Only meaningful when `onchainEnabled()` is also true. */
+function anchorRootEnabled(): boolean {
+  const result = envBoolean.safeParse(process.env.ATLAS_ANCHOR_ROOT);
+  return result.success && result.data === true;
+}
+
 function mandateProgramId(): string {
   return process.env.MANDATE_PROGRAM_ID ?? 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k';
+}
+
+function solanaRpcUrl(): string {
+  return process.env.SOLANA_RPC_URL ?? 'https://api.devnet.solana.com';
 }
 
 export interface OnChainMandateResult {
@@ -104,7 +115,16 @@ export class AgentFacade {
       newId,
       notify,
     });
-    this.anchorService = new AnchorService({ receipts: this.receipts, chain, signer: this.instanceSigner, clock, newId });
+    this.anchorService = new AnchorService({
+      receipts: this.receipts,
+      chain,
+      signer: this.instanceSigner,
+      clock,
+      newId,
+      mode: onchainEnabled() && anchorRootEnabled() ? 'root' : 'memo',
+      rpcUrl: solanaRpcUrl(),
+      programId: mandateProgramId(),
+    });
     this.logger.log(`Instance attestation key: ${this.instanceSigner.publicKey}`);
   }
 
@@ -249,7 +269,7 @@ export class AgentFacade {
     });
     const names = new Map(users.map((u) => [u.id, u.displayName]));
     const limits = record.mandate.scope.limits;
-    const spend = await this.store.spend.totals(record.mandate.id, this.now(), limits.windowSeconds, 300);
+    const spend = await this.store.spend.totals(record.mandate.id, this.now(), limits.windowSeconds);
     return {
       id: record.mandate.id,
       status: effectiveMandateStatus(record, this.now()),

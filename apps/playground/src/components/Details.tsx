@@ -23,12 +23,29 @@ export function Details({ label = 'Show details', children }: { label?: string; 
   );
 }
 
+/** Shortened start…end, tap-to-copy (the full value is what actually gets copied) — the only way a
+ * 44-character Solana address can appear inline without ever causing horizontal overflow. */
 export function MonoAddress({ value, chars = 6 }: { value: string; chars?: number }) {
+  const [copied, setCopied] = useState(false);
   const short = value.length > chars * 2 + 1 ? `${value.slice(0, chars)}…${value.slice(-chars)}` : value;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API unavailable (e.g. insecure context) — the full value is still in the title.
+    }
+  };
   return (
-    <code className="rounded bg-background px-1.5 py-0.5 font-mono text-[11px] text-mutedText" title={value}>
-      {short}
-    </code>
+    <button
+      type="button"
+      onClick={copy}
+      title={copied ? 'Copied!' : value}
+      className="rounded bg-background px-1.5 py-0.5 font-mono text-[11px] text-mutedText transition hover:text-white"
+    >
+      {copied ? 'Copied!' : short}
+    </button>
   );
 }
 

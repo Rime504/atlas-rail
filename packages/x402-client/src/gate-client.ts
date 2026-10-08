@@ -1,4 +1,5 @@
 import {
+  AgentMandate,
   ApprovalState,
   GateAuthorization,
   SignedAgentGateRequest,
@@ -20,6 +21,8 @@ export interface GateResponse {
   decision: SignedDecision;
   authorization: GateAuthorization | null;
   approval: GateApprovalView | null;
+  /** Mandate the decision was evaluated under (wallet re-checks ALLOW against this). */
+  mandate: AgentMandate;
   replayed?: boolean;
 }
 
@@ -34,6 +37,8 @@ export interface GateClient {
   evaluate(request: SignedAgentGateRequest): Promise<GateResponse>;
   getApproval(approvalId: string): Promise<GateApprovalView>;
   issueReceipt(input: IssueReceiptRequest): Promise<BoundReceipt>;
+  /** Free a RESERVED hold when an ALLOW will not settle. */
+  releaseSpend(decisionId: string): Promise<void>;
 }
 
 export interface HttpGateClientOptions {
@@ -64,6 +69,10 @@ export class HttpGateClient implements GateClient {
 
   issueReceipt(input: IssueReceiptRequest): Promise<BoundReceipt> {
     return this.call<BoundReceipt>('POST', '/v1/agent/gate/receipts', input);
+  }
+
+  async releaseSpend(decisionId: string): Promise<void> {
+    await this.call<{ released: boolean }>('POST', '/v1/agent/gate/spend/release', { decisionId });
   }
 
   private async call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {

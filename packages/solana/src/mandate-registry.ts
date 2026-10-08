@@ -328,12 +328,3 @@ export async function fetchMandateAccount(rpcUrl: string, mandatePda: string): P
   if (!info) return null;
   return decodeMandateAccount(info.data);
 }
-
-/** Reads a Root PDA written by `anchor_root`. Returns `null` if the account does not exist. */
-export async function fetchRootAccount(rpcUrl: string, rootPda: string): Promise<RootAccountOnChain | null> {
-  assertNotMainnet(rpcUrl);
-  const connection = new Connection(rpcUrl, 'confirmed');
-  const info = await connection.getAccountInfo(new PublicKey(rootPda), 'confirmed');
-  if (!info) return null;
-  return decodeRootAccount(info.data);
-}

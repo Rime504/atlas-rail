@@ -1,5 +1,6 @@
 export * from './jcs';
 export * from './crypto';
+export * from './receipt-memo';
 export * from './schema';
 export * from './resource';
 export * from './offer';

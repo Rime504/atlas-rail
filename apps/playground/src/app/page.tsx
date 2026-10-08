@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Github, FileText } from 'lucide-react';
+import { ArrowRight, FileText, Github, Search, ShieldX } from 'lucide-react';
 
 export default function LandingPage() {
   return (
@@ -12,7 +12,7 @@ export default function LandingPage() {
         <h1 className="font-display text-4xl font-semibold leading-tight sm:text-5xl">
           AI agents can now pay for things.
           <br />
-          <span className="bg-solana-gradient bg-clip-text text-transparent">Atlas Rail makes sure they only pay what they&rsquo;re allowed to</span>, and proves it.
+          <span className="bg-solana-gradient-text bg-clip-text text-transparent">Atlas Rail makes sure they only pay what they&rsquo;re allowed to</span>, and proves it.
         </h1>
         <p className="mt-6 max-w-lg text-base text-mutedText">
           An 8-step guided walkthrough, running the real policy gate and receipt code. No signup, nothing to install.
@@ -24,6 +24,14 @@ export default function LandingPage() {
           Start the demo
           <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" aria-hidden="true" />
         </Link>
+        <div className="mt-6 flex flex-col items-center gap-3 text-sm font-medium sm:flex-row sm:gap-6">
+          <Link href="/break" className="inline-flex items-center gap-1.5 text-white/90 hover:text-white">
+            <ShieldX className="h-4 w-4 text-deny" aria-hidden="true" /> Watch an attack get blocked
+          </Link>
+          <Link href="/verify" className="inline-flex items-center gap-1.5 text-white/90 hover:text-white">
+            <Search className="h-4 w-4 text-allow" aria-hidden="true" /> Verify a real payment
+          </Link>
+        </div>
         <div className="mt-12 flex items-center gap-6 text-sm text-mutedText">
           <a href="https://github.com/Rime504/atlas-rail" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-white">
             <Github className="h-4 w-4" aria-hidden="true" /> GitHub

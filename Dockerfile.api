@@ -5,10 +5,20 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 FROM base AS builder
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm build
+# Only apps/api and its own workspace dependencies — the monorepo's Next.js apps don't belong in
+# this image and some need build-time env vars this context never has.
+RUN pnpm turbo run build --filter=@atlas-rail/api...
 
 FROM base AS runner
+# NODE_ENV=production would make DevnetKeyring.load() refuse to start (packages/solana/src/keyring.ts)
+# — a deliberate guardrail against ever using mock devnet keys for real money. This service is
+# devnet-only by design (assertNotMainnet in main.ts is the actual safety boundary that matters),
+# so it stays out of "production" on purpose; ATLAS_ALLOW_MOCK_SIGNER=true (set at deploy time, not
+# baked in here) is the explicit, separate opt-in the keyring itself requires.
 ENV NODE_ENV=development
 COPY --from=builder /app .
 EXPOSE 3001
-CMD ["pnpm", "--filter", "@atlas-rail/api", "start"]
+# Applies any pending Prisma migrations before every start — safe to run on an already-migrated
+# database (no-op), and means a fresh Postgres (first deploy) or a schema change (any later one)
+# never needs a manual step.
+CMD ["sh", "-c", "pnpm --filter @atlas-rail/database db:migrate && pnpm --filter @atlas-rail/api start:prod"]

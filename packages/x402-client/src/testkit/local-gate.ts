@@ -26,6 +26,7 @@ export class LocalGateClient implements GateClient {
             requiredRoles: outcome.approval.requiredRoles,
           }
         : null,
+      mandate: outcome.mandate,
       replayed: outcome.replayed,
     };
   }
@@ -44,5 +45,9 @@ export class LocalGateClient implements GateClient {
 
   issueReceipt(input: IssueReceiptRequest): Promise<BoundReceipt> {
     return this.deps.receiptService.issue(this.deps.organizationId, input);
+  }
+
+  releaseSpend(decisionId: string): Promise<void> {
+    return this.deps.gate.releaseSpend(this.deps.organizationId, decisionId);
   }
 }

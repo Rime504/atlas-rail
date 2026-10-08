@@ -10,6 +10,7 @@ import {
 import { AuthGuard, RequirePermission } from '../common/auth.guard';
 import { AgentFacade } from './agent.facade';
 import { AgentExceptionFilter } from './agent.exceptions';
+import { publishPublicReceipt } from './public-receipts.service';
 
 const gateRequestSchema = z.object({
   type: z.literal('atlasrail.gate-request'),
@@ -32,6 +33,10 @@ const receiptSchema = z.object({
     bodySha256: z.string().regex(/^[0-9a-f]{64}$/),
     contentType: z.string().max(200).nullable(),
   }),
+});
+
+const releaseSchema = z.object({
+  decisionId: z.string().min(1).max(64),
 });
 
 const acceptSchema = z.object({ link: delegationLinkSchema });
@@ -65,6 +70,7 @@ export class AgentGateController {
             requiredRoles: outcome.approval.requiredRoles,
           }
         : null,
+      mandate: outcome.mandate,
       replayed: outcome.replayed,
     };
   }
@@ -89,7 +95,21 @@ export class AgentGateController {
   @RequirePermission('agent:gate')
   @ApiOperation({ summary: 'Report a settled payment; returns the bound receipt once the settlement is verified on-chain' })
   async receipt(@Req() req: any, @Body() body: unknown) {
-    return this.agent.receiptService.issue(req.user.organizationId, receiptSchema.parse(body));
+    const receipt = await this.agent.receiptService.issue(req.user.organizationId, receiptSchema.parse(body));
+    // Every main-demo receipt is public by construction — this product's whole point is that anyone
+    // can verify any payment, so there's nothing here to keep private. Best-effort: never blocks or
+    // fails the response the agent actually needs.
+    void publishPublicReceipt(receipt, 'demo-agent').catch(() => undefined);
+    return receipt;
+  }
+
+  @Post('spend/release')
+  @RequirePermission('agent:gate')
+  @ApiOperation({ summary: 'Release a RESERVED spend hold when an ALLOW will not settle (frees the mandate cap)' })
+  async releaseSpend(@Req() req: any, @Body() body: unknown) {
+    const { decisionId } = releaseSchema.parse(body);
+    await this.agent.gate.releaseSpend(req.user.organizationId, decisionId);
+    return { released: true, decisionId };
   }
 
   @Get('mandates/:mandateId')

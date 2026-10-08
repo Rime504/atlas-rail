@@ -6,6 +6,7 @@
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "nest start",
+    "start:prod": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "openapi": "ts-node src/scripts/generate-openapi.ts",

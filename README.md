@@ -2,7 +2,9 @@
 
 **Spending rules and verifiable receipts for AI agents that pay on Solana.**
 
-https://atlas-rail-site.vercel.app/
+### 🎮 [Try the live playground — no signup, nothing to install](https://atlas-rail-playground.vercel.app)
+
+![An 8-step walkthrough of the Atlas Rail playground: signing a mandate on Solana, a normal payment allowed, a prompt-injection attack blocked, a seller price spike escalated to a human, and a verified receipt](docs/assets/playground-demo.gif)
 
 [![CI](https://github.com/Rime504/atlas-rail/actions/workflows/ci.yml/badge.svg)](https://github.com/Rime504/atlas-rail/actions)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -10,13 +12,26 @@ https://atlas-rail-site.vercel.app/
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/Node-22_LTS-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 
-AI agents can now pay for things on their own: with [x402](https://x402.org), an API answers `402 Payment Required` and the agent pays. That is powerful, and it is also an open wallet: a prompt-injected or buggy agent pays an attacker as readily as a real seller.
+**What it does, in 30 seconds:** AI agents can now pay for things on their own — with [x402](https://x402.org), an API answers `402 Payment Required` and the agent pays. That's an open wallet: a prompt-injected or buggy agent pays an attacker as readily as a real seller. Atlas Rail puts a **policy gate outside the agent's own reasoning**: a person signs the agent a mandate (budget, allowed recipients and resources, a human-approval threshold), the gate checks every payment against it *before* anything is signed, and every allowed payment leaves a receipt — bound to the mandate and the decision, Merkle-anchored on Solana devnet — that anyone can verify offline with `atlas verify`, without trusting Atlas Rail itself.
 
-Atlas Rail puts a **policy gate outside the agent's own reasoning**. A person grants the agent a signed mandate: a budget, allowed recipients and resources, and a threshold above which a human must approve. Every payment is checked against it before anything is signed, and every payment leaves a receipt anyone can verify offline with `atlas verify`, without trusting the operator.
+```mermaid
+graph LR
+    Agent[AI Agent] -->|"402 offer"| Gate[Policy Gate]
+    Gate -->|ALLOW / DENY / ESCALATE| Agent
+    Gate -.->|above threshold| Human[Owner / Approver]
+    Gate -->|signed mandate + revocation| Registry["Mandate Registry (atlas-mandate program)"]
+    Gate -->|bound receipt| Receipts[Receipts]
+    Receipts -->|Merkle root via anchor_root| Registry
+    Registry -->|on-chain| Solana[(Solana Devnet)]
+    Verifier["atlas verify (anyone)"] -->|receipt + chain read| Solana
+```
 
-**Try it:** `pnpm demo:offline` (no Docker, no devnet needed). Six scenes: **Grant → Pay → Attack** (a prompt injection the gate blocks) **→ Escalate** (a human approves from a phone) **→ Prove → Revoke**. Runbook: [`docs/DEMO.md`](docs/DEMO.md).
+- **Devnet program:** `CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k` — [view on Solana Explorer](https://explorer.solana.com/address/CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k?cluster=devnet)
+- **Run it locally in one command:** `pnpm demo:offline` (no Docker, no devnet needed) — six scripted scenes: Grant → Pay → **Attack** (a prompt injection the gate blocks) → **Escalate** (a human approves from a phone) → Prove → Revoke. Runbook: [`docs/DEMO.md`](docs/DEMO.md).
+- **Team:** Rime and Kamelia (co-founders), Divyesh (on-chain).
+- **Marketing site:** [atlas-rail-site.vercel.app](https://atlas-rail-site.vercel.app/)
 
-**Status:** open source (Apache 2.0), Solana devnet only, 255 automated tests. The mandate format is a draft proposal ([`spec/agent-mandate-v0.1.md`](spec/agent-mandate-v0.1.md)), not a standard, and the code has not been audited.
+**Status:** open source (Apache 2.0), Solana devnet only, 285 automated tests. The mandate format is a draft proposal ([`spec/agent-mandate-v0.1.md`](spec/agent-mandate-v0.1.md)), not a standard, and the code has not been audited.
 
 Underneath, the same engine also governs ordinary treasury payouts: spend limits, multi-person approval, pre-flight simulation, an append-only audit ledger and signed webhooks. See [Treasury payouts](#treasury-payouts).
 
@@ -87,12 +102,11 @@ Either command seeds two agent mandates and runs six scripted scenes end to end 
 
 ### On-chain mandate registry (devnet)
 
-A mandate's existence and revocation are also recorded on-chain, so anyone can check them independently of Atlas Rail's own database. See [`programs/atlas-mandate`](programs/atlas-mandate) for the Anchor program (`create_mandate`, `revoke_mandate`, `anchor_root`).
+A mandate's existence and revocation are also recorded on-chain, so anyone can check them independently of Atlas Rail's own database — and, behind `ATLAS_ONCHAIN=1`, the gate itself checks the on-chain record, not just its own database. See [`programs/atlas-mandate`](programs/atlas-mandate) for the Anchor program (`create_mandate`, `revoke_mandate`, `anchor_root`).
 
 - **Program ID (devnet):** `CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k` — [view on Solana Explorer](https://explorer.solana.com/address/CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k?cluster=devnet)
-- 10 Rust unit tests + 18 TypeScript integration tests (LiteSVM) pass; see the program's own README for details.
-- **Not yet wired into the policy gate or the console** — today the gate's decisions still come entirely from Atlas Rail's own database. Making the gate check this on-chain record (and showing it with an Explorer link in the console) is in progress.
-- **Receipt anchoring:** set `ATLAS_ONCHAIN_ANCHOR=true` to write Merkle roots with `anchor_root` (Root PDA per mandate + seq) instead of SPL Memo. `atlas verify` then checks that Root account. Default remains Memo until the deployed program exposes `anchor_root`.
+- 10 Rust unit tests + 27 TypeScript integration tests (LiteSVM) pass; see the program's own README for details.
+- Wired into the policy gate (`ATLAS_ONCHAIN=1`: on-chain revocation is checked, mandates are registered/revoked on-chain) and into receipt anchoring (`ATLAS_ANCHOR_ROOT=1`, requires `ATLAS_ONCHAIN=1`: receipts are anchored via the registry's per-mandate `anchor_root` instruction instead of an SPL Memo). Both default off; the demo and the playground work identically without them.
 
 ## ⚠️ Safety Boundary — Read This First
 

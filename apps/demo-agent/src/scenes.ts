@@ -3,10 +3,13 @@ import { createServer } from 'http';
 import { AddressInfo } from 'net';
 import { spawnSync } from 'child_process';
 import { dirname, join } from 'path';
+import { Connection } from '@solana/web3.js';
+import { envBoolean } from '@atlas-rail/config';
 import {
   AgentMandate,
   SOLANA_DEVNET_CAIP2,
   SignedDecision,
+  formatReceiptMemo,
   signMandate,
 } from '@atlas-rail/mandate';
 import { BoundReceipt } from '@atlas-rail/receipt';
@@ -20,7 +23,8 @@ import {
   createAtlasFetch,
 } from '@atlas-rail/x402';
 import { ConsoleApi, DEMO_PASSWORD, DEMO_USERS } from './console-api';
-import { AgentTools, heavyInferenceModel, injectedModel, priceInflationModel, researchModel, runAgent } from './model';
+import { DEFAULT_ANTHROPIC_MODEL, LlmProvider, resolveLlmModel } from './llm-model';
+import { AgentModel, AgentTools, AgentTrace, heavyInferenceModel, injectedModel, priceInflationModel, researchModel, runAgent } from './model';
 import { DemoEnv, DemoState } from './setup';
 import { bad, c, info, kv, ok, say, scene, short, step, usd } from './ui';
 
@@ -36,12 +40,97 @@ export interface SceneOptions {
   cliPath: string;
   /** Optional: only run these scene numbers (1-6). Scenes depend on earlier ones. */
   only?: number[];
+  /** 'llm' calls a real provider for every scripted-agent step (see ./llm-model.ts). Falls back to
+   * the scripted agent, with a visible notice, if no key is configured for `agentProvider`. */
+  agentMode?: 'scripted' | 'llm';
+  agentProvider?: LlmProvider;
+  /** Overrides AGENT_MODEL. Required for agentProvider 'openai' (no default is assumed current). */
+  agentModelOverride?: string;
+}
+
+export interface LatencyStats {
+  count: number;
+  p50: number;
+  p95: number;
+  sampleMs: number[];
 }
 
 export interface SceneSummary {
   mandateId: string;
   scenes: Record<string, unknown>;
   ok: boolean;
+  metrics?: {
+    agentModel: string;
+    /** Time from the agent's payment request reaching the gate to the gate's decision. */
+    gateLatencyMs: LatencyStats;
+    /** Time from the authorized transaction being signed to settlement confirming on-chain. */
+    confirmationLatencyMs: LatencyStats;
+    anchorRoot?: {
+      txSignature: string;
+      explorerUrl: string;
+      computeUnits: number | null;
+      feeLamports: number | null;
+    };
+  };
+}
+
+function percentile(sorted: readonly number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
+  return sorted[idx];
+}
+
+function latencyStats(samples: readonly number[]): LatencyStats {
+  const sorted = [...samples].sort((a, b) => a - b);
+  return { count: sorted.length, p50: percentile(sorted, 50), p95: percentile(sorted, 95), sampleMs: sorted };
+}
+
+/** Pairs each `startType` event with the next `endType` event after it (the demo runs one payment
+ * at a time, never concurrently, so simple sequential pairing is exact). */
+function pairedLatenciesMs(timeline: ReadonlyArray<{ event: AtlasClientEvent; at: number }>, startType: AtlasClientEvent['type'], endType: AtlasClientEvent['type']): number[] {
+  const latencies: number[] = [];
+  let pendingStart: number | null = null;
+  for (const { event, at } of timeline) {
+    if (event.type === startType) pendingStart = at;
+    else if (event.type === endType && pendingStart !== null) {
+      latencies.push(at - pendingStart);
+      pendingStart = null;
+    }
+  }
+  return latencies;
+}
+
+/** Describes which model actually drove this run, for the report — mirrors agentModelFor's own
+ * fallback decision without constructing anything (so it's accurate even if no scene ran). */
+function summaryAgentModelLabel(options: SceneOptions): string {
+  if (options.agentMode !== 'llm') return 'scripted';
+  const provider: LlmProvider = options.agentProvider ?? 'anthropic';
+  const envKey = provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
+  if (!process.env[envKey]) return `scripted (AGENT_MODE=llm requested, but ${envKey} is not set)`;
+  const model = options.agentModelOverride ?? process.env.AGENT_MODEL ?? (provider === 'anthropic' ? DEFAULT_ANTHROPIC_MODEL : null);
+  return model ? `llm (${provider}:${model})` : 'scripted (AGENT_MODE=llm requested, but AGENT_MODEL is required for openai)';
+}
+
+/** Picks the scripted model unless `AGENT_MODE=llm` was requested AND a key is configured for the
+ * chosen provider — if a key is missing, or the LLM model fails to construct, falls back to the
+ * scripted model for that step with a visible notice rather than failing the whole run. */
+function agentModelFor(label: string, factory: (url: string) => AgentModel, url: string, options: SceneOptions): AgentModel {
+  if (options.agentMode !== 'llm') return factory(url);
+  const provider: LlmProvider = options.agentProvider ?? 'anthropic';
+  const envKey = provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
+  const apiKey = process.env[envKey];
+  if (!apiKey) {
+    info(c.yellow(`AGENT_MODE=llm requested for ${label}, but ${envKey} is not set — using the scripted agent for this step instead.`));
+    return factory(url);
+  }
+  try {
+    const model = resolveLlmModel({ provider, apiKey, model: options.agentModelOverride ?? process.env.AGENT_MODEL });
+    info(c.dim(`  (agent: ${model.name})`));
+    return model;
+  } catch (error) {
+    info(c.yellow(`AGENT_MODE=llm could not start for ${label} (${error instanceof Error ? error.message : String(error)}) — using the scripted agent for this step instead.`));
+    return factory(url);
+  }
 }
 
 const explorer = (mode: DemoEnv['mode'], signature: string) =>
@@ -89,6 +178,22 @@ async function startMaliciousSeller(state: DemoState): Promise<{ url: string; cl
   return { url, close: () => new Promise<void>((resolve) => server.close(() => resolve())) };
 }
 
+/** `runAgent` catches a tool's own exception and records it as a `TOOL_ERROR:` result instead of
+ * propagating it — exactly right for the agent's own flow (a failed fetch is just something to
+ * report back to the model), but it means a genuine infrastructure failure (devnet RPC, settlement
+ * timeout) is otherwise invisible in the narration: `paid` stays null with no detail at all. This
+ * surfaces it so a PAY/ESCALATE scene that unexpectedly comes back empty-handed says why. */
+function toolError(trace: AgentTrace): string | null {
+  const failed = trace.steps.find((s) => s.result?.startsWith('TOOL_ERROR:'));
+  return failed?.result?.slice('TOOL_ERROR:'.length).trim() ?? null;
+}
+
+function saveShowcase(outDir: string, name: string, data: unknown): void {
+  const file = join(outDir, 'showcase', name);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
 function narrateDecision(decision: SignedDecision): void {
   const { record } = decision;
   const badge = record.decision === 'ALLOW' ? c.green('ALLOW') : record.decision === 'DENY' ? c.red('DENY') : c.yellow('ESCALATE');
@@ -114,6 +219,13 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
   const api = new ConsoleApi(env.apiUrl);
   const gate = new HttpGateClient({ baseUrl: env.apiUrl, apiKey: state.apiKey });
   const events: AtlasClientEvent[] = [];
+  // Unlike `events` (reset per scene, used only to sniff `awaiting_approval`), `timeline` accumulates
+  // for the whole run — it's what gate/confirmation latency percentiles are computed from at the end.
+  const timeline: Array<{ event: AtlasClientEvent; at: number }> = [];
+  const trackEvent = (event: AtlasClientEvent) => {
+    events.push(event);
+    timeline.push({ event, at: Date.now() });
+  };
   const signer = new GatedSignerAdapter({ inner: agentSigner, trustedInstanceKeys: [state.instance] });
   const atlasFetch = createAtlasFetch({
     mandateId: '',
@@ -121,7 +233,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     gate,
     chain,
     escalation: { mode: 'wait', timeoutMs: options.approvalTimeoutMs, pollIntervalMs: 1000 },
-    onEvent: (event) => events.push(event),
+    onEvent: trackEvent,
   });
 
   const owner = await api.login(DEMO_USERS.owner, DEMO_PASSWORD);
@@ -141,13 +253,13 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       gate,
       chain,
       escalation: { mode: 'wait', timeoutMs: options.approvalTimeoutMs, pollIntervalMs: 1000 },
-      onEvent: (event) => events.push(event),
+      onEvent: trackEvent,
     });
   };
   const last: { denied: MandateDeniedError | null; paid: AtlasPaymentInfo | null } = { denied: null, paid: null };
   const tools = (): AgentTools => ({
     fetch_page: async (url) => (await fetch(url)).text(),
-    fetch_paid: async (url) => {
+    fetch_paid_resource: async (url) => {
       last.denied = null;
       last.paid = null;
       try {
@@ -229,14 +341,18 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     kv('mandate hash', short(active.mandateHash, 12, 8));
     kv('chain', mandate.delegationChain.map((l) => `${l.role}:${short(l.publicKey, 4, 4)}`).join(' → '));
     if (active.onchain) kv('on-chain', explorer(env.mode, active.onchain.txSignature));
-    summary.scenes.grant = { mandateId: drafted.id, status: active.status };
+    summary.scenes.grant = {
+      mandateId: drafted.id,
+      status: active.status,
+      onchain: active.onchain ? { txSignature: active.onchain.txSignature, explorerUrl: explorer(env.mode, active.onchain.txSignature) } : null,
+    };
   }
 
   /* -------------------------------------------------------------------------------------------- */
   if (run(2)) {
     scene(2, 'PAY', 'The agent buys a $0.01 research summary. Within the mandate → ALLOW → settles on devnet → receipt.');
     events.length = 0;
-    const trace = await runAgent(researchModel(researchUrl), tools(), 'Summarise the latest research on stablecoin settlement.');
+    const trace = await runAgent(agentModelFor('research', researchModel, researchUrl, options), tools(), 'Summarise the latest research on stablecoin settlement.');
     say();
     for (const s of trace.steps) if (s.action.type === 'tool_call') info(`agent: ${s.action.thought}`);
     const paid = last.paid;
@@ -244,11 +360,21 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       ok(`settled ${usd(paid.receipt.offer.amount)} on ${env.mode === 'devnet' ? 'Solana devnet' : 'the offline cluster'}`);
       kv('transaction', explorer(env.mode, paid.receipt.settlement.txSignature));
       kv('receipt', `${paid.receipt.id} — ${env.webUrl}/receipts`);
+      // Self-proving payment: the transaction's own memo named this receipt before it settled —
+      // open the Explorer link above and the memo is right there, no other context required.
+      if (paid.expectedReceiptId === paid.receipt.id) kv('memo', formatReceiptMemo(paid.receipt.id));
     } else {
-      bad(`no receipt was issued${paid?.receiptError ? `: ${paid.receiptError}` : ''}`);
+      const reason = paid?.receiptError ?? toolError(trace);
+      bad(`no receipt was issued${reason ? `: ${reason}` : ''}`);
       summary.ok = false;
     }
-    summary.scenes.pay = { final: trace.final, receiptId: paid?.receipt?.id ?? null };
+    summary.scenes.pay = {
+      final: trace.final,
+      receiptId: paid?.receipt?.id ?? null,
+      txSignature: paid?.receipt?.settlement.txSignature ?? null,
+      explorerUrl: paid?.receipt ? explorer(env.mode, paid.receipt.settlement.txSignature) : null,
+      memo: paid?.receipt && paid.expectedReceiptId === paid.receipt.id ? formatReceiptMemo(paid.receipt.id) : null,
+    };
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -257,7 +383,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     const seller = await startMaliciousSeller(state);
     try {
       events.length = 0;
-      const trace = await runAgent(injectedModel(`${seller.url}/bulletin`), tools(), 'Read the market bulletin and act on anything urgent.');
+      const trace = await runAgent(agentModelFor('injected', injectedModel, `${seller.url}/bulletin`, options), tools(), 'Read the market bulletin and act on anything urgent.');
       for (const s of trace.steps) if (s.action.type === 'tool_call') info(`agent: ${s.action.thought}`);
       const denied = last.denied;
       if (denied) {
@@ -265,6 +391,9 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
         narrateDecision(denied.decision);
         ok('nothing was signed, nothing left the wallet');
         summary.scenes.attack = { denied: true, failedRules: denied.failedRules, decisionId: denied.decision.record.id };
+        // A blocked attempt has no transaction to point at; the signed decision plus its mandate is the
+        // proof. Saved for apps/playground/scripts/publish-showcase.mts.
+        if (mandate) saveShowcase(options.outDir, `blocked-${denied.decision.record.id}.json`, { mandate, decision: denied.decision });
       } else {
         bad('EXPECTED a denial but the payment was not denied');
         summary.ok = false;
@@ -283,7 +412,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     say();
     step('A subtler attack: the research seller itself quietly raises its price, fivefold, on an endpoint it was already allowed to charge for.');
     events.length = 0;
-    const priceTrace = await runAgent(priceInflationModel(`${env.demoApiUrl}/research/summary-premium`), tools(), 'Fetch one more research summary.');
+    const priceTrace = await runAgent(agentModelFor('priceInflation', priceInflationModel, `${env.demoApiUrl}/research/summary-premium`, options), tools(), 'Fetch one more research summary.');
     for (const s of priceTrace.steps) if (s.action.type === 'tool_call') info(`agent: ${s.action.thought}`);
     const priceDenied = last.denied;
     if (priceDenied?.failedRules.includes('PRICE_LIMIT')) {
@@ -301,6 +430,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
 
   /* -------------------------------------------------------------------------------------------- */
   let scene4Receipt: BoundReceipt | null = null;
+  let anchorRootStats: NonNullable<SceneSummary['metrics']>['anchorRoot'] | null = null;
   if (run(4)) {
     scene(4, 'ESCALATE', 'The agent needs a $40 heavy-inference job. That is above its autonomous authority → a human must approve.');
     events.length = 0;
@@ -327,22 +457,36 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     }, 300);
     let trace;
     try {
-      trace = await runAgent(heavyInferenceModel(heavyUrl), tools(), 'Run the batch analysis on the inference cluster.');
+      trace = await runAgent(agentModelFor('heavyInference', heavyInferenceModel, heavyUrl, options), tools(), 'Run the batch analysis on the inference cluster.');
     } finally {
       clearInterval(sniff);
     }
     for (const s of trace.steps) if (s.action.type === 'tool_call') info(`agent: ${s.action.thought}`);
-    const receipts = await api.get<Array<{ id: string; txSignature: string; amount: string; decisionKind: string | null }>>('/v1/agent/receipts?limit=10', { token: owner });
-    const receipt = receipts.find((r) => r.amount === '40000000');
-    if (receipt) {
-      ok(`human-approved payment settled: ${usd(receipt.amount)} (${receipt.decisionKind})`);
-      kv('transaction', explorer(env.mode, receipt.txSignature));
-      scene4Receipt = await api.get<BoundReceipt>(`/v1/agent/receipts/${receipt.id}`, { token: owner });
+    // This run's own record of what happened — never a lookup by amount, which could silently match
+    // an unrelated receipt left over from an earlier run (the embedded Postgres persists between
+    // `pnpm agent:e2e` invocations, and $40.00 is always this scene's amount).
+    const escalatePaid = last.paid;
+    const receipt = escalatePaid?.receipt ?? null;
+    // Only claim the memo when the client's OWN record of what it wrote actually matches the id the
+    // server settled on — never assume the memo mechanism worked just because a receipt exists.
+    const escalateMemoVerified = receipt && escalatePaid?.expectedReceiptId === receipt.id ? formatReceiptMemo(receipt.id) : null;
+    if (receipt && escalatePaid?.txSignature) {
+      ok(`human-approved payment settled: ${usd(receipt.offer.amount)} (${receipt.decision.record.kind})`);
+      kv('transaction', explorer(env.mode, escalatePaid.txSignature));
+      if (escalateMemoVerified) kv('memo', escalateMemoVerified);
+      scene4Receipt = receipt;
     } else {
-      bad('escalated payment did not settle');
+      const reason = escalatePaid?.receiptError ?? toolError(trace);
+      bad(`escalated payment did not settle${reason ? `: ${reason}` : ''}`);
       summary.ok = false;
     }
-    summary.scenes.escalate = { final: trace.final, receiptId: receipt?.id ?? null };
+    summary.scenes.escalate = {
+      final: trace.final,
+      receiptId: receipt?.id ?? null,
+      txSignature: escalatePaid?.txSignature ?? null,
+      explorerUrl: escalatePaid?.txSignature ? explorer(env.mode, escalatePaid.txSignature) : null,
+      memo: escalateMemoVerified,
+    };
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -357,16 +501,41 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       bad('no escalated receipt to verify (run scene 4 first)');
       summary.ok = false;
     } else {
-      step('Anchoring pending receipts: batching them into a Merkle tree and writing the root to Solana with a Memo transaction…');
+      const anchorRootOn = envBoolean.safeParse(process.env.ATLAS_ANCHOR_ROOT).data === true;
+      step(
+        anchorRootOn
+          ? 'Anchoring pending receipts: batching them into a Merkle tree and writing the root to the mandate registry’s anchor_root instruction…'
+          : 'Anchoring pending receipts: batching them into a Merkle tree and writing the root to Solana with a Memo transaction…',
+      );
       const anchored = await api.post<{ batch: { merkleRoot: string; txSignature: string; leafCount: number } | null; anchored: number }>('/v1/agent/anchor', { token: owner });
+      const anchorTx = anchored.batch ? { txSignature: anchored.batch.txSignature, explorerUrl: explorer(env.mode, anchored.batch.txSignature) } : null;
       if (anchored.batch) {
         ok(`anchored ${anchored.anchored} receipt(s) under root ${short(anchored.batch.merkleRoot, 10, 6)}`);
         kv('anchor tx', explorer(env.mode, anchored.batch.txSignature));
+        if (anchorRootOn && env.mode === 'devnet') {
+          // Best-effort: compute units and fee are reporting-only, never block the demo on an RPC hiccup.
+          try {
+            const connection = new Connection(env.rpcUrl, 'confirmed');
+            const tx = await connection.getTransaction(anchored.batch.txSignature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
+            anchorRootStats = {
+              txSignature: anchored.batch.txSignature,
+              explorerUrl: explorer(env.mode, anchored.batch.txSignature),
+              computeUnits: tx?.meta?.computeUnitsConsumed ?? null,
+              feeLamports: tx?.meta?.fee ?? null,
+            };
+          } catch {
+            anchorRootStats = { txSignature: anchored.batch.txSignature, explorerUrl: explorer(env.mode, anchored.batch.txSignature), computeUnits: null, feeLamports: null };
+          }
+        }
       }
       const fresh = await api.get<BoundReceipt>(`/v1/agent/receipts/${scene4Receipt.id}`, { token: owner });
       const file = join(options.outDir, `receipt-${fresh.id}.json`);
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, JSON.stringify(fresh, null, 2));
+      // Both settled payments are anchored in this same batch, so both are now publishable proofs.
+      saveShowcase(options.outDir, `receipt-${fresh.id}.json`, fresh);
+      const payId = (summary.scenes.pay as { receiptId?: string | null } | undefined)?.receiptId;
+      if (payId) saveShowcase(options.outDir, `receipt-${payId}.json`, await api.get<BoundReceipt>(`/v1/agent/receipts/${payId}`, { token: owner }));
       step(`$ atlas verify ${file} --trusted-key ${short(state.instance)} --check-settlement --require-anchor`);
       say();
       const result = spawnSync(
@@ -374,7 +543,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
         [options.cliPath, 'verify', file, '--rpc', env.rpcUrl, '--trusted-key', state.instance, '--check-settlement', '--require-anchor', ...(process.stdout.isTTY ? ['--color'] : [])],
         { stdio: 'inherit' },
       );
-      summary.scenes.prove = { receiptFile: file, exitCode: result.status };
+      summary.scenes.prove = { receiptFile: file, exitCode: result.status, anchorTx };
       if (result.status !== 0) summary.ok = false;
     }
   }
@@ -390,25 +559,38 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     );
     ok('revoked (effective immediately, recorded in the audit ledger)');
     if (revoked.onchain) kv('on-chain', explorer(env.mode, revoked.onchain.txSignature));
+    const revokeOnchain = revoked.onchain
+      ? { txSignature: revoked.onchain.txSignature, explorerUrl: explorer(env.mode, revoked.onchain.txSignature) }
+      : null;
     events.length = 0;
-    const trace = await runAgent(researchModel(researchUrl), tools(), 'Fetch one more research summary.');
+    const trace = await runAgent(agentModelFor('research', researchModel, researchUrl, options), tools(), 'Fetch one more research summary.');
     for (const s of trace.steps) if (s.action.type === 'tool_call') info(`agent: ${s.action.thought}`);
     const denied = last.denied;
     if (denied) {
       bad(`payment ${c.red('DENIED')}: ${denied.failedRules.join(', ')}`);
       narrateDecision(denied.decision);
-      summary.scenes.revoke = { denied: true, failedRules: denied.failedRules };
+      summary.scenes.revoke = { denied: true, failedRules: denied.failedRules, onchain: revokeOnchain };
     } else {
       bad('EXPECTED a denial after revocation');
       summary.ok = false;
-      summary.scenes.revoke = { denied: false };
+      summary.scenes.revoke = { denied: false, onchain: revokeOnchain };
     }
   }
+
+  summary.metrics = {
+    agentModel: summaryAgentModelLabel(options),
+    gateLatencyMs: latencyStats(pairedLatenciesMs(timeline, 'payment_required', 'gate_decision')),
+    confirmationLatencyMs: latencyStats(pairedLatenciesMs(timeline, 'payment_signed', 'settled')),
+    ...(anchorRootStats ? { anchorRoot: anchorRootStats } : {}),
+  };
 
   say();
   say(c.magenta('━'.repeat(78)));
   say(summary.ok ? c.green(c.bold('  Demo complete. Every scene behaved as designed.')) : c.red(c.bold('  Demo finished with unexpected results — see above.')));
   say(c.dim(`  Console: ${env.webUrl}/mandates · ${env.webUrl}/decisions · ${env.webUrl}/receipts`));
+  if (summary.metrics.gateLatencyMs.count > 0) {
+    say(c.dim(`  Gate latency: p50 ${summary.metrics.gateLatencyMs.p50}ms, p95 ${summary.metrics.gateLatencyMs.p95}ms (${summary.metrics.gateLatencyMs.count} samples)`));
+  }
   say(c.magenta('━'.repeat(78)));
   return summary;
 }

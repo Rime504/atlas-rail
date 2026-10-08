@@ -1,6 +1,8 @@
 import {
+  AgentMandate,
   GateAuthorization,
   MessageSigner,
+  SignedDecision,
   verifyGateAuthorization,
 } from '@atlas-rail/mandate';
 import { SignerAdapter, decodeTransaction, transactionMessageHash } from '@atlas-rail/solana';
@@ -18,7 +20,8 @@ export interface GatedSignerOptions {
 /**
  * The enforcement point. Wraps any {@link SignerAdapter} so it will only sign a transaction when
  * handed a gate authorisation that (a) was issued by a trusted Atlas Rail instance, (b) covers the
- * SHA-256 of *this transaction's message bytes*, (c) was issued to *this* key, and (d) is unexpired.
+ * SHA-256 of *this transaction's message bytes*, (c) was issued to *this* key, (d) is unexpired, and
+ * (e) references a signed ALLOW decision that re-evaluates against the mandate chain.
  *
  * An agent that skips the client library, or is talked into paying somewhere else by a prompt
  * injection, cannot get a signature: the plain `signTransaction` always refuses, and
@@ -53,8 +56,13 @@ export class GatedSignerAdapter implements SignerAdapter, MessageSigner {
   async signWithAuthorization(
     transactionBase64: string,
     authorization: GateAuthorization | null,
+    decision: SignedDecision | null,
+    mandate: AgentMandate | null,
   ): Promise<{ signedBase64: string; signature: string }> {
     if (!authorization) throw new GateAuthorizationRequiredError('No gate authorisation was provided for this transaction');
+    if (!decision || !mandate) {
+      throw new GateAuthorizationRequiredError('No signed ALLOW decision and mandate were provided for this transaction');
+    }
     let messageHash: string;
     try {
       messageHash = transactionMessageHash(decodeTransaction(transactionBase64));
@@ -66,6 +74,8 @@ export class GatedSignerAdapter implements SignerAdapter, MessageSigner {
       now: this.clock(),
       txMessageHash: messageHash,
       agentPublicKey: this.publicKey,
+      decision,
+      mandate,
     });
     if (!check.ok) throw new GateAuthorizationRequiredError(check.error ?? 'Gate authorisation is not valid');
     return this.options.inner.signTransaction(transactionBase64);
