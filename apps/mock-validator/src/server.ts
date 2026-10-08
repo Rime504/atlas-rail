@@ -111,6 +111,19 @@ export function createMockValidator(chain = new FakeChain(), options: { log?: bo
           : null;
       }),
     }),
+    getSignaturesForAddress: async (params) => {
+      const config = (params[1] ?? {}) as { limit?: number };
+      const rows = await chain.signaturesForAddress(String(params[0]), config.limit ?? 1000);
+      return rows.map(({ signature, blockTime }) => ({
+        signature,
+        slot: chain.getProcessed(signature)?.summary.slot ?? chain.slot,
+        err: null,
+        memo: null,
+        blockTime,
+        confirmationStatus: 'finalized',
+      }));
+    },
+    isBlockhashValid: (params) => ({ context: context(), value: chain.isKnownBlockhash(String(params[0])) }),
     getTransaction: (params) => {
       const found = chain.getProcessed(String(params[0]));
       if (!found) return null;

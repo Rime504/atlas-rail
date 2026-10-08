@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { AgentGateService, InMemoryAgentStore, MandateLifecycleService } from '@atlas-rail/mandate';
 import { TEST_ORIGIN, testOffer, unsignedTestMandate } from '@atlas-rail/mandate/testing';
-import { ChainPaymentSimulator, DevnetKeyring, DevnetKeypairSigner, Web3ChainClient, buildExactPaymentTransaction } from '@atlas-rail/solana';
+import { ChainPaymentOutcomeLookup, ChainPaymentSimulator, DevnetKeyring, DevnetKeypairSigner, Web3ChainClient, buildExactPaymentTransaction } from '@atlas-rail/solana';
 import { GatedSignerAdapter } from '@atlas-rail/x402';
 import type { Rig } from './harness';
 
@@ -35,7 +35,7 @@ export async function devnetRig(mandateOptions: Record<string, unknown> = {}, ro
   const newId = (prefix: string) => `${prefix}_RT${now().toString(36).toUpperCase()}${String(++counter).padStart(6, '0')}`;
 
   const store = new InMemoryAgentStore();
-  const gate = new AgentGateService({ store, instanceSigner: instance, simulator: new ChainPaymentSimulator(chain), clock: now, newId });
+  const gate = new AgentGateService({ store, instanceSigner: instance, simulator: new ChainPaymentSimulator(chain), paymentLookup: new ChainPaymentOutcomeLookup(chain), clock: now, newId });
   const lifecycle = new MandateLifecycleService({ store, clock: now });
   const base = unsignedTestMandate(mandateOptions);
   const draft = await lifecycle.createDraft(ORG, 'usr_owner', {
@@ -92,6 +92,7 @@ export async function devnetRig(mandateOptions: Record<string, unknown> = {}, ro
     async revoke() {
       await lifecycle.revoke(ORG, active.mandate.id, { userId: 'usr_owner', reason: 'red team' });
     },
+    resolveSpend: (decisionId, tx) => gate.resolveSpend(ORG, decisionId, tx),
     async decideApproval(approvalId, approve) {
       await lifecycle.decideApproval(ORG, approvalId, { approve, approver: { userId: 'usr_approver', role: 'APPROVER' }, comment: null });
     },

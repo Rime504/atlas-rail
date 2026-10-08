@@ -155,6 +155,25 @@ export interface PaymentSimulator {
   simulate(input: { transactionBase64: string; offer: X402Offer; payer: string }): Promise<GateSimulation>;
 }
 
+/** What became of the exact transaction a gate authorisation covers (see `@atlas-rail/solana` findPaymentOutcome). */
+export type PaymentOutcome =
+  | { status: 'LANDED'; txSignature: string }
+  | { status: 'FAILED'; txSignature: string }
+  | { status: 'PENDING' }
+  | { status: 'EXPIRED' }
+  | { status: 'MISMATCH' };
+
+/** Reads the chain to find out whether an authorised payment landed, failed, or can no longer land. */
+export interface PaymentOutcomeLookup {
+  lookup(input: { transactionBase64: string; expectedMessageHash: string; payer: string; notBefore: number }): Promise<PaymentOutcome>;
+}
+
+/** Where a spend reservation stands after the gate checked the chain. */
+export type SpendResolution =
+  | { status: 'SETTLED'; txSignature: string }
+  | { status: 'RELEASED' }
+  | { status: 'PENDING' };
+
 export type AgentEventType =
   | 'agent.mandate.created'
   | 'agent.mandate.activated'

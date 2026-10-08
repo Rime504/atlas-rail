@@ -2,6 +2,7 @@ import {
   OfferError,
   SOLANA_DEVNET_CAIP2,
   SignedDecision,
+  SpendResolution,
   X402Offer,
   formatReceiptMemo,
   normalizeNetwork,
@@ -19,6 +20,7 @@ import {
   EscalationTimeoutError,
   MandateDeniedError,
   PaymentSettlementError,
+  PaymentUnconfirmedError,
   UnsupportedPaymentError,
 } from './errors';
 import { GateClient, GateResponse } from './gate-client';
@@ -112,6 +114,8 @@ export interface AtlasFetchConfig {
   escalation?: EscalationConfig;
   receiptRetries?: number;
   receiptRetryDelayMs?: number;
+  /** How long to keep asking the gate (which checks the chain) what became of a payment with no answer. */
+  resolve?: { timeoutMs?: number; pollIntervalMs?: number };
   onEvent?: (event: AtlasClientEvent) => void;
 }
 
@@ -313,14 +317,30 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
     }
 
     // 3. Only now does the wallet sign — and it re-verifies the gate's authorisation + ALLOW decision.
-    // ALLOW already reserved budget; free it if sign or settlement fails before a receipt can settle.
+    // ALLOW already reserved budget. If anything goes wrong from here, the gate settles or frees that
+    // reservation from the chain (never on our word): it looks for this exact transaction.
     const decisionId = outcome.decision.record.id;
-    const releaseReservation = async () => {
-      try {
-        await config.gate.releaseSpend(decisionId);
-      } catch {
-        // best-effort: do not mask the original payment failure
+    const authorizedTransaction = transactionBase64;
+    const resolveTimeoutMs = config.resolve?.timeoutMs ?? 180_000;
+    const resolvePollMs = config.resolve?.pollIntervalMs ?? 5_000;
+    const resolveFromChain = async (): Promise<SpendResolution> => {
+      const attempts = Math.max(1, Math.ceil(resolveTimeoutMs / resolvePollMs));
+      let resolution: SpendResolution = { status: 'PENDING' };
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        if (attempt > 0) await sleep(resolvePollMs);
+        try {
+          resolution = await config.gate.resolveSpend(decisionId, authorizedTransaction);
+        } catch {
+          resolution = { status: 'PENDING' };
+        }
+        if (resolution.status !== 'PENDING') break;
       }
+      return resolution;
+    };
+    // For failures the caller already has an answer to: the hold is freed once the chain shows the
+    // transaction can no longer land (about a minute on devnet), without blocking the caller.
+    const resolveInBackground = () => {
+      void resolveFromChain().catch(() => undefined);
     };
 
     let signed: Awaited<ReturnType<GatedSignerAdapter['signWithAuthorization']>>;
@@ -332,7 +352,7 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
         outcome.mandate,
       );
     } catch (error) {
-      await releaseReservation();
+      resolveInBackground();
       throw error;
     }
     emit({ type: 'payment_signed', txMessageHash: outcome.authorization?.txMessageHash ?? '' });
@@ -346,12 +366,20 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
     };
     retryRequest.headers.set('PAYMENT-SIGNATURE', encodeHeader(paymentPayload));
     retryRequest.headers.set('Access-Control-Expose-Headers', 'PAYMENT-RESPONSE,X-PAYMENT-RESPONSE');
-    const paid = (await doFetch(retryRequest)) as AtlasResponse;
+    let paid: AtlasResponse;
+    try {
+      paid = (await doFetch(retryRequest)) as AtlasResponse;
+    } catch (error) {
+      // The signed payment went out and no answer came back: it may or may not have landed.
+      const resolution = await resolveFromChain();
+      if (resolution.status === 'SETTLED') emit({ type: 'settled', txSignature: resolution.txSignature });
+      throw new PaymentUnconfirmedError(resolution, decisionId, error);
+    }
 
     if (paid.status >= 400) {
-      await releaseReservation();
+      resolveInBackground();
       throw new PaymentSettlementError(
-        `Seller rejected the payment with HTTP ${paid.status}; the reserved budget was released`,
+        `Seller rejected the payment with HTTP ${paid.status}; the reserved budget is released once the chain shows it did not land`,
         paid,
       );
     }
@@ -362,16 +390,21 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
     } catch {
       settle = null;
     }
-    const txSignature = settle?.success && settle.transaction ? settle.transaction : null;
+    let txSignature = settle?.success && settle.transaction ? settle.transaction : null;
+    let unsettledError: string | null = null;
+    if (!txSignature) {
+      // Delivered without a settlement proof: ask the chain whether this exact payment landed.
+      const resolution = await resolveFromChain();
+      if (resolution.status === 'SETTLED') txSignature = resolution.txSignature;
+      else if (resolution.status === 'RELEASED') unsettledError = 'Seller response carried no settlement, and the payment never landed; the reserved budget was released';
+      else unsettledError = 'Seller response carried no settlement (PAYMENT-RESPONSE) header, and the chain cannot tell yet whether the payment landed; the budget stays reserved';
+    }
     if (txSignature) emit({ type: 'settled', txSignature });
 
     let receipt: BoundReceipt | null = null;
-    let receiptError: string | null = null;
+    let receiptError: string | null = unsettledError;
     if (txSignature) {
       ({ receipt, error: receiptError } = await issueReceipt(decisionId, txSignature, paid));
-    } else {
-      // Paid HTTP without a settlement proof: do not release — money may still settle on-chain.
-      receiptError = 'Seller response carried no settlement (PAYMENT-RESPONSE) header';
     }
 
     paid.atlas = { decision: outcome.decision, approvalId, escalated, txSignature, receipt, receiptError, expectedReceiptId };

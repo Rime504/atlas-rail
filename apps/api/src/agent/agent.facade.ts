@@ -14,8 +14,10 @@ import {
 import { AnchorService, ReceiptService } from '@atlas-rail/receipt';
 import {
   ChainClient,
+  ChainPaymentOutcomeLookup,
   ChainPaymentSimulator,
   DevnetKeyring,
+  PaymentHistory,
   DevnetKeypairSigner,
   buildCreateMandateTransaction,
   buildRevokeMandateTransaction,
@@ -86,7 +88,7 @@ export class AgentFacade {
   readonly anchorService: AnchorService;
 
   constructor(
-    @Inject(AGENT_CHAIN) readonly chain: ChainClient,
+    @Inject(AGENT_CHAIN) readonly chain: ChainClient & PaymentHistory,
     @Inject(AGENT_KEYRING) readonly keyring: DevnetKeyring,
     private readonly queue: QueueService,
   ) {
@@ -99,6 +101,7 @@ export class AgentFacade {
       store: this.store,
       instanceSigner: this.instanceSigner,
       simulator: new ChainPaymentSimulator(chain),
+      paymentLookup: new ChainPaymentOutcomeLookup(chain),
       clock,
       newId,
       notify,

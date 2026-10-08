@@ -17,7 +17,10 @@ import {
   AgentStore,
   ApprovalRecord,
   MandateRecord,
+  PaymentOutcome,
+  PaymentOutcomeLookup,
   PaymentSimulator,
+  SpendResolution,
   StoredDecision,
 } from './ports';
 
@@ -44,6 +47,11 @@ export interface GateServiceOptions {
   requestSkewSeconds?: number;
   /** How long a gate authorisation stays usable by the wallet. */
   authorizationTtlSeconds?: number;
+  /**
+   * Finds out from the chain what became of an authorised payment. Without it a spend hold can
+   * never be released (only settled by a receipt): a held budget is safe, a wrongly freed one is not.
+   */
+  paymentLookup?: PaymentOutcomeLookup;
 }
 
 export interface GateOutcome {
@@ -268,16 +276,48 @@ export class AgentGateService {
   }
 
   /**
-   * Frees a RESERVED spend hold for an ALLOW that will not settle (seller rejected, sign failed,
-   * agent abandoned). SETTLED rows are left alone; idempotent when already RELEASED.
+   * Settles or frees the spend held by an ALLOW, from the chain rather than the caller's word: the
+   * agent may be compromised, so "it didn't go through" is never taken on trust. The caller presents
+   * the authorised transaction; the gate looks for that exact message on-chain.
+   * - landed: the spend is marked SETTLED and keeps counting;
+   * - landed with an error, or its blockhash expired without it landing: the hold is RELEASED;
+   * - anything else (still able to land, chain unreachable): PENDING, the hold stays. Call again later.
    */
-  async releaseSpend(organizationId: string, decisionId: string): Promise<void> {
+  async resolveSpend(organizationId: string, decisionId: string, transactionBase64: string): Promise<SpendResolution> {
     const stored = await this.deps.store.decisions.get(organizationId, decisionId);
     if (!stored) throw new AgentServiceError('NOT_FOUND', 'Decision not found');
-    if (stored.signed.record.decision !== 'ALLOW') {
-      throw new AgentServiceError('INVALID_STATE', 'Only ALLOW decisions hold a spend reservation to release');
+    const authorization = stored.authorization;
+    if (stored.signed.record.decision !== 'ALLOW' || !authorization) {
+      throw new AgentServiceError('INVALID_STATE', 'Only ALLOW decisions hold a spend reservation');
     }
-    await this.deps.store.spend.release(decisionId);
+    const lookup = this.deps.paymentLookup;
+    if (!lookup) return { status: 'PENDING' };
+
+    let outcome: PaymentOutcome;
+    try {
+      outcome = await lookup.lookup({
+        transactionBase64,
+        expectedMessageHash: authorization.txMessageHash,
+        payer: authorization.agentPublicKey,
+        notBefore: authorization.notBefore,
+      });
+    } catch {
+      return { status: 'PENDING' };
+    }
+
+    switch (outcome.status) {
+      case 'MISMATCH':
+        throw new AgentServiceError('INVALID_INPUT', 'That transaction is not the one this decision authorised');
+      case 'LANDED':
+        await this.deps.store.spend.markSettled(decisionId, outcome.txSignature);
+        return { status: 'SETTLED', txSignature: outcome.txSignature };
+      case 'FAILED':
+      case 'EXPIRED':
+        await this.deps.store.spend.release(decisionId);
+        return { status: 'RELEASED' };
+      default:
+        return { status: 'PENDING' };
+    }
   }
 
   private toGateApproval(approval: ApprovalRecord | null, record: MandateRecord, now: number): GateApproval | null {

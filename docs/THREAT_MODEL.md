@@ -8,7 +8,7 @@ it tested, then where the guarantees end.
 **How it is tested.** The red team ([`reports/redteam-2026-10-08.md`](../reports/redteam-2026-10-08.md),
 `pnpm redteam`, run in CI) **assumes the agent is fully compromised on every attempt**: it sends any
 offer, transaction bytes or gate request the attacker wants, replays and tampers freely, and always
-tries to sign. 49 attack types, 921 attempts on the in-memory cluster, 14 attack types on real devnet:
+tries to sign. 50 attack types, 1,011 attempts on the in-memory cluster, 15 attack types on real devnet:
 0 signatures obtained by an attack, $0.00 moved outside the mandate. Money moved is read from token
 balances, never from what the gate reports.
 
@@ -37,6 +37,8 @@ Signer checks are in [`packages/x402-client/src/gated-signer.ts`](../packages/x4
 | **Bypass the gate**: ask the wallet to sign directly | The gated signer's plain `signTransaction` always refuses | case N1 |
 | **Tamper with a signed gate request** | The gate rejects a request whose agent signature no longer verifies, and one signed by any key other than the mandate's agent | cases A5, P1 |
 | **Revoked or expired mandate** | `MANDATE_NOT_REVOKED` (checked on every evaluation; behind `ATLAS_ONCHAIN=1` also against the on-chain record), `MANDATE_VALIDITY` | cases K1, K2, L1, L2; playground step 8 |
+| **False failure claim**: the agent says a payment that settled "didn't go through" to get its budget back | The gate never frees a spend hold on the caller's word. It looks for the exact authorised message on-chain: landed means SETTLED and still counted; budget is freed only if it landed with an error, or its blockhash expired (checked at finalized commitment) and it never landed | case Q1, also on real devnet; `fetch.test.ts`, `payment-outcome.test.ts` |
+| **Lost answer** (timeout, dropped connection after signing) | Same check: the client asks the gate, which reports SETTLED, RELEASED or PENDING from the chain; the budget stays reserved while the outcome is unknown | `fetch.test.ts` |
 | **Concurrent burst** against a cap (check-then-record race) | Decision and reservation happen under one per-mandate lock: a Postgres advisory lock, queued in-process | 100 simultaneous $0.10 payments vs a $5 cap: $5.00 spent (in-memory and Postgres); $10.00 with the lock removed ([report](../reports/redteam-2026-10-08.md)) |
 | **Tampered receipt** | The receipt hash binds mandate, offer, decision, settlement and response; the instance signature covers it; verification recomputes everything and re-runs the gate on the recorded inputs | `receipt.test.ts` "detects tampering with each bound field"; `proof.test.ts` |
 | **Borrowed proof**: a payment whose memo copies another payment's receipt id | The receipt must name this exact transaction back, or the verdict is NO PROOF | `proof.test.ts`; `/verify` |

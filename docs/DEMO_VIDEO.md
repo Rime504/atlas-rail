@@ -23,7 +23,7 @@ third tab.
 | 1:35–1:45 | "Every allowed payment gets a receipt, and the payment itself names it on-chain." | Step 7: **Verify this receipt**, the checks turn green. Ctrl/Cmd-click **Verify a real devnet payment**. |
 | 1:45–2:10 | "Here's the point. Paste any devnet payment. We read its memo from the chain, fetch the receipt it names, and re-check everything: who signed the mandate, the limits, the human approval, the anchor on Solana. Proven." | `/verify` tab: click **A proven payment**. Point at the signers, **with human approval**, **anchor_root**, the Explorer links. |
 | 2:10–2:20 | "Now someone else's payment, on the same network. No proof of permission." | Click **A random devnet USDC transfer**: **NO PROOF**. |
-| 2:20–2:35 | "We attacked it ourselves, assuming the agent is fully compromised every time: 49 kinds of attack, 921 attempts. Money moved outside the mandate: zero." | Red-team report tab: point at the summary line. |
+| 2:20–2:35 | "We attacked it ourselves, assuming the agent is fully compromised every time: 50 kinds of attack, 1,011 attempts. Money moved outside the mandate: zero." | Red-team report tab: point at the summary line. |
 | 2:35–2:50 | "And the owner can stop it at any moment. Revoked. The very next payment is refused." | Back to the walkthrough tab, step 7, **Next**. Step 8: **Revoke on Solana**, then **Try the payment again**, red. **Finish**. |
 | 2:50–2:55 | "Every payment proves it was allowed. Check any one yourself." | End screen. |
 
@@ -46,8 +46,8 @@ fall back to the example in `/verify`.
    that runs before any signature, with the wallet refusing anything not authorised byte for byte.
    Humans approve the edge cases. Every payment names its receipt in its memo, and anyone can verify
    it from the chain at `/verify` or with `atlas verify --tx`.
-5. **Proof (20s).** A red team that assumes the agent is fully compromised on every attempt: 49 attack
-   types, 921 attempts, zero money moved outside the mandate. 100 simultaneous payments against a $5
+5. **Proof (20s).** A red team that assumes the agent is fully compromised on every attempt: 50 attack
+   types, 1,011 attempts, zero money moved outside the mandate. 100 simultaneous payments against a $5
    cap spend exactly $5. All of it in the repo, re-runnable with `pnpm redteam`.
 6. **Business (15s).** Teams that deploy paying agents need to show an owner, an auditor or a seller
    what each agent was allowed to do. The plan: a hosted gate and receipt store, priced per verified

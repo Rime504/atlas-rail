@@ -35,8 +35,10 @@ const receiptSchema = z.object({
   }),
 });
 
-const releaseSchema = z.object({
+const resolveSchema = z.object({
   decisionId: z.string().min(1).max(64),
+  /** The authorised transaction (signed or not); a Solana transaction is at most 1232 bytes. */
+  transactionBase64: z.string().min(1).max(2048),
 });
 
 const acceptSchema = z.object({ link: delegationLinkSchema });
@@ -103,13 +105,16 @@ export class AgentGateController {
     return receipt;
   }
 
-  @Post('spend/release')
+  @Post('spend/resolve')
   @RequirePermission('agent:gate')
-  @ApiOperation({ summary: 'Release a RESERVED spend hold when an ALLOW will not settle (frees the mandate cap)' })
-  async releaseSpend(@Req() req: any, @Body() body: unknown) {
-    const { decisionId } = releaseSchema.parse(body);
-    await this.agent.gate.releaseSpend(req.user.organizationId, decisionId);
-    return { released: true, decisionId };
+  @ApiOperation({
+    summary:
+      'Settle or release an ALLOW’s spend hold from the chain: SETTLED if the authorised transaction landed, RELEASED if it failed or can no longer land, PENDING otherwise',
+  })
+  async resolveSpend(@Req() req: any, @Body() body: unknown) {
+    const { decisionId, transactionBase64 } = resolveSchema.parse(body);
+    const resolution = await this.agent.gate.resolveSpend(req.user.organizationId, decisionId, transactionBase64);
+    return { decisionId, ...resolution };
   }
 
   @Get('mandates/:mandateId')

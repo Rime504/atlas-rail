@@ -46,6 +46,7 @@ export async function memoryRig(mandateOptions: Record<string, unknown> = {}): P
     async revoke() {
       await world.lifecycle.revoke(WORLD_ORG, world.mandate.id, { userId: 'usr_owner', reason: 'red team' });
     },
+    resolveSpend: (decisionId, tx) => world.gate.resolveSpend(WORLD_ORG, decisionId, tx),
     async decideApproval(approvalId, approve) {
       await world.lifecycle.decideApproval(WORLD_ORG, approvalId, { approve, approver: { userId: 'usr_approver', role: 'APPROVER' }, comment: null });
     },

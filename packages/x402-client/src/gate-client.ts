@@ -4,6 +4,7 @@ import {
   GateAuthorization,
   SignedAgentGateRequest,
   SignedDecision,
+  SpendResolution,
 } from '@atlas-rail/mandate';
 import { BoundReceipt, ReceiptResponse } from '@atlas-rail/receipt';
 import { AtlasPaymentError } from './errors';
@@ -37,8 +38,11 @@ export interface GateClient {
   evaluate(request: SignedAgentGateRequest): Promise<GateResponse>;
   getApproval(approvalId: string): Promise<GateApprovalView>;
   issueReceipt(input: IssueReceiptRequest): Promise<BoundReceipt>;
-  /** Free a RESERVED hold when an ALLOW will not settle. */
-  releaseSpend(decisionId: string): Promise<void>;
+  /**
+   * Ask the gate to settle or release an ALLOW's spend hold from the chain. The gate only frees
+   * budget once the authorised transaction failed or can no longer land; PENDING means ask again later.
+   */
+  resolveSpend(decisionId: string, transactionBase64: string): Promise<SpendResolution>;
 }
 
 export interface HttpGateClientOptions {
@@ -71,8 +75,8 @@ export class HttpGateClient implements GateClient {
     return this.call<BoundReceipt>('POST', '/v1/agent/gate/receipts', input);
   }
 
-  async releaseSpend(decisionId: string): Promise<void> {
-    await this.call<{ released: boolean }>('POST', '/v1/agent/gate/spend/release', { decisionId });
+  resolveSpend(decisionId: string, transactionBase64: string): Promise<SpendResolution> {
+    return this.call<SpendResolution>('POST', '/v1/agent/gate/spend/resolve', { decisionId, transactionBase64 });
   }
 
   private async call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {

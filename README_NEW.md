@@ -130,9 +130,9 @@ Three layers:
 
 | What | Number | Source |
 |---|---|---|
-| Automated tests (CI) | 410 passing | `pnpm test`, [CI](https://github.com/Rime504/atlas-rail/actions) |
-| Red team: fully compromised agent | 49 attack types, 921 attempts, **0 signatures obtained, $0.00 moved outside the mandate** | [reports/redteam-2026-10-08.md](reports/redteam-2026-10-08.md) |
-| Red team on real devnet | 14 attack types, $0.00 moved outside the mandate | same report |
+| Automated tests (CI) | 429 passing | `pnpm test`, [CI](https://github.com/Rime504/atlas-rail/actions) |
+| Red team: fully compromised agent | 50 attack types, 1,011 attempts, **0 signatures obtained, $0.00 moved outside the mandate** | [reports/redteam-2026-10-08.md](reports/redteam-2026-10-08.md) |
+| Red team on real devnet | 15 attack types, $0.00 moved outside the mandate | same report |
 | 100 simultaneous payments vs a $5 cap | $5.00 spent (in-memory and Postgres); $10.00 with the lock removed | same report |
 | Real devnet end-to-end run | all six scenes pass, memos match their receipts | [reports/e2e-2026-10-08.md](reports/e2e-2026-10-08.md) |
 | Gate decision latency (devnet) | p50 351 ms, p95 1,613 ms | same report |
@@ -208,13 +208,12 @@ Report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
 
 ## Status and roadmap
 
-**Built:** the mandate format and 15-rule gate, three-party signing, human escalation bound to exact transaction bytes, receipts with on-chain Merkle anchoring, self-proving payments (receipt id in the memo), the public receipt store, `/verify` and `atlas verify --tx`, the on-chain mandate registry, the red team and concurrency proof, `wrapFetch` and an MCP `pay` tool, and the playground.
+**Built:** the mandate format and 15-rule gate, three-party signing, human escalation bound to exact transaction bytes, receipts with on-chain Merkle anchoring, unknown payment outcomes resolved from the chain (a lost answer is settled or released by what the chain shows, never by the agent's word), self-proving payments (receipt id in the memo), the public receipt store, `/verify` and `atlas verify --tx`, the on-chain mandate registry, the red team and concurrency proof, `wrapFetch` and an MCP `pay` tool, and the playground.
 
 **Next:**
 
 - A hard on-chain cap with native SPL token allowances, so the token program itself refuses an overspend.
 - Budgets per job and per sub-agent, not only per agent.
-- Resolving unknown outcomes from signature status, so a payment whose confirmation was lost is settled or released correctly.
 - Pinning the program version a mandate was registered under.
 - A solo mode where the approver is your own phone.
 - An optional red team driven by a real AI model.

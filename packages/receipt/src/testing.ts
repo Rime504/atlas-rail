@@ -14,6 +14,7 @@ import {
 } from '@atlas-rail/mandate';
 import { NOW, TEST_MINT, TEST_ORIGIN, testOffer, unsignedTestMandate } from '@atlas-rail/mandate/testing';
 import {
+  ChainPaymentOutcomeLookup,
   ChainPaymentSimulator,
   DevnetKeypairSigner,
   buildExactPaymentTransaction,
@@ -90,6 +91,7 @@ export async function createWorld(options: { mandate?: Parameters<typeof unsigne
     store,
     instanceSigner: keys.instance,
     simulator: new ChainPaymentSimulator(chain),
+    paymentLookup: new ChainPaymentOutcomeLookup(chain),
     clock: clockFn,
     newId,
   });

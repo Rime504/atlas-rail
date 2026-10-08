@@ -1,4 +1,4 @@
-import { AgentGateService, AgentServiceError, AgentStore, SignedAgentGateRequest } from '@atlas-rail/mandate';
+import { AgentGateService, AgentServiceError, AgentStore, SignedAgentGateRequest, SpendResolution } from '@atlas-rail/mandate';
 import { BoundReceipt, ReceiptService } from '@atlas-rail/receipt';
 import { GateApprovalView, GateClient, GateResponse, IssueReceiptRequest } from '../gate-client';
 
@@ -47,7 +47,7 @@ export class LocalGateClient implements GateClient {
     return this.deps.receiptService.issue(this.deps.organizationId, input);
   }
 
-  releaseSpend(decisionId: string): Promise<void> {
-    return this.deps.gate.releaseSpend(this.deps.organizationId, decisionId);
+  resolveSpend(decisionId: string, transactionBase64: string): Promise<SpendResolution> {
+    return this.deps.gate.resolveSpend(this.deps.organizationId, decisionId, transactionBase64);
   }
 }
