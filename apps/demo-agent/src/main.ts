@@ -52,6 +52,8 @@ async function main(argv: string[]): Promise<number> {
     mode,
     assetMode: (arg(args, '--asset') ?? process.env.DEMO_ASSET ?? 'demo-mint') as DemoEnv['assetMode'],
     funderSecret: process.env.DEMO_FUNDER_SECRET_KEY,
+    signerUrl: arg(args, '--signer') ?? process.env.ATLAS_SIGNER_URL,
+    signerToken: process.env.ATLAS_SIGNER_TOKEN,
   };
   if (/mainnet/i.test(env.rpcUrl)) {
     bad('Refusing to run against a mainnet RPC endpoint: Atlas Rail is devnet only.');

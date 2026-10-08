@@ -9,16 +9,16 @@ Status: **Sourced** (backed as written), **Fixed** (wording changed in this audi
 
 | Claim | Where | Source | Status |
 |---|---|---|---|
-| 429 automated tests pass | README_NEW | `pnpm test` (429 passed, 1 skipped: the Postgres concurrency test, which needs a database); CI | Sourced |
-| Red team: 50 attack types, 1,011 attempts, 0 attack signatures, $0.00 outside the mandate | README_NEW, THREAT_MODEL, DEMO_VIDEO | [reports/redteam-2026-10-08.md](../reports/redteam-2026-10-08.md); `apps/demo-agent/src/redteam/redteam.test.ts` in CI | Sourced |
-| Red team on real devnet: 15 attack types, $0.00 outside the mandate | README_NEW, THREAT_MODEL | same report, devnet section | Sourced |
+| 438 automated tests pass | README_NEW | `pnpm test` (438 passed, 1 skipped: the Postgres concurrency test, which needs a database); CI | Sourced |
+| Red team: 51 attack types, 1,014 attempts, 0 attack signatures, $0.00 outside the mandate | README_NEW, THREAT_MODEL, DEMO_VIDEO | [reports/redteam-2026-10-08.md](../reports/redteam-2026-10-08.md); `apps/demo-agent/src/redteam/redteam.test.ts` in CI | Sourced |
+| Red team on real devnet: 16 attack types, $0.00 outside the mandate | README_NEW, THREAT_MODEL | same report, devnet section | Sourced |
 | 100 simultaneous payments vs a $5 cap spend $5.00 (in-memory and Postgres); $10.00 without the lock | README_NEW, THREAT_MODEL, DEMO_VIDEO | same report; `concurrency.test.ts` (Postgres variant run locally) | Sourced |
 | Gate decision on devnet: p50 351 ms, p95 1,613 ms | README_NEW, DEMO_VIDEO, PRODUCT_SPEC | [reports/e2e-2026-10-08.md](../reports/e2e-2026-10-08.md) (5 samples) | Sourced |
 | Payment confirmation on devnet: p50 1,646 ms | README_NEW | same report (2 samples) | Sourced |
 | `anchor_root`: 10,822 compute units, 5,000-lamport fee | README_NEW, DEMO_VIDEO | same report; [anchor tx](https://explorer.solana.com/tx/gtP2SkfSRAGZRM22uucbkquNDpAEzZASYGuZUSZjTL7hWY1848s1A9mLRmnErfkBtW8LVB5doSnpm7XJjXZbY89?cluster=devnet) | Sourced |
 | "p95 < 50 ms measured" | PRODUCT_SPEC | No measurement of that existed; measured end-to-end figures above replace it | Fixed |
 | 10 Rust unit + 27 LiteSVM integration tests | README_NEW | [PROGRESS.md, Phase 2 follow-up](PROGRESS.md): run 2026-10-04 before the in-place program upgrade ([upgrade tx](https://explorer.solana.com/tx/4giCwqh2aWuATJ5aisSiYMXZ8J8L62TjchsvcE3FKFF9g9vvLA575bpbxWtJ4dRU7ya1NKBRT9p79bTKNZwmwJnA?cluster=devnet)); `lib.rs` has 10 `#[test]`s. Not re-run in this audit (needs WSL + Anchor; not in CI) | Sourced (dated) |
-| "285 automated tests" | README.md (current) | Stale; 429 today | Fixed in README_NEW (swap pending) |
+| "285 automated tests" | README.md (current) | Stale; 438 today | Fixed in README_NEW (swap pending) |
 
 ## Product behaviour
 
@@ -26,7 +26,9 @@ Status: **Sourced** (backed as written), **Fixed** (wording changed in this audi
 |---|---|---|---|
 | Owner, independent approver and agent each sign the mandate | README_NEW, playground step 2, site | `verifyMandateChain` (`packages/mandate/src/mandate.ts`); `mandate.test.ts` | Sourced |
 | 15-rule gate before any signature | README_NEW, DEMO_VIDEO | `evaluateGate` (`packages/mandate/src/gate.ts`); `verifyReceipt` re-runs "all 15 rule results" | Sourced |
-| The wallet refuses anything the gate did not authorise, byte for byte, within 120 s | README_NEW, THREAT_MODEL | `GatedSignerAdapter` + `verifyGateAuthorization`; red-team cases I1, I2, J1–J4, M1–M3, N1 | Sourced |
+| The wallet refuses anything the gate did not authorise, byte for byte, within 120 s | README_NEW, THREAT_MODEL | `GatedSignerAdapter` + `verifyGateAuthorization`; red-team cases I1, I2, J1–J4, M1–M3, N1, N2 | Fixed: until 2026-10-08 `signMessage` signed arbitrary bytes, so a payment's message bytes could be signed with no gate (case N2 moved $60 on the in-memory cluster against the old code); it now signs only the agent's domain messages |
+| In `pnpm demo` the agent reaches its key only over HTTP | README_NEW, INTEGRATE | `apps/signer`, `scripts/demo.mjs`, `scenes.ts` (`HttpSignerClient`); `signer-service.test.ts`; `pnpm demo:rehearse` | Sourced (with the same-user file-access limit stated) |
+| A spend reservation is freed only when the chain shows the payment failed or can no longer land | README_NEW, THREAT_MODEL, INTEGRATE | `resolveSpend` (`gate-service.ts`), `findPaymentOutcome` (`payment-outcome.ts`); red-team case Q1; `fetch.test.ts` | Fixed: until 2026-10-08 `releaseSpend` freed it on the caller's word (#88) |
 | Each allowed payment names its receipt in its on-chain memo | README_NEW, playground, DEMO_VIDEO | `fetch.ts` + `ReceiptService.issue`; `official-stack.test.ts`; independent `getTransaction` reads in [PROGRESS](PROGRESS.md) | Fixed: qualified "unless the seller requires a memo of its own" |
 | Anyone can verify a payment from its transaction alone | README_NEW, `/verify`, INTEGRATE | `provePayment` (`packages/receipt/src/proof.ts`, `proof.test.ts`); live `/verify` Playwright tests; CLI run against devnet (PROVEN / NO PROOF) | Sourced |
 | "/verify: every check links to the chain" | `/verify` intro | Only the payment and the anchor are on-chain; the rest is signature math | Fixed |

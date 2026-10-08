@@ -17,8 +17,10 @@ import { DevnetKeyring, Web3ChainClient } from '@atlas-rail/solana';
 import {
   AtlasClientEvent,
   AtlasPaymentInfo,
+  AuthorizedSigner,
   GatedSignerAdapter,
   HttpGateClient,
+  HttpSignerClient,
   MandateDeniedError,
   createAtlasFetch,
 } from '@atlas-rail/x402';
@@ -213,8 +215,12 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
   const run = (n: number) => !only || only.has(n);
   const summary: SceneSummary = { mandateId: '', scenes: {}, ok: true };
 
-  const keyring = DevnetKeyring.load(env.keyringPath);
-  const agentSigner = keyring.signer('agent');
+  // The agent's key lives in the signer service, a separate process; this agent only has its URL.
+  // A scene run without one (no ATLAS_SIGNER_URL) falls back to the key in the local devnet keyring.
+  const signer: AuthorizedSigner = env.signerUrl
+    ? await HttpSignerClient.connect({ url: env.signerUrl, token: env.signerToken })
+    : new GatedSignerAdapter({ inner: DevnetKeyring.load(env.keyringPath).signer('agent'), trustedInstanceKeys: [state.instance] });
+  info(env.signerUrl ? `agent wallet: signer service at ${env.signerUrl} (the key is not in this process)` : 'agent wallet: in-process devnet key (no ATLAS_SIGNER_URL)');
   const chain = Web3ChainClient.fromUrl(env.rpcUrl);
   const api = new ConsoleApi(env.apiUrl);
   const gate = new HttpGateClient({ baseUrl: env.apiUrl, apiKey: state.apiKey });
@@ -226,7 +232,6 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     events.push(event);
     timeline.push({ event, at: Date.now() });
   };
-  const signer = new GatedSignerAdapter({ inner: agentSigner, trustedInstanceKeys: [state.instance] });
   const atlasFetch = createAtlasFetch({
     mandateId: '',
     signer,
@@ -329,7 +334,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     ok(`signed by ${c.bold('Sarah Jenkins (VP Finance)')} as an independent approver`);
 
     const fetched = await api.get<{ mandate: AgentMandate }>(`/v1/agent/gate/mandates/${drafted.id}`, { apiKey: state.apiKey });
-    const accepted = await signMandate(fetched.mandate, { role: 'AGENT', signer: agentSigner });
+    const accepted = await signMandate(fetched.mandate, { role: 'AGENT', signer });
     const link = accepted.delegationChain[accepted.delegationChain.length - 1];
     const active = await api.post<{ status: string; mandateHash: string; mandate: AgentMandate; onchain: { txSignature: string } | null }>(
       `/v1/agent/gate/mandates/${drafted.id}/accept`,

@@ -1,5 +1,6 @@
 import { AgentMandate, GateAuthorization, SignedDecision, createGateAuthorization, hashCanonical } from '@atlas-rail/mandate';
 import { decodeTransaction, transactionMessageHash } from '@atlas-rail/solana';
+import { PublicKey } from '@solana/web3.js';
 import { NOW, TEST_ORIGIN } from '@atlas-rail/mandate/testing';
 import { AUTHORIZED, AttemptResult, CaseContext, RedTeamCase, ask, attempt, trySign } from './harness';
 
@@ -254,6 +255,23 @@ export const CASES: RedTeamCase[] = [
         note = String(err);
       }
       return [{ decision: 'NOT_ASKED', failedRules: [], signed, settled: false, stoppedBy: signed ? 'NONE' : 'SIGNER', note }];
+    } },
+  { id: 'N2', category: 'Bypass the gate', title: 'Pass the bytes of a $60 payment (over the $50 cap) to the wallet as a "message" to sign', expected: 'signer refuses: it signs only Atlas Rail agent requests and mandate acceptances', stoppedBy: ['SIGNER'], devnet: true,
+    run: async ({ rig }) => {
+      const tx = decodeTransaction(await rig.buildTx({ payTo: rig.merchant, amount: $(60) }));
+      try {
+        // A Solana signature is Ed25519 over exactly these bytes: if the wallet signs them, the payment is valid.
+        const signature = await rig.signer.signMessage(tx.message.serialize());
+        tx.addSignature(new PublicKey(rig.agent), signature);
+      } catch (err) {
+        return [{ decision: 'NOT_ASKED', failedRules: [], signed: false, settled: false, stoppedBy: 'SIGNER', note: String(err) }];
+      }
+      try {
+        await rig.submit(Buffer.from(tx.serialize()).toString('base64'));
+        return [{ decision: 'NOT_ASKED', failedRules: [], signed: true, settled: true, stoppedBy: 'NONE' }];
+      } catch (err) {
+        return [{ decision: 'NOT_ASKED', failedRules: [], signed: true, settled: false, stoppedBy: 'CHAIN', note: String(err) }];
+      }
     } },
 
   // ---- Concurrency bursts ----------------------------------------------------------------------

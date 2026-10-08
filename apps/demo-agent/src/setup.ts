@@ -14,6 +14,9 @@ export interface DemoEnv {
   webUrl: string;
   demoApiUrl: string;
   keyringPath: string;
+  /** The agent signer service; when set, the agent's key is never loaded in this process. */
+  signerUrl?: string;
+  signerToken?: string;
   stateFile: string;
   mode: 'devnet' | 'mock';
   /** `demo-mint`: create our own USDC-like mint (reliable). `circle-usdc`: use Circle's devnet USDC (fund it from faucet.circle.com). */

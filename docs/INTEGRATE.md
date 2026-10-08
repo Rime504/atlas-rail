@@ -24,13 +24,13 @@ This starts the gate on `http://localhost:3001`, creates an API key and a mandat
 ## 1. Wrap fetch (`@atlas-rail/agent`)
 
 ```ts
-import { AtlasDenied, wrapFetch } from '@atlas-rail/agent';
+import { AtlasDenied, HttpSignerClient, wrapFetch } from '@atlas-rail/agent';
 
 const pay = wrapFetch(fetch, {
   mandateId: 'mnd_...',
   gate: { url: 'http://localhost:3001', apiKey: process.env.ATLAS_API_KEY! },
-  wallet, // holds the agent key; keep it outside the agent's process in production
-  trustedInstanceKeys: ['<gate instance key>'],
+  // The agent key lives in the signer service, another process; this agent only has its URL.
+  signer: await HttpSignerClient.connect({ url: 'http://127.0.0.1:3012', token: process.env.ATLAS_SIGNER_TOKEN }),
   rpcUrl: 'http://127.0.0.1:8899', // the Solana RPC from the table above
 });
 
@@ -42,13 +42,23 @@ try {
 }
 ```
 
-`wallet` is any signer with `publicKey`, `signTransaction` and `signMessage` (see `SignerAdapter` in `@atlas-rail/solana`). `wrapFetch` wraps it so it only signs a transaction the gate authorised, byte for byte. Requests that don't ask for payment pass straight through. Above the approval threshold the call waits for a human by default; pass `escalation: { mode: 'fail' }` to get an `EscalationRequiredError` instead.
+**The signer service** (`apps/signer`, `atlas-rail-signer`) holds the agent key and signs a transaction only with a gate authorisation for its exact bytes, and messages only in the Atlas Rail agent-request and mandate-acceptance forms. It has no route that signs arbitrary bytes. `pnpm demo` starts it for you; to run it yourself:
+
+```bash
+pnpm turbo run build --filter=@atlas-rail/signer...
+ATLAS_AGENT_SECRET_KEY=<devnet agent secret key> ATLAS_TRUSTED_INSTANCE_KEY=<gate instance key> \
+  ATLAS_SIGNER_TOKEN=<any long random string> node apps/signer/dist/main.js   # listens on 127.0.0.1:3012
+```
+
+For tests and quick local experiments you can pass `wallet` (any `SignerAdapter`) with `trustedInstanceKeys` instead of `signer`; `wrapFetch` then wraps it in the same check inside your process. Don't do that in production: an agent that can read its key can sign anything.
+
+Requests that don't ask for payment pass straight through. Above the approval threshold the call waits for a human by default; pass `escalation: { mode: 'fail' }` to get an `EscalationRequiredError` instead.
 
 If the seller never answers the paid request (a timeout or dropped connection), `wrapFetch` asks the gate, which checks the chain for that exact transaction, and throws `PaymentUnconfirmedError`. Its `resolution.status` is `SETTLED` (the money moved; `txSignature` names the payment, and it counts against the mandate), `RELEASED` (it never landed; the budget is free again) or `PENDING` (the chain cannot tell yet; the budget stays reserved).
 
 ## 2. A `pay` tool for AI assistants (`atlas-rail-mcp`)
 
-`apps/mcp` is an MCP server with one tool, `pay(url)`. The assistant can ask for a payment; it can never see the key or sign anything itself, because the key lives in the server's process.
+`apps/mcp` is an MCP server with one tool, `pay(url)`. The assistant can ask for a payment; it can never see the key or sign anything itself. Point it at the signer service with `ATLAS_SIGNER_URL` (and `ATLAS_SIGNER_TOKEN`) and the key is not in the MCP server's process either. Without them it falls back to `ATLAS_AGENT_SECRET_KEY` plus `ATLAS_TRUSTED_INSTANCE_KEY`, holding a devnet key itself.
 
 Build it once: `pnpm turbo run build --filter=@atlas-rail/mcp...`. Then add it to your MCP client.
 
@@ -64,8 +74,8 @@ Build it once: `pnpm turbo run build --filter=@atlas-rail/mcp...`. Then add it t
         "ATLAS_GATE_URL": "http://localhost:3001",
         "ATLAS_API_KEY": "<api key>",
         "ATLAS_MANDATE_ID": "mnd_...",
-        "ATLAS_TRUSTED_INSTANCE_KEY": "<gate instance key>",
-        "ATLAS_AGENT_SECRET_KEY": "<devnet agent secret key, base58>",
+        "ATLAS_SIGNER_URL": "http://127.0.0.1:3012",
+        "ATLAS_SIGNER_TOKEN": "<the signer service token>",
         "SOLANA_RPC_URL": "http://127.0.0.1:8899"
       }
     }
@@ -78,13 +88,14 @@ Build it once: `pnpm turbo run build --filter=@atlas-rail/mcp...`. Then add it t
 ```bash
 claude mcp add atlas-rail \
   -e ATLAS_GATE_URL=http://localhost:3001 -e ATLAS_API_KEY=<api key> -e ATLAS_MANDATE_ID=mnd_... \
-  -e ATLAS_TRUSTED_INSTANCE_KEY=<gate instance key> -e ATLAS_AGENT_SECRET_KEY=<devnet agent secret key> \n  -e SOLANA_RPC_URL=http://127.0.0.1:8899 \
+  -e ATLAS_SIGNER_URL=http://127.0.0.1:3012 -e ATLAS_SIGNER_TOKEN=<the signer service token> \
+  -e SOLANA_RPC_URL=http://127.0.0.1:8899 \
   -- node /path/to/atlas-rail/apps/mcp/dist/main.js
 ```
 
 Then ask the assistant to fetch `http://localhost:4402/research/summary`. It pays $0.01 and reports the receipt. Ask it to pay anything outside the mandate and it gets `REFUSED`, with the rules that refused it. Payments above the approval threshold are not made by this tool.
 
-The agent secret key must be a devnet key; the server refuses to run with `NODE_ENV=production`.
+Agent keys must be devnet keys; the signer service and the MCP server's local-key fallback refuse to run with `NODE_ENV=production`. With `pnpm demo`, the signer runs on `http://127.0.0.1:3012`; set `ATLAS_SIGNER_TOKEN` before starting it to choose the token (otherwise one is generated per run).
 
 ## 3. Verify a payment
 

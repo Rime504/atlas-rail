@@ -2,11 +2,38 @@ import {
   AgentMandate,
   GateAuthorization,
   MessageSigner,
+  SIGNATURE_DOMAIN,
   SignedDecision,
   verifyGateAuthorization,
 } from '@atlas-rail/mandate';
 import { SignerAdapter, decodeTransaction, transactionMessageHash } from '@atlas-rail/solana';
 import { GateAuthorizationRequiredError } from './errors';
+
+/** What the agent side needs from its wallet: the in-process {@link GatedSignerAdapter} or a remote signer service. */
+export interface AuthorizedSigner extends MessageSigner {
+  signWithAuthorization(
+    transactionBase64: string,
+    authorization: GateAuthorization | null,
+    decision: SignedDecision | null,
+    mandate: AgentMandate | null,
+  ): Promise<{ signedBase64: string; signature: string }>;
+}
+
+/** `<domain>\n<64 lowercase hex>`: 93 or fewer ASCII bytes starting with "a", which no Solana message can be. */
+const AGENT_DOMAIN_MESSAGE = new RegExp(
+  `^(${[SIGNATURE_DOMAIN.agentRequest, SIGNATURE_DOMAIN.mandateLink].map((d) => d.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|')})\\n[0-9a-f]{64}$`,
+);
+
+export function isAgentDomainMessage(message: Uint8Array): boolean {
+  if (message.length > 128) return false;
+  let text: string;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(message);
+  } catch {
+    return false;
+  }
+  return AGENT_DOMAIN_MESSAGE.test(text);
+}
 
 export interface GatedSignerOptions {
   /** The wallet that actually holds the agent key (mock keyring, or a custody vendor adapter). */
@@ -30,7 +57,7 @@ export interface GatedSignerOptions {
  * Custody vendors (Turnkey, Privy, Crossmint, Coinbase) implement the same check inside their own
  * signing-policy hook; this class is the reference for that contract.
  */
-export class GatedSignerAdapter implements SignerAdapter, MessageSigner {
+export class GatedSignerAdapter implements SignerAdapter, AuthorizedSigner {
   readonly name: string;
   private readonly clock: () => number;
 
@@ -43,7 +70,16 @@ export class GatedSignerAdapter implements SignerAdapter, MessageSigner {
     return this.options.inner.publicKey;
   }
 
-  signMessage(message: Uint8Array): Promise<Uint8Array> {
+  /**
+   * Signs only Atlas Rail messages the agent key legitimately signs: its gate requests and its own
+   * mandate acceptance, in their exact domain-separated form. Anything else is refused: a Solana
+   * transaction signature is an Ed25519 signature over the message bytes, so a "sign this message"
+   * that accepted arbitrary bytes would sign any payment without the gate.
+   */
+  async signMessage(message: Uint8Array): Promise<Uint8Array> {
+    if (!isAgentDomainMessage(message)) {
+      throw new GateAuthorizationRequiredError('This signer only signs Atlas Rail agent requests and mandate acceptances, never arbitrary bytes');
+    }
     return this.options.inner.signMessage(message);
   }
 

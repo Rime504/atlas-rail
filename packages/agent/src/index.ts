@@ -3,6 +3,7 @@ import { ChainClient, SignerAdapter, Web3ChainClient } from '@atlas-rail/solana'
 import {
   AtlasFetch,
   AtlasPaymentInfo,
+  AuthorizedSigner,
   EscalationConfig,
   GateClient,
   GatedSignerAdapter,
@@ -12,6 +13,8 @@ import {
 } from '@atlas-rail/x402';
 
 export type { AtlasFetch, AtlasPaymentInfo, AtlasResponse, EscalationConfig } from '@atlas-rail/x402';
+export { HttpSignerClient, startSignerService } from '@atlas-rail/x402';
+export type { AuthorizedSigner } from '@atlas-rail/x402';
 export { EscalationDeniedError, EscalationRequiredError, EscalationTimeoutError, PaymentSettlementError, PaymentUnconfirmedError, UnsupportedPaymentError } from '@atlas-rail/x402';
 
 /** Thrown when the mandate refuses a payment. Nothing was signed and nothing left the wallet. */
@@ -26,18 +29,11 @@ export class AtlasDenied extends Error {
   }
 }
 
-export interface WrapFetchOptions {
+interface WrapFetchBaseOptions {
   /** The mandate this agent pays under. */
   mandateId: string;
   /** A running Atlas Rail gate (`{ url, apiKey }`), or any GateClient. */
   gate: { url: string; apiKey: string } | GateClient;
-  /**
-   * The wallet that holds the agent's key. In production this must live outside the agent's own
-   * process (a custody provider, a signing service): an agent that can read its key can sign anything.
-   */
-  wallet: SignerAdapter & MessageSigner;
-  /** Atlas Rail instance keys whose authorizations the wallet will honour. */
-  trustedInstanceKeys: string[];
   /** Solana devnet RPC (default: $SOLANA_RPC_URL or the public devnet endpoint). */
   rpcUrl?: string;
   chain?: ChainClient;
@@ -46,6 +42,29 @@ export interface WrapFetchOptions {
   clock?: () => number;
   onEvent?: Parameters<typeof createAtlasFetch>[0]['onEvent'];
 }
+
+export type WrapFetchOptions = WrapFetchBaseOptions &
+  (
+    | {
+        /**
+         * The agent's signer service (`await HttpSignerClient.connect({ url })`): the key stays in
+         * another process and only signs what the gate authorised. Use this in production.
+         */
+        signer: AuthorizedSigner;
+        wallet?: never;
+        trustedInstanceKeys?: never;
+      }
+    | {
+        /**
+         * A wallet in this process, wrapped in the gate check here. Only for tests and local demos:
+         * an agent that can read its key can sign anything.
+         */
+        wallet: SignerAdapter & MessageSigner;
+        /** Atlas Rail instance keys whose authorizations the wallet will honour. */
+        trustedInstanceKeys: string[];
+        signer?: never;
+      }
+  );
 
 /**
  * Wraps `fetch` so x402 payments go through the mandate gate first. Requests that don't need payment
@@ -56,7 +75,7 @@ export function wrapFetch(baseFetch: typeof fetch, options: WrapFetchOptions): A
   const gate: GateClient = 'evaluate' in options.gate ? options.gate : new HttpGateClient({ baseUrl: options.gate.url, apiKey: options.gate.apiKey, fetch: baseFetch });
   const inner = createAtlasFetch({
     mandateId: options.mandateId,
-    signer: new GatedSignerAdapter({ inner: options.wallet, trustedInstanceKeys: options.trustedInstanceKeys, clock: options.clock }),
+    signer: options.signer ?? new GatedSignerAdapter({ inner: options.wallet, trustedInstanceKeys: options.trustedInstanceKeys, clock: options.clock }),
     gate,
     chain: options.chain ?? Web3ChainClient.fromUrl(options.rpcUrl ?? process.env.SOLANA_RPC_URL ?? 'https://api.devnet.solana.com'),
     fetch: baseFetch,
