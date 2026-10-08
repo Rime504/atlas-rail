@@ -128,3 +128,22 @@ Verifying N1 against real devnet (not the in-memory test chain) took 4 runs and 
 Verified clean, independently, after all three fixes: both the scene-2 and scene-4 transactions were read back via a direct `getTransaction` RPC call (not Atlas Rail's own code) — both `err: null`, and the on-chain memo matches `atlasrail:receipt:<id>` exactly: [scene 2 tx](https://explorer.solana.com/tx/4TWTbFyUbcEMsu2KbV64S5zA414dQxHqrhKxZeQF9u7a5DapV6uUAA2ryM1oKLyehHKcBK1KRKifXEkny3rK4JT1?cluster=devnet), [scene 4 tx](https://explorer.solana.com/tx/64TDc5TE2ADGKrV3ZAsgEXtiidduuc1Pb1yrLRh9Jzigw57TYKSmDbevJeRR5xcVZzDF7xUMiZ8yHHbwaYtyyUSn?cluster=devnet).
 - Tests: 307 vitest (unchanged — these were real-devnet-only failures no unit/in-memory test could have caught; the compute budget isn't asserted anywhere, the stale-receipt bug only manifests with cross-run DB state, and the silent-error gap only manifests when something actually fails). Full repo typecheck/lint/build clean.
 - Links: same [PR #63](https://github.com/Rime504/atlas-rail/pull/63).
+
+## N2 part 1 — public receipt table + playground self-proving memo (2026-10-05)
+
+- apps/api: `PublicReceipt` table plus unauthenticated `POST /v1/public/receipts` (accepted only when `verifyReceipt`'s offline checks all pass; rate-limited per IP) and `GET /v1/public/receipts/:id`. Every receipt the main demo-agent issues is auto-published there.
+- Playground devnet settlement now writes `atlasrail:receipt:<id>` in the payment memo, same as N1.
+- apps/api is not hosted anywhere public, so this table is reachable only from a local `pnpm demo`. The public store for the hackathon moves into the playground's Vercel project instead (see the sprint entry below).
+- Tests: 312 vitest (5 new, Prisma mocked, since CI has no database). Links: [PR #64](https://github.com/Rime504/atlas-rail/pull/64).
+
+## apps/api deploy prep (2026-10-05)
+
+- `Dockerfile.api` builds only `@atlas-rail/api` and its workspace deps, runs `prisma migrate deploy` before start, and starts the compiled `dist/main.js`. `main.ts` listens on `$PORT` when a host sets it. Kept for a later public API deployment; not used for the hackathon.
+- Links: [PR #65](https://github.com/Rime504/atlas-rail/pull/65).
+
+## Divyesh's merges (2026-10-06 to 2026-10-08)
+
+- [#37](https://github.com/Rime504/atlas-rail/pull/37) daily/monthly payout limits now load real rolling spend · [#41](https://github.com/Rime504/atlas-rail/pull/41) policy `allowedRecipientIds` enforced · [#39](https://github.com/Rime504/atlas-rail/pull/39) agent spend stays RESERVED until released, closing an overspend window (touched `fetch.ts` and the gate controller; the N1 memo and the public-receipt hook are intact) · [#45](https://github.com/Rime504/atlas-rail/pull/45) no payout double-submit once an on-chain signature exists · [#43](https://github.com/Rime504/atlas-rail/pull/43) webhook URLs reject private, metadata and IPv4-mapped (`::ffff:`) hosts.
+- Also: [#66](https://github.com/Rime504/atlas-rail/pull/66) playground GIF white flash · [#67](https://github.com/Rime504/atlas-rail/pull/67) mobile nav clipping · [#68](https://github.com/Rime504/atlas-rail/pull/68) DB indexes for list/auth/housekeeping paths · [#69](https://github.com/Rime504/atlas-rail/pull/69) `.dockerignore`.
+- Still open, owned by Divyesh: #46 (Root-PDA anchoring; adds a second flag next to the merged `ATLAS_ANCHOR_ROOT`) and #47 (GateAuthorization requires ALLOW + mandate replay). Both conflict with master and are being rebased by him.
+- After these merges: master builds clean (39/39) and 321/321 vitest pass. Devnet `pnpm agent:e2e` re-run after #39 and #43 (2026-10-08): PASS, all six scenes. Independent `getTransaction` reads: [pay](https://explorer.solana.com/tx/3Yvr5NDstdpuAbu56CVZ94F5qNSjy2eDhShLh3pFa7XzUL4RLTKMG3Ejhmeiu9VrfPP7FHAspnjM1KqBTPFqKRxc?cluster=devnet) and [escalate](https://explorer.solana.com/tx/2hQLHYmHCAUvGcPbmG6SNQ5gqvcKQs6isdQkYGwauJHzVPmjWvbZwy3XRY3LUpRzcW8smHpa9H3e2XR1BYC8BYA5?cluster=devnet) both `err: null`, memos match their receipts. Report: `reports/e2e-2026-10-08.md`.
