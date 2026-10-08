@@ -401,8 +401,9 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       }
       say(
         c.dim(
-          '  (In May 2026, a Bankr wallet associated with Grok was reportedly tricked by an encoded prompt into sending about\n' +
-            '   $150–175k of tokens on Base; most was reportedly returned. Here, the same attack fails.)',
+          '  (In May 2026, a Bankr wallet associated with Grok was reportedly tricked by an encoded prompt; about $150–175k\n' +
+            '   was reportedly drained and reportedly returned afterwards. Here, the same attack fails.\n' +
+            '   Source: https://oecd.ai/en/incidents/2026-05-04-4a73)',
         ),
       );
     } finally {
