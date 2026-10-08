@@ -577,14 +577,14 @@ describe('gate service — safety properties', () => {
     expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('0');
   });
 
-  it('failed payment path: releaseSpend frees the reservation', async () => {
+  it('resolveSpend never frees a reservation without a chain lookup: the agent saying "it failed" is not enough', async () => {
     const t = await setup();
     const failed = await t.gate.evaluate(ORG, await t.request({ amount: '1000000' }));
     expect(failed.decision.record.decision).toBe('ALLOW');
     expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('1000000');
 
-    await t.gate.releaseSpend(ORG, failed.decision.record.id);
-    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('0');
+    await expect(t.gate.resolveSpend(ORG, failed.decision.record.id, 'AAAA')).resolves.toEqual({ status: 'PENDING' });
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('1000000');
   });
 
   it('expired approvals cannot be decided and are not honoured', async () => {

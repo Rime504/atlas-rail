@@ -12,6 +12,7 @@ import {
   GateOutcome,
   MessageSigner,
   SignedDecision,
+  SpendResolution,
   X402Offer,
   signGateRequest,
 } from '@atlas-rail/mandate';
@@ -54,6 +55,8 @@ export interface Rig {
   submit(agentSignedBase64: string): Promise<string>;
   revoke(): Promise<void>;
   decideApproval(approvalId: string, approve: boolean): Promise<void>;
+  /** The agent's "that payment didn't go through, free the budget" call. */
+  resolveSpend(decisionId: string, tx: string): Promise<SpendResolution>;
 }
 
 let nonceCounter = 0;

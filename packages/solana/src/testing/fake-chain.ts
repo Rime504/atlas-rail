@@ -4,7 +4,8 @@ import { Keypair, PublicKey, VersionedTransaction } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { ALLOWED_SOLANA_PROGRAM_IDS } from '@atlas-rail/config';
 import { ChainClient, ChainTransactionSummary, MintInfo, summarizeTransaction } from '../chain';
-import { PreflightSimulation, decodeTransaction } from '../x402-payment';
+import { PreflightSimulation, decodeTransaction, transactionMessageHash } from '../x402-payment';
+import type { PaymentHistory } from '../payment-outcome';
 
 /**
  * A small in-memory Solana cluster for hermetic tests and the offline demo (`apps/mock-validator`
@@ -64,7 +65,7 @@ export interface FakeAccountInfo {
   data: Uint8Array;
 }
 
-export class FakeChain implements ChainClient {
+export class FakeChain implements ChainClient, PaymentHistory {
   private state: State = { lamports: new Map(), tokenAccounts: new Map(), mints: new Map(), pendingMints: new Set() };
   private readonly blockhashes = new Set<string>();
   private readonly processed = new Map<string, { summary: ChainTransactionSummary; tx: VersionedTransaction }>();
@@ -181,6 +182,30 @@ export class FakeChain implements ChainClient {
   }
 
   isKnownBlockhash(blockhash: string): boolean {
+    return this.blockhashes.has(blockhash);
+  }
+
+  /** Test control: the blockhash stops being valid, so no transaction using it can land any more. */
+  expireBlockhash(blockhash: string): void {
+    this.blockhashes.delete(blockhash);
+  }
+
+  /* ---- PaymentHistory -------------------------------------------------------------------------- */
+
+  async signaturesForAddress(address: string, limit: number): Promise<Array<{ signature: string; blockTime: number | null }>> {
+    return [...this.processed.entries()]
+      .filter(([, { tx }]) => tx.message.staticAccountKeys.some((key) => key.toBase58() === address))
+      .reverse()
+      .slice(0, limit)
+      .map(([signature, { summary }]) => ({ signature, blockTime: summary.blockTime }));
+  }
+
+  async getTransactionMessage(signature: string): Promise<{ messageHash: string; err: unknown | null } | null> {
+    const found = this.processed.get(signature);
+    return found ? { messageHash: transactionMessageHash(found.tx), err: null } : null;
+  }
+
+  async isBlockhashValid(blockhash: string): Promise<boolean> {
     return this.blockhashes.has(blockhash);
   }
 

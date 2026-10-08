@@ -1,4 +1,4 @@
-import { SignedDecision } from '@atlas-rail/mandate';
+import { SignedDecision, SpendResolution } from '@atlas-rail/mandate';
 
 export type AtlasPaymentErrorCode =
   | 'MANDATE_DENIED'
@@ -8,6 +8,7 @@ export type AtlasPaymentErrorCode =
   | 'GATE_AUTHORIZATION_REQUIRED'
   | 'UNSUPPORTED_PAYMENT'
   | 'PAYMENT_FAILED'
+  | 'PAYMENT_UNCONFIRMED'
   | 'GATE_UNAVAILABLE';
 
 export class AtlasPaymentError extends Error {
@@ -83,5 +84,37 @@ export class PaymentSettlementError extends AtlasPaymentError {
   ) {
     super('PAYMENT_FAILED', message);
     this.name = 'PaymentSettlementError';
+  }
+}
+
+/**
+ * The signed payment went out but the seller never answered (timeout, dropped connection). The gate
+ * checked the chain for the exact authorised transaction: SETTLED means the money moved and the
+ * spend keeps counting; RELEASED means it never landed and the reserved budget was freed; PENDING
+ * means the chain could not tell yet and the budget stays reserved.
+ */
+export class PaymentUnconfirmedError extends AtlasPaymentError {
+  constructor(
+    public readonly resolution: SpendResolution,
+    public readonly decisionId: string,
+    public readonly sellerError: unknown,
+  ) {
+    super('PAYMENT_UNCONFIRMED', PaymentUnconfirmedError.describe(resolution));
+    this.name = 'PaymentUnconfirmedError';
+  }
+
+  get txSignature(): string | null {
+    return this.resolution.status === 'SETTLED' ? this.resolution.txSignature : null;
+  }
+
+  private static describe(resolution: SpendResolution): string {
+    switch (resolution.status) {
+      case 'SETTLED':
+        return `The seller did not answer, but the payment landed on-chain (${resolution.txSignature}); it counts against the mandate`;
+      case 'RELEASED':
+        return 'The seller did not answer and the payment never landed; the reserved budget was released';
+      default:
+        return 'The seller did not answer and the chain cannot tell yet whether the payment landed; the budget stays reserved';
+    }
   }
 }

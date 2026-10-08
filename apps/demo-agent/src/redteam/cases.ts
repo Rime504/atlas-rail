@@ -15,8 +15,8 @@ async function legitSpend(ctx: CaseContext, usd: number): Promise<AttemptResult>
   return { ...r, note: AUTHORIZED };
 }
 
-const repeat = async (n: number, f: (i: number) => Promise<AttemptResult>) => {
-  const out: AttemptResult[] = [];
+const repeat = async <T = AttemptResult>(n: number, f: (i: number) => Promise<T>) => {
+  const out: T[] = [];
   for (let i = 0; i < n; i++) out.push(await f(i));
   return out;
 };
@@ -266,6 +266,29 @@ export const CASES: RedTeamCase[] = [
       const settled = results.filter((r) => r.settled).length;
       ctx.authorize(BigInt(Math.min(settled, 10)) * 500_000n);
       return results.map((r) => (r.settled ? { ...r, note: AUTHORIZED } : r));
+    } },
+
+  // ---- False failure claims --------------------------------------------------------------------
+  { id: 'Q1', category: 'False failure claim', title: 'Pay $1 five times, claim each payment failed to free the budget, then 20 x $0.50 more', expected: 'the gate checks the chain: every claim SETTLED, the budget stays used, every later slice ESCALATE', stoppedBy: GATE_OR_APPROVAL, devnet: true,
+    run: async (ctx) => {
+      const { rig } = ctx;
+      const paid = await repeat(5, async (): Promise<AttemptResult[]> => {
+        const offer = rig.offer({ amount: $(1), resourceUrl: rig.resource('/research/summary') });
+        const tx = await rig.buildTx({ payTo: offer.payTo, amount: offer.amount });
+        const { outcome } = await ask(rig, { offer, tx });
+        const s = await trySign(rig, tx, outcome?.authorization ?? null, outcome?.decision ?? null, outcome?.mandate ?? null);
+        if (!outcome || !s.signed) return [{ decision: outcome?.decision.record.decision ?? 'REJECTED', failedRules: [], signed: false, settled: false, stoppedBy: 'APPROVAL', note: 'setup payment not allowed' }];
+        await rig.submit(s.signed);
+        ctx.authorize(BigInt($(1)));
+        // The lie: "that one didn't go through, give me the budget back".
+        const claim = await rig.resolveSpend(outcome.decision.record.id, tx).catch((err: unknown) => ({ status: `error: ${String(err)}` }));
+        return [
+          { decision: 'ALLOW', failedRules: [], signed: true, settled: true, stoppedBy: 'NONE', note: AUTHORIZED },
+          { decision: 'ALLOW', failedRules: [], signed: false, settled: false, stoppedBy: claim.status === 'SETTLED' ? 'GATE' : 'NONE', note: `claimed the payment failed; the chain says ${claim.status}` },
+        ];
+      });
+      const after = await repeat(20, () => attempt(rig, { offer: rig.offer({ amount: $(0.5) }) }));
+      return [...paid.flat(), ...after];
     } },
 
   // ---- Gate request forgery --------------------------------------------------------------------

@@ -4,6 +4,7 @@ import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync, getMint } from '@solan
 import { ALLOWED_SOLANA_PROGRAM_IDS } from '@atlas-rail/config';
 import { assertNotMainnet } from './guards';
 import { PreflightSimulation, decodeTransaction, simulatePaymentTransaction } from './x402-payment';
+import type { PaymentHistory } from './payment-outcome';
 
 /**
  * The narrow view of a Solana cluster that mandates, receipts and the x402 client need. Production
@@ -236,7 +237,7 @@ export function checkRootAnchor(
 }
 
 /** {@link ChainClient} over a web3.js Connection. Refuses mainnet endpoints (ADR 0004). */
-export class Web3ChainClient implements ChainClient {
+export class Web3ChainClient implements ChainClient, PaymentHistory {
   constructor(private readonly connection: Connection) {
     assertNotMainnet(connection.rpcEndpoint);
   }
@@ -318,5 +319,22 @@ export class Web3ChainClient implements ChainClient {
       },
       { slot: tx.slot, blockTime: tx.blockTime ?? null, err: tx.meta?.err ?? null },
     );
+  }
+
+  async signaturesForAddress(address: string, limit: number): Promise<Array<{ signature: string; blockTime: number | null }>> {
+    const rows = await this.connection.getSignaturesForAddress(new PublicKey(address), { limit }, 'confirmed');
+    return rows.map((row) => ({ signature: row.signature, blockTime: row.blockTime ?? null }));
+  }
+
+  async getTransactionMessage(signature: string): Promise<{ messageHash: string; err: unknown | null } | null> {
+    const tx = await this.connection.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
+    if (!tx) return null;
+    const messageHash = createHash('sha256').update(tx.transaction.message.serialize()).digest('hex');
+    return { messageHash, err: tx.meta?.err ?? null };
+  }
+
+  async isBlockhashValid(blockhash: string): Promise<boolean> {
+    const { value } = await this.connection.isBlockhashValid(blockhash, { commitment: 'finalized' });
+    return value;
   }
 }

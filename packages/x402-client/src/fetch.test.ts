@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { formatReceiptMemo, hashOffer, sha256Hex } from '@atlas-rail/mandate';
 import { verifyReceipt } from '@atlas-rail/receipt';
 import { WORLD_ORG, World, createWorld } from '@atlas-rail/receipt/testing';
+import { decodeTransaction } from '@atlas-rail/solana';
 import { AtlasClientEvent, AtlasFetch, createAtlasFetch } from './fetch';
 import {
   EscalationDeniedError,
@@ -10,6 +11,7 @@ import {
   GateAuthorizationRequiredError,
   MandateDeniedError,
   PaymentSettlementError,
+  PaymentUnconfirmedError,
   UnsupportedPaymentError,
 } from './errors';
 import { GatedSignerAdapter } from './gated-signer';
@@ -35,6 +37,8 @@ async function rig(options: {
   routes?: (origin: string, world: World) => Record<string, FakeSellerRoute>;
   seller?: { omitFeePayer?: boolean; network?: string; rejectPayments?: boolean };
   escalation?: { mode: 'wait' | 'fail'; timeoutMs?: number; pollIntervalMs?: number };
+  /** Sits between the client and the network, e.g. to drop the seller's answer to the paid request. */
+  network?: (world: World) => typeof fetch;
 } = {}): Promise<Rig> {
   const port = await reservePort();
   const origin = `http://127.0.0.1:${port}`;
@@ -79,6 +83,8 @@ async function rig(options: {
     // A real (tiny) sleep: a no-op would spin the polling loop on microtasks and starve the timers the test relies on.
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, Math.min(ms, 2))),
     receiptRetryDelayMs: 0,
+    resolve: { timeoutMs: 100, pollIntervalMs: 5 },
+    ...(options.network ? { fetch: options.network(world) } : {}),
     escalation: options.escalation ?? { mode: 'wait', timeoutMs: 5_000, pollIntervalMs: 5 },
     onEvent: (e) => events.push(e),
   });
@@ -246,10 +252,24 @@ describe('createAtlasFetch — unsupported and failing sellers', () => {
     await expect(r.atlasFetch(`${r.origin}/research/summary`)).rejects.toBeInstanceOf(PaymentSettlementError);
   });
 
-  it('releases the reserved spend when the seller rejects after ALLOW', async () => {
+  it('seller rejects while the transaction could still land: the reserved spend stays held', async () => {
     const r = await rig({ seller: { rejectPayments: true } });
     await expect(r.atlasFetch(`${r.origin}/research/summary`)).rejects.toBeInstanceOf(PaymentSettlementError);
-    expect((await r.world.store.spend.totals(r.world.mandate.id, r.world.clock.now, 86_400)).totalBaseUnits).toBe('0');
+    await new Promise((resolve) => setTimeout(resolve, 150)); // let the background resolution give up
+    expect(await spent(r)).toBe('10000');
+  });
+
+  it('seller rejects and the blockhash expires: the gate releases the reserved spend from the chain', async () => {
+    const r = await rig({
+      seller: { rejectPayments: true },
+      network: (world) => async (input, init) => {
+        const request = new Request(input, init);
+        if (request.headers.has('PAYMENT-SIGNATURE')) world.chain.expireBlockhash(paidBlockhash(request));
+        return fetch(request);
+      },
+    });
+    await expect(r.atlasFetch(`${r.origin}/research/summary`)).rejects.toBeInstanceOf(PaymentSettlementError);
+    await expect.poll(() => spent(r), { timeout: 2_000 }).toBe('0');
   });
 
   it('still returns the paid resource if receipt issuance fails, reporting receiptError', async () => {
@@ -335,5 +355,131 @@ describe('GatedSignerAdapter — the wallet-side enforcement point', () => {
         denied.outcome.mandate,
       ),
     ).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
+  });
+});
+
+/* ---- unknown outcomes: resolved from the chain, never from the agent's word ------------------- */
+
+const spent = async (r: Rig) => (await r.world.store.spend.totals(r.world.mandate.id, r.world.clock.now, 86_400)).totalBaseUnits;
+
+/** The blockhash of the signed payment a paid request carries. */
+function paidBlockhash(request: Request): string {
+  const header = request.headers.get('PAYMENT-SIGNATURE')!;
+  const payload = JSON.parse(Buffer.from(header, 'base64').toString('utf8')) as { payload: { transaction: string } };
+  return decodeTransaction(payload.payload.transaction).message.recentBlockhash;
+}
+
+const dropped = () => new TypeError('fetch failed: the connection was reset');
+
+describe('createAtlasFetch — the seller never answers the paid request', () => {
+  it('the payment landed: PaymentUnconfirmedError(SETTLED) names the transaction, and the spend keeps counting', async () => {
+    const r = await rig({
+      network: () => async (input, init) => {
+        const request = new Request(input, init);
+        const response = await fetch(request);
+        if (request.headers.has('PAYMENT-SIGNATURE')) throw dropped(); // settled, then the answer is lost
+        return response;
+      },
+    });
+    const error = (await r.atlasFetch(`${r.origin}/research/summary`).catch((e: unknown) => e)) as PaymentUnconfirmedError;
+    expect(error).toBeInstanceOf(PaymentUnconfirmedError);
+    expect(error.resolution.status).toBe('SETTLED');
+    expect(error.txSignature).toBe(r.seller.settled[0]);
+    expect(r.events.map((e) => e.type)).toContain('settled');
+    expect(await spent(r)).toBe('10000');
+  });
+
+  it('the payment never went out and its blockhash expired: RELEASED, and the budget is free again', async () => {
+    const r = await rig({
+      network: (world) => async (input, init) => {
+        const request = new Request(input, init);
+        if (request.headers.has('PAYMENT-SIGNATURE')) {
+          world.chain.expireBlockhash(paidBlockhash(request));
+          throw dropped();
+        }
+        return fetch(request);
+      },
+    });
+    const error = (await r.atlasFetch(`${r.origin}/research/summary`).catch((e: unknown) => e)) as PaymentUnconfirmedError;
+    expect(error).toBeInstanceOf(PaymentUnconfirmedError);
+    expect(error.resolution).toEqual({ status: 'RELEASED' });
+    expect(error.txSignature).toBeNull();
+    expect(r.seller.settled).toHaveLength(0);
+    expect(await spent(r)).toBe('0');
+  });
+
+  it('the chain cannot tell yet: PENDING, and the budget stays reserved', async () => {
+    const r = await rig({
+      network: () => async (input, init) => {
+        const request = new Request(input, init);
+        if (request.headers.has('PAYMENT-SIGNATURE')) throw dropped();
+        return fetch(request);
+      },
+    });
+    const error = (await r.atlasFetch(`${r.origin}/research/summary`).catch((e: unknown) => e)) as PaymentUnconfirmedError;
+    expect(error.resolution).toEqual({ status: 'PENDING' });
+    expect(await spent(r)).toBe('10000');
+  });
+
+  it('delivered without a settlement header: the payment is found on-chain and the receipt is issued', async () => {
+    const r = await rig({
+      network: () => async (input, init) => {
+        const request = new Request(input, init);
+        const response = await fetch(request);
+        if (!request.headers.has('PAYMENT-SIGNATURE')) return response;
+        const headers = new Headers(response.headers);
+        headers.delete('PAYMENT-RESPONSE');
+        headers.delete('X-PAYMENT-RESPONSE');
+        return new Response(await response.arrayBuffer(), { status: response.status, headers });
+      },
+    });
+    const res = await r.atlasFetch(`${r.origin}/research/summary`);
+    expect(res.status).toBe(200);
+    expect(res.atlas?.txSignature).toBe(r.seller.settled[0]);
+    expect(res.atlas?.receipt?.settlement.txSignature).toBe(r.seller.settled[0]);
+    expect(res.atlas?.receiptError).toBeNull();
+  });
+});
+
+describe('resolveSpend — a compromised agent cannot free budget by claiming a payment failed', () => {
+  const research = (r: Rig) => ({ amount: '10000', resourceUrl: `${r.origin}/research/summary` });
+
+  it('a payment that landed is SETTLED, never released, and keeps counting', async () => {
+    const r = await rig();
+    const { outcome, transactionBase64 } = await r.world.requestGate(research(r));
+    const txSignature = await r.world.settle(transactionBase64);
+    const decisionId = outcome.decision.record.id;
+    await expect(r.gate.resolveSpend(decisionId, transactionBase64)).resolves.toEqual({ status: 'SETTLED', txSignature });
+    await expect(r.gate.resolveSpend(decisionId, transactionBase64)).resolves.toEqual({ status: 'SETTLED', txSignature });
+    expect(await spent(r)).toBe('10000');
+  });
+
+  it('presenting a transaction other than the authorised one is refused', async () => {
+    const r = await rig();
+    const first = await r.world.requestGate(research(r));
+    await r.world.settle(first.transactionBase64);
+    const other = await r.world.requestGate(research(r));
+    const decisionId = first.outcome.decision.record.id;
+    await expect(r.gate.resolveSpend(decisionId, other.transactionBase64)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(r.gate.resolveSpend(decisionId, 'bm90IGEgdHJhbnNhY3Rpb24=')).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(await spent(r)).toBe('20000');
+  });
+
+  it('a payment that could still land stays reserved, however often the agent asks', async () => {
+    const r = await rig();
+    const { outcome, transactionBase64 } = await r.world.requestGate(research(r));
+    for (let i = 0; i < 3; i++) {
+      await expect(r.gate.resolveSpend(outcome.decision.record.id, transactionBase64)).resolves.toEqual({ status: 'PENDING' });
+    }
+    expect(await spent(r)).toBe('10000');
+  });
+
+  it('a payment whose blockhash expired before it landed is released, and can no longer land', async () => {
+    const r = await rig();
+    const { outcome, transactionBase64 } = await r.world.requestGate(research(r));
+    r.world.chain.expireBlockhash(decodeTransaction(transactionBase64).message.recentBlockhash);
+    await expect(r.gate.resolveSpend(outcome.decision.record.id, transactionBase64)).resolves.toEqual({ status: 'RELEASED' });
+    expect(await spent(r)).toBe('0');
+    await expect(r.world.settle(transactionBase64)).rejects.toThrow();
   });
 });

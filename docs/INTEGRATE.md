@@ -44,6 +44,8 @@ try {
 
 `wallet` is any signer with `publicKey`, `signTransaction` and `signMessage` (see `SignerAdapter` in `@atlas-rail/solana`). `wrapFetch` wraps it so it only signs a transaction the gate authorised, byte for byte. Requests that don't ask for payment pass straight through. Above the approval threshold the call waits for a human by default; pass `escalation: { mode: 'fail' }` to get an `EscalationRequiredError` instead.
 
+If the seller never answers the paid request (a timeout or dropped connection), `wrapFetch` asks the gate, which checks the chain for that exact transaction, and throws `PaymentUnconfirmedError`. Its `resolution.status` is `SETTLED` (the money moved; `txSignature` names the payment, and it counts against the mandate), `RELEASED` (it never landed; the budget is free again) or `PENDING` (the chain cannot tell yet; the budget stays reserved).
+
 ## 2. A `pay` tool for AI assistants (`atlas-rail-mcp`)
 
 `apps/mcp` is an MCP server with one tool, `pay(url)`. The assistant can ask for a payment; it can never see the key or sign anything itself, because the key lives in the server's process.

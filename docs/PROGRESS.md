@@ -184,3 +184,11 @@ Verified clean, independently, after all three fixes: both the scene-2 and scene
 
 - The playground's own devnet path now completes live: three runs of publish → `/verify` → PROVEN on the production deployment with a dedicated devnet RPC, each re-read from the public RPC. See [reports/playground-live-2026-10-08.md](../reports/playground-live-2026-10-08.md). Closes the open item above.
 - The Grok/Bankr line now cites three public sources (#85); the site and playground positioning and the site footer team match the README (#86).
+
+## Unknown payment outcomes resolved from the chain, 2026-10-08
+
+- **Security fix found while building it:** the gate's `releaseSpend` freed a spend hold on the caller's word. A compromised agent holding the API key could settle a payment, then call release, and that payment stopped counting against the per-hour and lifetime caps. It was not covered by the red team. No money moved; it was found by reading the code.
+- **Fix:** `releaseSpend` is replaced by `resolveSpend` (`POST /v1/agent/gate/spend/resolve`). The caller presents the authorised transaction; the gate checks its message hash against the authorisation, then looks for that exact message in the agent wallet's on-chain history. Landed: SETTLED, still counted. Landed with an error, or blockhash invalid at finalized commitment and still not found: RELEASED. Otherwise PENDING, hold kept.
+- **Case 4:** when the seller never answers the paid request, the client asks the gate and throws `PaymentUnconfirmedError` with SETTLED / RELEASED / PENDING. A 2xx with no settlement header is now resolved from the chain and gets its receipt.
+- **Behaviour change:** after a sign failure or a seller rejection, the hold is freed once the blockhash expires (about a minute on devnet), resolved in the background, instead of immediately.
+- **Red team:** new case Q1 (claim settled payments failed, then pay past the budget): $0.00 outside the mandate in memory and on real devnet. Totals: 50 attack types, 1,011 attempts, 0 signatures, $0.00; devnet 15/15. Tests: 429 passing.

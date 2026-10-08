@@ -9,16 +9,16 @@ Status: **Sourced** (backed as written), **Fixed** (wording changed in this audi
 
 | Claim | Where | Source | Status |
 |---|---|---|---|
-| 410 automated tests pass | README_NEW | `pnpm test` (410 passed, 1 skipped: the Postgres concurrency test, which needs a database); CI | Sourced |
-| Red team: 49 attack types, 921 attempts, 0 attack signatures, $0.00 outside the mandate | README_NEW, THREAT_MODEL, DEMO_VIDEO | [reports/redteam-2026-10-08.md](../reports/redteam-2026-10-08.md); `apps/demo-agent/src/redteam/redteam.test.ts` in CI | Sourced |
-| Red team on real devnet: 14 attack types, $0.00 outside the mandate | README_NEW, THREAT_MODEL | same report, devnet section | Sourced |
+| 429 automated tests pass | README_NEW | `pnpm test` (429 passed, 1 skipped: the Postgres concurrency test, which needs a database); CI | Sourced |
+| Red team: 50 attack types, 1,011 attempts, 0 attack signatures, $0.00 outside the mandate | README_NEW, THREAT_MODEL, DEMO_VIDEO | [reports/redteam-2026-10-08.md](../reports/redteam-2026-10-08.md); `apps/demo-agent/src/redteam/redteam.test.ts` in CI | Sourced |
+| Red team on real devnet: 15 attack types, $0.00 outside the mandate | README_NEW, THREAT_MODEL | same report, devnet section | Sourced |
 | 100 simultaneous payments vs a $5 cap spend $5.00 (in-memory and Postgres); $10.00 without the lock | README_NEW, THREAT_MODEL, DEMO_VIDEO | same report; `concurrency.test.ts` (Postgres variant run locally) | Sourced |
 | Gate decision on devnet: p50 351 ms, p95 1,613 ms | README_NEW, DEMO_VIDEO, PRODUCT_SPEC | [reports/e2e-2026-10-08.md](../reports/e2e-2026-10-08.md) (5 samples) | Sourced |
 | Payment confirmation on devnet: p50 1,646 ms | README_NEW | same report (2 samples) | Sourced |
 | `anchor_root`: 10,822 compute units, 5,000-lamport fee | README_NEW, DEMO_VIDEO | same report; [anchor tx](https://explorer.solana.com/tx/gtP2SkfSRAGZRM22uucbkquNDpAEzZASYGuZUSZjTL7hWY1848s1A9mLRmnErfkBtW8LVB5doSnpm7XJjXZbY89?cluster=devnet) | Sourced |
 | "p95 < 50 ms measured" | PRODUCT_SPEC | No measurement of that existed; measured end-to-end figures above replace it | Fixed |
 | 10 Rust unit + 27 LiteSVM integration tests | README_NEW | [PROGRESS.md, Phase 2 follow-up](PROGRESS.md): run 2026-10-04 before the in-place program upgrade ([upgrade tx](https://explorer.solana.com/tx/4giCwqh2aWuATJ5aisSiYMXZ8J8L62TjchsvcE3FKFF9g9vvLA575bpbxWtJ4dRU7ya1NKBRT9p79bTKNZwmwJnA?cluster=devnet)); `lib.rs` has 10 `#[test]`s. Not re-run in this audit (needs WSL + Anchor; not in CI) | Sourced (dated) |
-| "285 automated tests" | README.md (current) | Stale; 410 today | Fixed in README_NEW (swap pending) |
+| "285 automated tests" | README.md (current) | Stale; 429 today | Fixed in README_NEW (swap pending) |
 
 ## Product behaviour
 

@@ -12,7 +12,7 @@ import {
 } from '@atlas-rail/x402';
 
 export type { AtlasFetch, AtlasPaymentInfo, AtlasResponse, EscalationConfig } from '@atlas-rail/x402';
-export { EscalationDeniedError, EscalationRequiredError, EscalationTimeoutError, PaymentSettlementError, UnsupportedPaymentError } from '@atlas-rail/x402';
+export { EscalationDeniedError, EscalationRequiredError, EscalationTimeoutError, PaymentSettlementError, PaymentUnconfirmedError, UnsupportedPaymentError } from '@atlas-rail/x402';
 
 /** Thrown when the mandate refuses a payment. Nothing was signed and nothing left the wallet. */
 export class AtlasDenied extends Error {
