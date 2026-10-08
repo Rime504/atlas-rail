@@ -7,6 +7,7 @@
 //
 // Flags: --offline --auto-approve --no-docker --skip-build --skip-web --exit --rpc <url> --asset <demo-mint|circle-usdc>
 import { spawn, spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -27,9 +28,11 @@ const SKIP_WEB = has('--skip-web');
 const EXIT_AFTER = has('--exit');
 const ASSET = val('--asset') ?? process.env.DEMO_ASSET ?? 'demo-mint';
 
-const PORTS = { web: 3000, api: 3001, demoApi: 4402, facilitator: 4022, mock: 8899, pg: NO_DOCKER ? 54329 : 5432, redis: 6379 };
+const PORTS = { web: 3000, api: 3001, signer: 3012, demoApi: 4402, facilitator: 4022, mock: 8899, pg: NO_DOCKER ? 54329 : 5432, redis: 6379 };
 const RPC_URL = val('--rpc') ?? (OFFLINE ? `http://127.0.0.1:${PORTS.mock}` : process.env.SOLANA_RPC_URL ?? 'https://api.devnet.solana.com');
 const DATABASE_URL = `postgresql://atlas:atlas@localhost:${PORTS.pg}/atlas_rail?schema=public`;
+// The agent signs only through the signer service (its own process); this per-run token is what it presents.
+const SIGNER_TOKEN = process.env.ATLAS_SIGNER_TOKEN || randomBytes(24).toString('hex');
 
 const color = process.stdout.isTTY;
 const paint = (code) => (s) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
@@ -102,6 +105,9 @@ function baseEnv() {
     FACILITATOR_PORT: String(PORTS.facilitator),
     FACILITATOR_URL: `http://127.0.0.1:${PORTS.facilitator}`,
     DEMO_API_PORT: String(PORTS.demoApi),
+    ATLAS_SIGNER_PORT: String(PORTS.signer),
+    ATLAS_SIGNER_URL: `http://127.0.0.1:${PORTS.signer}`,
+    ATLAS_SIGNER_TOKEN: SIGNER_TOKEN,
     DEMO_API_URL: `http://localhost:${PORTS.demoApi}`,
     ATLAS_API_URL: `http://localhost:${PORTS.api}`,
     ATLAS_WEB_URL: `http://localhost:${PORTS.web}`,
@@ -187,7 +193,7 @@ async function main() {
   // 1. Build
   if (!SKIP_BUILD) {
     step('Building services (turbo, cached after the first run)');
-    const filters = ['api', 'worker', 'demo-api', 'demo-agent', 'cli', 'mock-validator', ...(SKIP_WEB ? [] : ['web'])].map((n) => `--filter=@atlas-rail/${n}`);
+    const filters = ['api', 'worker', 'demo-api', 'demo-agent', 'signer', 'cli', 'mock-validator', ...(SKIP_WEB ? [] : ['web'])].map((n) => `--filter=@atlas-rail/${n}`);
     runSync('pnpm', ['turbo', 'run', 'build', ...filters]);
     okay('build complete');
   }
@@ -232,6 +238,11 @@ async function main() {
 
   step('Preparing devnet assets: keys, SOL, demo mint, agent API key');
   runSync(process.execPath, ['apps/demo-agent/dist/main.js', 'setup']);
+
+  step('Starting the agent signer (holds the agent key in its own process)');
+  startProcess('signer', process.execPath, ['apps/signer/dist/main.js']);
+  await waitFor(httpOk(`http://127.0.0.1:${PORTS.signer}/health`), 'agent signer', 30_000);
+  okay(`agent signer on http://127.0.0.1:${PORTS.signer} (the agent reaches it over HTTP only)`);
 
   step('Starting the x402 facilitator and the paid demo API');
   startProcess('facilitator', process.execPath, ['apps/demo-api/dist/facilitator-main.js']);

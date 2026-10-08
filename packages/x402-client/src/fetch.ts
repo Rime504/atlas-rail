@@ -24,7 +24,7 @@ import {
   UnsupportedPaymentError,
 } from './errors';
 import { GateClient, GateResponse } from './gate-client';
-import { GatedSignerAdapter } from './gated-signer';
+import { AuthorizedSigner } from './gated-signer';
 
 const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 
@@ -104,7 +104,7 @@ export interface EscalationConfig {
 export interface AtlasFetchConfig {
   mandateId: string;
   /** The agent's wallet, wrapped so it only signs what the gate allowed. */
-  signer: GatedSignerAdapter;
+  signer: AuthorizedSigner;
   gate: GateClient;
   chain: ChainClient;
   fetch?: typeof fetch;
@@ -343,7 +343,7 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
       void resolveFromChain().catch(() => undefined);
     };
 
-    let signed: Awaited<ReturnType<GatedSignerAdapter['signWithAuthorization']>>;
+    let signed: Awaited<ReturnType<AuthorizedSigner['signWithAuthorization']>>;
     try {
       signed = await config.signer.signWithAuthorization(
         transactionBase64,

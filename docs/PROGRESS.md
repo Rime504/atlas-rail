@@ -192,3 +192,11 @@ Verified clean, independently, after all three fixes: both the scene-2 and scene
 - **Case 4:** when the seller never answers the paid request, the client asks the gate and throws `PaymentUnconfirmedError` with SETTLED / RELEASED / PENDING. A 2xx with no settlement header is now resolved from the chain and gets its receipt.
 - **Behaviour change:** after a sign failure or a seller rejection, the hold is freed once the blockhash expires (about a minute on devnet), resolved in the background, instead of immediately.
 - **Red team:** new case Q1 (claim settled payments failed, then pay past the budget): $0.00 outside the mandate in memory and on real devnet. Totals: 50 attack types, 1,011 attempts, 0 signatures, $0.00; devnet 15/15. Tests: 429 passing.
+
+## Agent signer as a separate service, 2026-10-08
+
+- **Second security fix found while building it:** `GatedSignerAdapter.signMessage` signed any bytes. A Solana payment signature is an Ed25519 signature over the transaction's message bytes, so an agent holding the gated signer could sign any payment with no gate decision. Confirmed on the in-memory test cluster against the old code: a $60 payment (over the $50 cap) settled. It now signs only the agent's domain messages (`atlasrail/v0.1/agent-request` and `mandate-link`, exact form); red-team case N2 covers it, also on real devnet.
+- **`apps/signer` (`atlas-rail-signer`):** the agent key in its own process, on 127.0.0.1 with an optional bearer token. Three routes: public key, sign-message (domain forms only), sign-authorized (gate authorisation for the exact bytes). `HttpSignerClient` is the agent side.
+- **Used by the demos:** `pnpm demo` starts the signer and the scripted agent signs only through it, including its mandate acceptance. `wrapFetch` takes `signer`, and the MCP server takes `ATLAS_SIGNER_URL`.
+- **Red team:** 51 attack types, 1,014 attempts, 0 signatures, $0.00 outside the mandate; devnet 16/16. Tests: 438 passing.
+- **v0.2.0 contains both holes** (this one and the spend release fixed in #88).

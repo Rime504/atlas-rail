@@ -363,6 +363,28 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  apps/signer:
+    dependencies:
+      '@atlas-rail/mandate':
+        specifier: workspace:*
+        version: link:../../packages/mandate
+      '@atlas-rail/solana':
+        specifier: workspace:*
+        version: link:../../packages/solana
+      '@atlas-rail/x402':
+        specifier: workspace:*
+        version: link:../../packages/x402-client
+    devDependencies:
+      '@atlas-rail/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
+      '@types/node':
+        specifier: ^22.10.1
+        version: 22.20.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
   apps/site:
     dependencies:
       lucide-react:

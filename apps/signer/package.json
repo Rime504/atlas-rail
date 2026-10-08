@@ -1,0 +1,27 @@
+{
+  "name": "@atlas-rail/signer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "atlas-rail-signer: holds the agent key in its own process and signs only what the Atlas Rail gate authorised. The agent reaches it over HTTP.",
+  "license": "Apache-2.0",
+  "bin": {
+    "atlas-rail-signer": "./dist/main.js"
+  },
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/main.js",
+    "clean": "rimraf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@atlas-rail/mandate": "workspace:*",
+    "@atlas-rail/solana": "workspace:*",
+    "@atlas-rail/x402": "workspace:*"
+  },
+  "devDependencies": {
+    "@atlas-rail/typescript-config": "workspace:*",
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2"
+  }
+}

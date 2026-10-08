@@ -130,9 +130,9 @@ Three layers:
 
 | What | Number | Source |
 |---|---|---|
-| Automated tests (CI) | 429 passing | `pnpm test`, [CI](https://github.com/Rime504/atlas-rail/actions) |
-| Red team: fully compromised agent | 50 attack types, 1,011 attempts, **0 signatures obtained, $0.00 moved outside the mandate** | [reports/redteam-2026-10-08.md](reports/redteam-2026-10-08.md) |
-| Red team on real devnet | 15 attack types, $0.00 moved outside the mandate | same report |
+| Automated tests (CI) | 438 passing | `pnpm test`, [CI](https://github.com/Rime504/atlas-rail/actions) |
+| Red team: fully compromised agent | 51 attack types, 1,014 attempts, **0 signatures obtained, $0.00 moved outside the mandate** | [reports/redteam-2026-10-08.md](reports/redteam-2026-10-08.md) |
+| Red team on real devnet | 16 attack types, $0.00 moved outside the mandate | same report |
 | 100 simultaneous payments vs a $5 cap | $5.00 spent (in-memory and Postgres); $10.00 with the lock removed | same report |
 | Real devnet end-to-end run | all six scenes pass, memos match their receipts | [reports/e2e-2026-10-08.md](reports/e2e-2026-10-08.md) |
 | Gate decision latency (devnet) | p50 351 ms, p95 1,613 ms | same report |
@@ -143,9 +143,11 @@ The red team **assumes the agent is fully compromised on every attempt**: it sen
 
 ## Where the key lives
 
-The guarantee depends on one thing: **the gated signer and the agent's key must run outside the agent's process.** A compromised agent that can read its own key can sign whatever it likes, and no gate can stop that. In production this means the key stays with a custody provider, a separate signing service or a hardware wallet, and the "only sign what the gate authorised" check runs there (`GatedSignerAdapter` is the reference for that check).
+The guarantee depends on one thing: **the agent's key must live outside the agent's process.** A compromised agent that can read its own key can sign whatever it likes, and no gate can stop that.
 
-In this repository's demos, for convenience, the gated signer runs in the same Node process as the scripted agent. The red team models the attacker as controlling everything except the signer and its key; it does not, and cannot, protect a key the agent can read.
+The key lives in the **signer service** (`apps/signer`), a separate process the agent reaches only over HTTP. It does exactly three things: tell the agent its address; sign a transaction when handed the gate authorization for those exact bytes (with the signed ALLOW decision and mandate, re-checked); and sign the agent's own gate requests and mandate acceptance, in their exact Atlas Rail form. Nothing else: there is no route that signs arbitrary bytes, because a Solana payment signature is just a signature over the transaction's bytes. It binds to `127.0.0.1` and can require a bearer token.
+
+`pnpm demo` starts the signer as its own process and the scripted agent signs only through it; `wrapFetch` and the MCP `pay` tool take its URL (see [`docs/INTEGRATE.md`](docs/INTEGRATE.md)). Two honest limits: on one machine under one user, the agent process could still read the devnet key file from disk, so real isolation needs a separate OS user, container or machine, or a custody provider running the same check (`GatedSignerAdapter` is the reference); and the red team's in-memory and devnet rigs call the signer in-process, modelling the attacker as controlling everything except the signer and its key.
 
 ## Security
 
@@ -183,6 +185,7 @@ Report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
 | `apps/playground` | The public walkthrough, `/verify` and `/break` (Next.js on Vercel) |
 | `apps/cli` | `atlas verify` for receipt files and `--tx` signatures |
 | `apps/mcp` | `atlas-rail-mcp`: an MCP server with one tool, `pay(url)` |
+| `apps/signer` | `atlas-rail-signer`: the agent key in its own process, signing only what the gate authorised |
 | `apps/api` | The gate and console API (NestJS) |
 | `apps/web` | The owner and approver console (Next.js) |
 | `apps/worker` | Background jobs: payouts, webhooks, receipt anchoring |
@@ -208,7 +211,7 @@ Report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
 
 ## Status and roadmap
 
-**Built:** the mandate format and 15-rule gate, three-party signing, human escalation bound to exact transaction bytes, receipts with on-chain Merkle anchoring, unknown payment outcomes resolved from the chain (a lost answer is settled or released by what the chain shows, never by the agent's word), self-proving payments (receipt id in the memo), the public receipt store, `/verify` and `atlas verify --tx`, the on-chain mandate registry, the red team and concurrency proof, `wrapFetch` and an MCP `pay` tool, and the playground.
+**Built:** the mandate format and 15-rule gate, three-party signing, human escalation bound to exact transaction bytes, receipts with on-chain Merkle anchoring, unknown payment outcomes resolved from the chain (a lost answer is settled or released by what the chain shows, never by the agent's word), self-proving payments (receipt id in the memo), the public receipt store, `/verify` and `atlas verify --tx`, the on-chain mandate registry, the red team and concurrency proof, the agent signer as a separate service, `wrapFetch` and an MCP `pay` tool, and the playground.
 
 **Next:**
 

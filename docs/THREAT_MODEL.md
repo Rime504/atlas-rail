@@ -8,7 +8,7 @@ it tested, then where the guarantees end.
 **How it is tested.** The red team ([`reports/redteam-2026-10-08.md`](../reports/redteam-2026-10-08.md),
 `pnpm redteam`, run in CI) **assumes the agent is fully compromised on every attempt**: it sends any
 offer, transaction bytes or gate request the attacker wants, replays and tampers freely, and always
-tries to sign. 50 attack types, 1,011 attempts on the in-memory cluster, 15 attack types on real devnet:
+tries to sign. 51 attack types, 1,014 attempts on the in-memory cluster, 16 attack types on real devnet:
 0 signatures obtained by an attack, $0.00 moved outside the mandate. Money moved is read from token
 balances, never from what the gate reports.
 
@@ -35,6 +35,8 @@ Signer checks are in [`packages/x402-client/src/gated-signer.ts`](../packages/x4
 | **Tamper with the transaction after the gate approved it** (payee, amount, memo, fee payer) | The authorization covers the original message hash only; any change and the signer refuses | cases J1–J4 |
 | **Replay a settled payment** | The chain rejects the duplicate transaction | case I3, also on real devnet |
 | **Bypass the gate**: ask the wallet to sign directly | The gated signer's plain `signTransaction` always refuses | case N1 |
+| **Signing oracle**: pass a payment's message bytes to the wallet's "sign message" (a Solana signature is a signature over exactly those bytes) | The signer signs messages only in the exact Atlas Rail agent-request and mandate-acceptance forms (`<domain>
+<64 hex>`, which no Solana message can be); the signer service has no other signing route | case N2, also on real devnet; `signer-service.test.ts` |
 | **Tamper with a signed gate request** | The gate rejects a request whose agent signature no longer verifies, and one signed by any key other than the mandate's agent | cases A5, P1 |
 | **Revoked or expired mandate** | `MANDATE_NOT_REVOKED` (checked on every evaluation; behind `ATLAS_ONCHAIN=1` also against the on-chain record), `MANDATE_VALIDITY` | cases K1, K2, L1, L2; playground step 8 |
 | **False failure claim**: the agent says a payment that settled "didn't go through" to get its budget back | The gate never frees a spend hold on the caller's word. It looks for the exact authorised message on-chain: landed means SETTLED and still counted; budget is freed only if it landed with an error, or its blockhash expired (checked at finalized commitment) and it never landed | case Q1, also on real devnet; `fetch.test.ts`, `payment-outcome.test.ts` |
@@ -60,8 +62,9 @@ Divyesh also built `anchor_root`, the instruction that writes receipt Merkle roo
 
 - **The key must live outside the agent's process.** The red team's guarantee assumes the attacker
   controls everything except the gated signer and its key. An agent that can read its own key can sign
-  anything. In this repository's demos the signer runs in the same process as the scripted agent, for
-  convenience; in production it belongs with a custody provider or a separate signing service.
+  anything. `pnpm demo` runs the signer as a separate process (`apps/signer`) that the agent reaches only
+  over HTTP, but on one machine under one user the agent could still read the devnet key file; real
+  isolation needs a separate OS user, container or machine, or a custody provider running the same check.
 - **A window after revocation.** The gated signer does not check revocation itself: an authorization
   the gate issued just before a revocation can still be signed for up to 120 seconds.
 - **Budgets are gate-level, not an on-chain lock.** Rolling and lifetime spend are enforced by the gate
