@@ -158,7 +158,8 @@ Verified clean, independently, after all three fixes: both the scene-2 and scene
 ## Gate: overlap on-chain revoke read with simulation (2026-10-08)
 
 - Devnet `getAccountInfo` p50 56–92 ms and `simulateTransaction` p50 53–85 ms. Sequential p50 154–180 ms (one sample 397 ms). Parallel p50 71–77 ms. The allowed-payment path was waiting for both, one after the other.
-- `evaluateFresh` now starts the revoke read and the simulation together when local rules do not already deny. A positive on-chain revocation still drops the simulation so the recorded denial stays `MANDATE_NOT_REVOKED`. Clear local denials still skip simulation.
+- An allowed payment needs two Solana checks: read the mandate account to see if it was revoked, and simulate the transaction to confirm it pays the right person the right amount. Those used to run one after the other. `evaluateFresh` now starts both together when the local rules do not already deny, so the wait is the slower call. A local denial (wrong recipient, over the cap) still skips the simulation.
+- If the chain says the mandate is revoked, the simulation result is thrown away even when the simulation succeeded. The saved decision is a denial named `MANDATE_NOT_REVOKED`. No authorization is issued and no spend is reserved. A successful simulation cannot override a revoke.
 - Tests: gate service 35/35. Extreme cases: chain revoke beats a successful simulation (no spend), failed and thrown simulations reserve nothing, a thrown chain check is not an allow, a wrong recipient never starts a simulation, and 40 overlapping $0.25 payments against a $5 window reserve exactly $5. Red-team burst: 100 payments, lock holds at $5; the unlocked control overspends. Postgres row skipped (no `ATLAS_CONCURRENCY_DATABASE_URL`). Full devnet e2e not re-run.
 
 ## API image migrate without a .env file (2026-10-08)
