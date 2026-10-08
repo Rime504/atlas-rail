@@ -148,3 +148,22 @@ Verified clean, independently, after all three fixes: both the scene-2 and scene
 - [#47](https://github.com/Rime504/atlas-rail/pull/47) merged. The wallet signs only when the authorization, the signed ALLOW decision, and the mandate bind together and re-evaluating the mandate reproduces that ALLOW. The conflict with #39 was kept: a failed sign or a rejected settlement still releases the reserved spend. After that resolution: fetch, decision, red-team, and concurrency tests 87 passed / 1 skipped; typecheck clean for `@atlas-rail/x402`, `@atlas-rail/mandate`, and `@atlas-rail/demo-agent`; `pnpm lint` clean.
 - [#46](https://github.com/Rime504/atlas-rail/pull/46) no longer conflicts, and it changes nothing. Issue #31 was already merged in [#48](https://github.com/Rime504/atlas-rail/pull/48) as `ATLAS_ANCHOR_ROOT` (requires `ATLAS_ONCHAIN=1`). The draft's second flag, `ATLAS_ONCHAIN_ANCHOR`, trusted a mandate PDA stored on the proof, so the merge dropped it. The branch matches master (0 files). Close #46.
 - After these merges: master builds clean (39/39) and 321/321 vitest pass. Devnet `pnpm agent:e2e` re-run after #39 and #43 (2026-10-08): PASS, all six scenes. Independent `getTransaction` reads: [pay](https://explorer.solana.com/tx/3Yvr5NDstdpuAbu56CVZ94F5qNSjy2eDhShLh3pFa7XzUL4RLTKMG3Ejhmeiu9VrfPP7FHAspnjM1KqBTPFqKRxc?cluster=devnet) and [escalate](https://explorer.solana.com/tx/2hQLHYmHCAUvGcPbmG6SNQ5gqvcKQs6isdQkYGwauJHzVPmjWvbZwy3XRY3LUpRzcW8smHpa9H3e2XR1BYC8BYA5?cluster=devnet) both `err: null`, memos match their receipts. Report: `reports/e2e-2026-10-08.md`.
+
+## GLM-5 as an agent model (2026-10-08)
+
+- `AGENT_PROVIDER=glm` calls Z.ai's OpenAI-compatible chat completions at `https://api.z.ai/api/paas/v4/chat/completions` with model `glm-5` (override with `AGENT_MODEL` and `GLM_BASE_URL`). Key is `ZAI_API_KEY`. Same two tools; the model still never sees a payment key.
+- Tests: llm-model unit tests cover the default URL, a BigModel-style base override, bearer auth, and a GLM 401. Not run live against Z.ai (no key in this environment).
+- Gaps: no live GLM e2e yet. Next: set `ZAI_API_KEY` and run `AGENT_MODE=llm AGENT_PROVIDER=glm pnpm agent:e2e` on devnet.
+
+## Gate: overlap on-chain revoke read with simulation (2026-10-08)
+
+- Devnet `getAccountInfo` p50 56–92 ms and `simulateTransaction` p50 53–85 ms. Sequential p50 154–180 ms (one sample 397 ms). Parallel p50 71–77 ms. The allowed-payment path was waiting for both, one after the other.
+- An allowed payment needs two Solana checks: read the mandate account to see if it was revoked, and simulate the transaction to confirm it pays the right person the right amount. Those used to run one after the other. `evaluateFresh` now starts both together when the local rules do not already deny, so the wait is the slower call. A local denial (wrong recipient, over the cap) still skips the simulation.
+- If the chain says the mandate is revoked, the simulation result is thrown away even when the simulation succeeded. The saved decision is a denial named `MANDATE_NOT_REVOKED`. No authorization is issued and no spend is reserved. A successful simulation cannot override a revoke.
+- Tests: gate service 35/35. Extreme cases: chain revoke beats a successful simulation (no spend), failed and thrown simulations reserve nothing, a thrown chain check is not an allow, a wrong recipient never starts a simulation, and 40 overlapping $0.25 payments against a $5 window reserve exactly $5. Red-team burst: 100 payments, lock holds at $5; the unlocked control overspends. Postgres row skipped (no `ATLAS_CONCURRENCY_DATABASE_URL`). Full devnet e2e not re-run.
+
+## API image migrate without a .env file (2026-10-08)
+
+- `db:migrate` (and the other Prisma scripts) used `node --env-file=../../.env`, which exits 9 when that file is missing. `.dockerignore` keeps `.env` out of the image, so `Dockerfile.api` never reached `start:prod` on a deploy that injects `DATABASE_URL` directly.
+- Scripts now use `--env-file-if-exists`. A present `.env` still loads; a missing one leaves the process environment alone. Probe: strict flag exit 9, optional flag exit 0 with an injected variable still set.
+- Gaps: the image was not rebuilt. Flag needs Node 22.9+ (`node:22-alpine` and this machine are past that). Next: the spend-release API-key finding is still open.

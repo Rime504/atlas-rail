@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AgentMessage } from './model';
-import { LlmModel, resolveLlmModel } from './llm-model';
+import { glmChatCompletionsUrl, LlmModel, resolveLlmModel } from './llm-model';
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return {
@@ -29,6 +29,20 @@ describe('resolveLlmModel', () => {
   it('accepts an explicit model override for either provider', () => {
     expect(resolveLlmModel({ provider: 'openai', apiKey: 'k', model: 'gpt-x' }).name).toContain('openai:gpt-x');
     expect(resolveLlmModel({ provider: 'anthropic', apiKey: 'k', model: 'claude-x' }).name).toContain('anthropic:claude-x');
+  });
+
+  it('defaults glm-5 and posts to the Z.ai chat-completions URL', () => {
+    const previous = process.env.GLM_BASE_URL;
+    delete process.env.GLM_BASE_URL;
+    try {
+      expect(resolveLlmModel({ provider: 'glm', apiKey: 'k' }).name).toContain('glm:glm-5');
+      expect(glmChatCompletionsUrl()).toBe('https://api.z.ai/api/paas/v4/chat/completions');
+      expect(glmChatCompletionsUrl('https://open.bigmodel.cn/api/paas/v4/')).toBe('https://open.bigmodel.cn/api/paas/v4/chat/completions');
+      expect(glmChatCompletionsUrl('https://api.z.ai/api/paas/v4/chat/completions')).toBe('https://api.z.ai/api/paas/v4/chat/completions');
+    } finally {
+      if (previous === undefined) delete process.env.GLM_BASE_URL;
+      else process.env.GLM_BASE_URL = previous;
+    }
   });
 });
 
@@ -122,5 +136,58 @@ describe('LlmModel — openai', () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ error: 'rate limited' }, false, 429));
     const model = new LlmModel({ provider: 'openai', apiKey: 'k', model: 'gpt-x', fetchImpl });
     await expect(model.next(history)).rejects.toThrow(/OpenAI API error 429/);
+  });
+
+  it('posts OpenAI tool calls to api.openai.com', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { content: 'Finished.' } }] }));
+    const model = new LlmModel({ provider: 'openai', apiKey: 'k', model: 'gpt-x', fetchImpl });
+    await model.next(history);
+    expect(fetchImpl).toHaveBeenCalledWith('https://api.openai.com/v1/chat/completions', expect.objectContaining({ method: 'POST' }));
+  });
+});
+
+describe('LlmModel — glm', () => {
+  it('sends glm-5 to the Z.ai chat-completions endpoint with a bearer key', async () => {
+    const previous = process.env.GLM_BASE_URL;
+    delete process.env.GLM_BASE_URL;
+    try {
+      const fetchImpl = vi.fn().mockResolvedValue(
+        jsonResponse({
+          choices: [
+            {
+              message: {
+                content: 'Fetching the bulletin.',
+                tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'fetch_page', arguments: JSON.stringify({ url: 'https://bulletin' }) } }],
+              },
+            },
+          ],
+        }),
+      );
+      const model = resolveLlmModel({ provider: 'glm', apiKey: 'zai-key', fetchImpl });
+      const action = await model.next(history);
+      expect(action).toEqual({ type: 'tool_call', tool: 'fetch_page', url: 'https://bulletin', thought: 'Fetching the bulletin.' });
+      expect(fetchImpl).toHaveBeenCalledWith('https://api.z.ai/api/paas/v4/chat/completions', expect.anything());
+      const init = fetchImpl.mock.calls[0][1] as RequestInit;
+      expect(init.headers).toMatchObject({ authorization: 'Bearer zai-key' });
+      const body = JSON.parse(init.body as string);
+      expect(body.model).toBe('glm-5');
+      expect(body.tools.map((t: { function: { name: string } }) => t.function.name)).toEqual(['fetch_page', 'fetch_paid_resource']);
+    } finally {
+      if (previous === undefined) delete process.env.GLM_BASE_URL;
+      else process.env.GLM_BASE_URL = previous;
+    }
+  });
+
+  it('honours an explicit chat URL and model id', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { content: 'Done.' } }] }));
+    const model = resolveLlmModel({ provider: 'glm', apiKey: 'k', model: 'glm-5', chatUrl: 'https://open.bigmodel.cn/api/paas/v4', fetchImpl });
+    expect(await model.next(history)).toEqual({ type: 'final', content: 'Done.' });
+    expect(fetchImpl).toHaveBeenCalledWith('https://open.bigmodel.cn/api/paas/v4/chat/completions', expect.anything());
+  });
+
+  it('throws a clear error on a non-OK response', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ error: 'bad key' }, false, 401));
+    const model = new LlmModel({ provider: 'glm', apiKey: 'bad', model: 'glm-5', fetchImpl });
+    await expect(model.next(history)).rejects.toThrow(/GLM API error 401/);
   });
 });

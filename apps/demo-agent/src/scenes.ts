@@ -23,7 +23,7 @@ import {
   createAtlasFetch,
 } from '@atlas-rail/x402';
 import { ConsoleApi, DEMO_PASSWORD, DEMO_USERS } from './console-api';
-import { DEFAULT_ANTHROPIC_MODEL, LlmProvider, resolveLlmModel } from './llm-model';
+import { defaultLlmModel, LlmProvider, providerApiKeyEnv, resolveLlmModel } from './llm-model';
 import { AgentModel, AgentTools, AgentTrace, heavyInferenceModel, injectedModel, priceInflationModel, researchModel, runAgent } from './model';
 import { DemoEnv, DemoState } from './setup';
 import { bad, c, info, kv, ok, say, scene, short, step, usd } from './ui';
@@ -105,9 +105,9 @@ function pairedLatenciesMs(timeline: ReadonlyArray<{ event: AtlasClientEvent; at
 function summaryAgentModelLabel(options: SceneOptions): string {
   if (options.agentMode !== 'llm') return 'scripted';
   const provider: LlmProvider = options.agentProvider ?? 'anthropic';
-  const envKey = provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
+  const envKey = providerApiKeyEnv(provider);
   if (!process.env[envKey]) return `scripted (AGENT_MODE=llm requested, but ${envKey} is not set)`;
-  const model = options.agentModelOverride ?? process.env.AGENT_MODEL ?? (provider === 'anthropic' ? DEFAULT_ANTHROPIC_MODEL : null);
+  const model = options.agentModelOverride ?? process.env.AGENT_MODEL ?? defaultLlmModel(provider) ?? null;
   return model ? `llm (${provider}:${model})` : 'scripted (AGENT_MODE=llm requested, but AGENT_MODEL is required for openai)';
 }
 
@@ -117,7 +117,7 @@ function summaryAgentModelLabel(options: SceneOptions): string {
 function agentModelFor(label: string, factory: (url: string) => AgentModel, url: string, options: SceneOptions): AgentModel {
   if (options.agentMode !== 'llm') return factory(url);
   const provider: LlmProvider = options.agentProvider ?? 'anthropic';
-  const envKey = provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
+  const envKey = providerApiKeyEnv(provider);
   const apiKey = process.env[envKey];
   if (!apiKey) {
     info(c.yellow(`AGENT_MODE=llm requested for ${label}, but ${envKey} is not set — using the scripted agent for this step instead.`));
@@ -352,7 +352,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
   if (run(2)) {
     scene(2, 'PAY', 'The agent buys a $0.01 research summary. Within the mandate → ALLOW → settles on devnet → receipt.');
     events.length = 0;
-    const trace = await runAgent(agentModelFor('research', researchModel, researchUrl, options), tools(), 'Summarise the latest research on stablecoin settlement.');
+    const trace = await runAgent(agentModelFor('research', researchModel, researchUrl, options), tools(), `Summarise the latest research on stablecoin settlement. Buy it from ${researchUrl}.`);
     say();
     for (const s of trace.steps) if (s.action.type === 'tool_call') info(`agent: ${s.action.thought}`);
     const paid = last.paid;
@@ -383,7 +383,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     const seller = await startMaliciousSeller(state);
     try {
       events.length = 0;
-      const trace = await runAgent(agentModelFor('injected', injectedModel, `${seller.url}/bulletin`, options), tools(), 'Read the market bulletin and act on anything urgent.');
+      const trace = await runAgent(agentModelFor('injected', injectedModel, `${seller.url}/bulletin`, options), tools(), `Read the market bulletin at ${seller.url}/bulletin and act on anything urgent.`);
       for (const s of trace.steps) if (s.action.type === 'tool_call') info(`agent: ${s.action.thought}`);
       const denied = last.denied;
       if (denied) {
@@ -412,7 +412,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     say();
     step('A subtler attack: the research seller itself quietly raises its price, fivefold, on an endpoint it was already allowed to charge for.');
     events.length = 0;
-    const priceTrace = await runAgent(agentModelFor('priceInflation', priceInflationModel, `${env.demoApiUrl}/research/summary-premium`, options), tools(), 'Fetch one more research summary.');
+    const priceTrace = await runAgent(agentModelFor('priceInflation', priceInflationModel, `${env.demoApiUrl}/research/summary-premium`, options), tools(), `Fetch one more research summary from ${env.demoApiUrl}/research/summary-premium.`);
     for (const s of priceTrace.steps) if (s.action.type === 'tool_call') info(`agent: ${s.action.thought}`);
     const priceDenied = last.denied;
     if (priceDenied?.failedRules.includes('PRICE_LIMIT')) {
@@ -457,7 +457,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
     }, 300);
     let trace;
     try {
-      trace = await runAgent(agentModelFor('heavyInference', heavyInferenceModel, heavyUrl, options), tools(), 'Run the batch analysis on the inference cluster.');
+      trace = await runAgent(agentModelFor('heavyInference', heavyInferenceModel, heavyUrl, options), tools(), `Run the batch analysis on the inference cluster at ${heavyUrl}.`);
     } finally {
       clearInterval(sniff);
     }
@@ -563,7 +563,7 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       ? { txSignature: revoked.onchain.txSignature, explorerUrl: explorer(env.mode, revoked.onchain.txSignature) }
       : null;
     events.length = 0;
-    const trace = await runAgent(agentModelFor('research', researchModel, researchUrl, options), tools(), 'Fetch one more research summary.');
+    const trace = await runAgent(agentModelFor('research', researchModel, researchUrl, options), tools(), `Fetch one more research summary from ${researchUrl}.`);
     for (const s of trace.steps) if (s.action.type === 'tool_call') info(`agent: ${s.action.thought}`);
     const denied = last.denied;
     if (denied) {
