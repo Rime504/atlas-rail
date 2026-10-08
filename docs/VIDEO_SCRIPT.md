@@ -14,7 +14,7 @@ A narration to read aloud while screen-recording the six-scene Agent Mandates de
 
 ## 0:00 — Intro
 
-> "This is Atlas Rail — an open-source policy and evidence layer for AI agent payments on Solana. I'm going to run one command, and you'll watch an agent try to spend money six different ways: some allowed, one attacked, one escalated to a human, and all of it provably recorded."
+> "This is Atlas Rail — proof of permission for every AI agent payment on Solana. I'm going to run one command, and you'll watch an agent try to spend money six different ways: some allowed, one attacked, one escalated to a human, and all of it provably recorded."
 
 Type: `pnpm demo`
 
