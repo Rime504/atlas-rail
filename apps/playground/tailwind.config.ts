@@ -32,6 +32,11 @@ const config: Config = {
       backgroundImage: {
         'solana-gradient': 'linear-gradient(90deg, #9945FF 0%, #14F195 100%)',
         'solana-gradient-radial': 'radial-gradient(circle at top, rgba(153,69,255,0.25), transparent 60%)',
+        // Same hues as solana-gradient, lightened at the purple end specifically for text on the
+        // #050611 background: #9945FF only reaches ~3.65:1 contrast there (fails WCAG AA's 4.5:1 for
+        // normal text); #B98CFF reaches ~6.5:1, and the gradient's own blend only climbs from there
+        // toward the green end, so every point along it clears AA.
+        'solana-gradient-text': 'linear-gradient(90deg, #B98CFF 0%, #14F195 100%)',
       },
       boxShadow: {
         glow: '0 0 40px -10px rgba(153,69,255,0.45)',

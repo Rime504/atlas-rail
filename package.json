@@ -24,7 +24,9 @@
     "demo": "node scripts/demo.mjs",
     "demo:offline": "node scripts/demo.mjs --offline --no-docker",
     "demo:rehearse": "node scripts/demo.mjs --offline --no-docker --auto-approve --exit",
-    "build:demo": "turbo run build --filter=@atlas-rail/api --filter=@atlas-rail/worker --filter=@atlas-rail/demo-api --filter=@atlas-rail/demo-agent --filter=@atlas-rail/cli --filter=@atlas-rail/mock-validator --filter=@atlas-rail/web"
+    "agent:e2e": "node scripts/agent-e2e.mjs",
+    "build:demo": "turbo run build --filter=@atlas-rail/api --filter=@atlas-rail/worker --filter=@atlas-rail/demo-api --filter=@atlas-rail/demo-agent --filter=@atlas-rail/cli --filter=@atlas-rail/mock-validator --filter=@atlas-rail/web",
+    "redteam": "pnpm turbo run build --filter=@atlas-rail/demo-agent... && node apps/demo-agent/dist/redteam/main.js"
   },
   "devDependencies": {
     "embedded-postgres": "18.4.0-beta.17",

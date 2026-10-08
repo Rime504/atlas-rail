@@ -16,11 +16,12 @@ import {
   verifyDomainHash,
   verifyMandateChain,
 } from '@atlas-rail/mandate';
-import { ChainClient, checkMemoAnchor, checkSettlement } from '@atlas-rail/solana';
+import { ChainClient, checkMemoAnchor, checkRootAnchor, checkSettlement, findMandatePda } from '@atlas-rail/solana';
 import { MerkleStep, buildAnchorMemo, verifyMerkleProof } from './merkle';
 
 export const RECEIPT_TYPE = 'atlasrail.bound-receipt' as const;
 export const RECEIPT_VERSION = '0.1' as const;
+const DEFAULT_MANDATE_PROGRAM_ID = 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k';
 
 export interface ReceiptSettlement {
   txSignature: string;
@@ -49,6 +50,12 @@ export interface AnchorProof {
   anchoredAt: number | null;
   /** Key that signed the anchor transaction. Verification requires it to equal the receipt's instance key. */
   signer: string;
+  /** How this batch was anchored on-chain. Absent means 'memo' (receipts issued before this field
+   * existed, or ATLAS_ANCHOR_ROOT off): an SPL Memo transaction. 'root' means the mandate registry's
+   * `anchor_root` instruction, which writes a Root PDA per mandate per batch. */
+  mechanism?: 'memo' | 'root';
+  /** mechanism 'root' only: the mandate's anchor_root sequence number this batch was anchored under. */
+  seq?: number;
 }
 
 export interface BoundReceiptBody {
@@ -173,6 +180,8 @@ export interface VerifyReceiptOptions {
   checkSettlementOnChain?: boolean;
   /** Fail (rather than skip) if the receipt has not been anchored yet. */
   requireAnchor?: boolean;
+  /** Mandate registry program id, for `mechanism: 'root'` receipts. Defaults to the deployed devnet program. */
+  programId?: string;
 }
 
 const receiptShapeSchema = z
@@ -340,8 +349,22 @@ export async function verifyReceipt(input: unknown, options: VerifyReceiptOption
     );
     if (options.chain) {
       const summary = await options.chain.getTransactionSummary(anchor.txSignature).catch(() => null);
-      const memo = buildAnchorMemo({ merkleRoot: anchor.merkleRoot, leafCount: anchor.leafCount, batchId: anchor.batchId });
-      const onChain = checkMemoAnchor(summary, { memo, signer: receipt.instance.publicKey });
+      const onChain =
+        anchor.mechanism === 'root'
+          ? checkRootAnchor(summary, {
+              programId: options.programId ?? DEFAULT_MANDATE_PROGRAM_ID,
+              mandatePda: mandateHash
+                ? findMandatePda(options.programId ?? DEFAULT_MANDATE_PROGRAM_ID, Buffer.from(mandateHash, 'hex')).address
+                : '',
+              signer: receipt.instance.publicKey,
+              seq: BigInt(anchor.seq ?? 0),
+              merkleRoot: anchor.merkleRoot,
+              leafCount: anchor.leafCount,
+            })
+          : checkMemoAnchor(summary, {
+              memo: buildAnchorMemo({ merkleRoot: anchor.merkleRoot, leafCount: anchor.leafCount, batchId: anchor.batchId }),
+              signer: receipt.instance.publicKey,
+            });
       checks.push(
         check(
           'ANCHOR_ONCHAIN',

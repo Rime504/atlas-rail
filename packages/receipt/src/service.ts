@@ -1,18 +1,26 @@
 import {
   AgentEventSink,
+  AgentMandate,
   AgentServiceError,
   AgentStore,
   MessageSigner,
+  hashMandate,
+  parseReceiptMemo,
   sha256Hex,
 } from '@atlas-rail/mandate';
 import {
   ChainClient,
   SignerAdapter,
+  buildAnchorRootTransaction,
   buildAnchorTransaction,
   checkSettlement,
+  fetchMandateAccount,
+  findMandatePda,
 } from '@atlas-rail/solana';
 import { AnchorProof, BoundReceipt, ReceiptResponse, buildReceipt } from './receipt';
 import { buildAnchorMemo, merkleProof, merkleRoot } from './merkle';
+
+const DEFAULT_MANDATE_PROGRAM_ID = 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k';
 
 export interface StoredReceipt {
   organizationId: string;
@@ -102,9 +110,18 @@ export class ReceiptService {
       throw new AgentServiceError('INVALID_STATE', 'Settlement was not paid by the mandate agent key');
     }
 
+    // Self-proving payments: the transaction itself may already name this receipt's id in its Memo
+    // instruction (written by the client before it signed — see packages/x402-client/src/fetch.ts).
+    // Using that id instead of minting a fresh one is what lets someone who only has the transaction
+    // signature, with no other context, find this exact receipt. A memo that collides with an
+    // existing receipt (replay, or a client bug) is never trusted — mint a fresh id instead, same as
+    // if there were no memo at all.
+    const memoReceiptId = parseReceiptMemo(summary?.memos ?? []);
+    const receiptId = memoReceiptId && !(await receipts.get(organizationId, memoReceiptId)) ? memoReceiptId : newId('rcp');
+
     const receipt = await buildReceipt(
       {
-        id: newId('rcp'),
+        id: receiptId,
         mandate: mandateRecord.mandate,
         decision,
         settlement: {
@@ -154,6 +171,14 @@ export interface AnchorServiceOptions {
   newId: (prefix: string) => string;
   network?: string;
   maxBatchSize?: number;
+  /** 'root' anchors each mandate's pending receipts separately via the mandate registry's
+   * `anchor_root` instruction (a per-mandate on-chain Root PDA) instead of one SPL Memo across all
+   * of them. Default 'memo'. Requires `rpcUrl`, and only anchors receipts whose mandate is already
+   * registered on-chain — others are left pending and retried on the next run. */
+  mode?: 'memo' | 'root';
+  /** Required when mode is 'root': reads each mandate's current anchor_root sequence number before anchoring. */
+  rpcUrl?: string;
+  programId?: string;
 }
 
 export interface AnchorRunResult {
@@ -162,15 +187,21 @@ export interface AnchorRunResult {
 }
 
 /**
- * Batches unanchored receipts into a Merkle tree and anchors the root on Solana devnet with a Memo
- * instruction signed by the instance key. Receipts keep their inclusion proofs so anyone can verify
- * them later with `atlas verify`.
+ * Batches unanchored receipts into a Merkle tree and anchors the root on Solana devnet — either as
+ * an SPL Memo (default) or, in 'root' mode, via the mandate registry's per-mandate `anchor_root`
+ * instruction. Receipts keep their inclusion proofs so anyone can verify them later with
+ * `atlas verify`.
  */
 export class AnchorService {
   constructor(private readonly deps: AnchorServiceOptions) {}
 
   /** Anchors up to `maxBatchSize` pending receipts. Returns null when there is nothing to anchor. */
   async run(): Promise<AnchorRunResult | null> {
+    if (this.deps.mode === 'root') return this.runRoot();
+    return this.runMemo();
+  }
+
+  private async runMemo(): Promise<AnchorRunResult | null> {
     const { receipts, chain, signer, clock, newId } = this.deps;
     const pending = await receipts.listUnanchored(this.deps.maxBatchSize ?? 256);
     if (pending.length === 0) return null;
@@ -211,6 +242,7 @@ export class AnchorService {
           network,
           anchoredAt,
           signer: signer.publicKey,
+          mechanism: 'memo' as const,
         },
       }));
       await receipts.saveBatch(batch, anchors);
@@ -229,6 +261,105 @@ export class AnchorService {
       await receipts.saveBatch(batch, []); // receipts stay unanchored and are retried on the next run
       throw error;
     }
+  }
+
+  /**
+   * 'root' mode: groups pending receipts by mandate (the Root PDA's seq counter lives on the
+   * Mandate account, so a batch can only ever cover one mandate) and anchors each group with its own
+   * `anchor_root` call. A mandate that isn't registered on-chain is skipped — its receipts stay
+   * pending and are retried on the next run, same as a failed anchor. Returns the last batch anchored
+   * this run (there is normally exactly one mandate with pending receipts at a time); callers that
+   * need the full picture should use `listBatches`.
+   */
+  private async runRoot(): Promise<AnchorRunResult | null> {
+    const { receipts, chain, signer, clock, newId } = this.deps;
+    const rpcUrl = this.deps.rpcUrl;
+    if (!rpcUrl) throw new Error('AnchorService: rpcUrl is required when mode is "root"');
+    const programId = this.deps.programId ?? DEFAULT_MANDATE_PROGRAM_ID;
+    const network = this.deps.network ?? 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1';
+    const pending = await receipts.listUnanchored(this.deps.maxBatchSize ?? 256);
+    if (pending.length === 0) return null;
+
+    const groups = new Map<string, { mandate: AgentMandate; items: typeof pending }>();
+    for (const item of pending) {
+      const hash = hashMandate(item.receipt.mandate);
+      const group = groups.get(hash);
+      if (group) group.items.push(item);
+      else groups.set(hash, { mandate: item.receipt.mandate, items: [item] });
+    }
+
+    let last: AnchorRunResult | null = null;
+    for (const [mandateHashHex, group] of groups) {
+      const mandateHashBytes = Buffer.from(mandateHashHex, 'hex');
+      const { address: mandatePda } = findMandatePda(programId, mandateHashBytes);
+      const onchain = await fetchMandateAccount(rpcUrl, mandatePda).catch(() => null);
+      if (!onchain) continue; // not registered on-chain; anchor_root needs the Mandate account to exist
+
+      const leaves = group.items.map((p) => p.receipt.receiptHash);
+      const root = merkleRoot(leaves);
+      const batchId = newId('anc');
+      const seq = onchain.nextRootSeq;
+
+      try {
+        const { blockhash } = await chain.getLatestBlockhash();
+        const unsigned = buildAnchorRootTransaction({
+          programId,
+          mandatePda,
+          gateAuthority: signer.publicKey,
+          seq,
+          merkleRoot: Buffer.from(root, 'hex'),
+          leafCount: leaves.length,
+          recentBlockhash: blockhash,
+        });
+        const signed = await signer.signTransaction(unsigned);
+        const txSignature = await chain.sendAndConfirm(signed.signedBase64);
+        const summary = await chain.getTransactionSummary(txSignature);
+        const anchoredAt = summary?.blockTime ?? clock();
+
+        const batch: AnchorBatchRecord = {
+          id: batchId,
+          merkleRoot: root,
+          leafCount: leaves.length,
+          txSignature,
+          status: 'ANCHORED',
+          error: null,
+          createdAt: clock(),
+          anchoredAt,
+        };
+        const anchors = group.items.map((p, index) => ({
+          receiptId: p.receipt.id,
+          anchor: {
+            batchId,
+            merkleRoot: root,
+            leafCount: leaves.length,
+            leafIndex: index,
+            proof: merkleProof(leaves, index),
+            txSignature,
+            network,
+            anchoredAt,
+            signer: signer.publicKey,
+            mechanism: 'root' as const,
+            seq: Number(seq),
+          },
+        }));
+        await receipts.saveBatch(batch, anchors);
+        last = { batch, anchored: anchors.length };
+      } catch (error) {
+        const batch: AnchorBatchRecord = {
+          id: batchId,
+          merkleRoot: root,
+          leafCount: leaves.length,
+          txSignature: null,
+          status: 'FAILED',
+          error: error instanceof Error ? error.message : String(error),
+          createdAt: clock(),
+          anchoredAt: null,
+        };
+        await receipts.saveBatch(batch, []);
+        // Keep anchoring the other mandates' groups rather than aborting the whole run.
+      }
+    }
+    return last;
   }
 }
 

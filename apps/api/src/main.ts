@@ -37,7 +37,9 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);
 
-  const port = env.API_PORT;
+  // Railway (and most container hosts) assign the port via $PORT and expect the app to listen on
+  // exactly that — API_PORT stays the default for local dev where nothing sets $PORT.
+  const port = process.env.PORT ? Number(process.env.PORT) : env.API_PORT;
   await app.listen(port, '0.0.0.0');
 
   logger.log(`🚀 Atlas Rail API listening on http://localhost:${port}`);

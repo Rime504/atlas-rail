@@ -92,6 +92,46 @@ describe('Policy Engine', () => {
     expect(result.reasons.some((r) => r.code === 'EXCEEDS_SINGLE_PAYOUT_LIMIT')).toBe(true);
   });
 
+  it('blocks payout when rolling daily spend plus amount exceeds the daily limit', () => {
+    const result = evaluatePolicy({
+      ...baseInput,
+      rollingSpend: {
+        dailyTotalBaseUnits: '24500000000', // 24,500 USDC already spent
+        monthlyTotalBaseUnits: '24500000000',
+      },
+      payout: { ...baseInput.payout, amountBaseUnits: '1000000000' }, // +1,000 → 25,500 > 25,000
+    });
+    expect(result.decision).toBe('BLOCK');
+    expect(result.reasons.some((r) => r.code === 'EXCEEDS_DAILY_LIMIT')).toBe(true);
+  });
+
+  it('blocks payout when rolling monthly spend plus amount exceeds the monthly limit', () => {
+    const result = evaluatePolicy({
+      ...baseInput,
+      rollingSpend: {
+        dailyTotalBaseUnits: '0',
+        monthlyTotalBaseUnits: '99500000000', // 99,500 USDC already spent this month
+      },
+      payout: { ...baseInput.payout, amountBaseUnits: '1000000000' }, // +1,000 → 100,500 > 100,000
+    });
+    expect(result.decision).toBe('BLOCK');
+    expect(result.reasons.some((r) => r.code === 'EXCEEDS_MONTHLY_LIMIT')).toBe(true);
+  });
+
+  it('allows payout when rolling spend plus amount stays under daily and monthly limits', () => {
+    const result = evaluatePolicy({
+      ...baseInput,
+      rollingSpend: {
+        dailyTotalBaseUnits: '24000000000', // 24,000 of 25,000 daily
+        monthlyTotalBaseUnits: '99000000000', // 99,000 of 100,000 monthly
+      },
+      payout: { ...baseInput.payout, amountBaseUnits: '1000000000' }, // +1,000 fits both
+    });
+    expect(result.decision).toBe('REQUIRE_APPROVAL');
+    expect(result.reasons.some((r) => r.code === 'EXCEEDS_DAILY_LIMIT')).toBe(false);
+    expect(result.reasons.some((r) => r.code === 'EXCEEDS_MONTHLY_LIMIT')).toBe(false);
+  });
+
   it('blocks payout if transaction simulation contains unallowed program IDs', () => {
     const result = evaluatePolicy({
       ...baseInput,
@@ -102,5 +142,48 @@ describe('Policy Engine', () => {
     });
     expect(result.decision).toBe('BLOCK');
     expect(result.reasons.some((r) => r.code === 'UNKNOWN_PROGRAM_ID_DETECTED')).toBe(true);
+  });
+
+  it('blocks payout when recipient is not on a non-empty allowlist', () => {
+    const result = evaluatePolicy({
+      ...baseInput,
+      policy: {
+        version: 1,
+        rules: {
+          ...defaultRules,
+          recipients: {
+            ...defaultRules.recipients,
+            allowedRecipientIds: ['rec_allowed'],
+          },
+        },
+      },
+      recipient: { ...baseInput.recipient, id: 'rec_1' },
+    });
+    expect(result.decision).toBe('BLOCK');
+    expect(result.reasons.some((r) => r.code === 'RECIPIENT_NOT_ALLOWED')).toBe(true);
+  });
+
+  it('allows payout when recipient is on the allowlist', () => {
+    const result = evaluatePolicy({
+      ...baseInput,
+      policy: {
+        version: 1,
+        rules: {
+          ...defaultRules,
+          recipients: {
+            ...defaultRules.recipients,
+            allowedRecipientIds: ['rec_1'],
+          },
+        },
+      },
+    });
+    expect(result.decision).toBe('REQUIRE_APPROVAL');
+    expect(result.reasons.some((r) => r.code === 'RECIPIENT_NOT_ALLOWED')).toBe(false);
+  });
+
+  it('does not apply allowlist when allowedRecipientIds is empty', () => {
+    const result = evaluatePolicy(baseInput);
+    expect(result.decision).toBe('REQUIRE_APPROVAL');
+    expect(result.reasons.some((r) => r.code === 'RECIPIENT_NOT_ALLOWED')).toBe(false);
   });
 });

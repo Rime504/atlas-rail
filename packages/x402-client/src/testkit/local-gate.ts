@@ -46,4 +46,8 @@ export class LocalGateClient implements GateClient {
   issueReceipt(input: IssueReceiptRequest): Promise<BoundReceipt> {
     return this.deps.receiptService.issue(this.deps.organizationId, input);
   }
+
+  releaseSpend(decisionId: string): Promise<void> {
+    return this.deps.gate.releaseSpend(this.deps.organizationId, decisionId);
+  }
 }

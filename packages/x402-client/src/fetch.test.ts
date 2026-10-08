@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { hashOffer, sha256Hex } from '@atlas-rail/mandate';
+import { formatReceiptMemo, hashOffer, sha256Hex } from '@atlas-rail/mandate';
 import { verifyReceipt } from '@atlas-rail/receipt';
 import { WORLD_ORG, World, createWorld } from '@atlas-rail/receipt/testing';
 import { AtlasClientEvent, AtlasFetch, createAtlasFetch } from './fetch';
@@ -115,10 +115,25 @@ describe('createAtlasFetch — scene 2: pay within the mandate', () => {
     expect(receipt.hashes.offerHash).toBe(hashOffer(receipt.offer));
     expect(r.events.map((e) => e.type)).toEqual(['payment_required', 'gate_decision', 'payment_signed', 'settled', 'receipt_issued']);
 
+    // Self-proving payment: the transaction's own memo named this receipt before it was settled.
+    expect(res.atlas?.expectedReceiptId).toBe(receipt.id);
+    expect(r.world.chain.memos).toContain(formatReceiptMemo(receipt.id));
+
     await r.world.anchorService.run();
     const stored = await r.world.receipts.get(WORLD_ORG, receipt.id);
     const verification = await verifyReceipt(stored!.receipt, { chain: r.world.chain, requireAnchor: true });
     expect(verification.pass).toBe(true);
+  });
+
+  it('honours a seller-mandated memo instead of injecting a receipt pointer on top of it', async () => {
+    const r = await rig({ routes: (_origin) => ({ '/research/summary': { amount: '10000', body: { summary: 'devnet is fast' }, memo: 'invoice #4821' } }) });
+    const res = await r.atlasFetch(`${r.origin}/research/summary`);
+    expect(res.status).toBe(200);
+    // The payment is still perfectly valid and still gets a receipt — it just isn't self-proving
+    // from the memo alone, since the seller claimed the transaction's one memo slot for itself.
+    expect(res.atlas?.expectedReceiptId).toBeNull();
+    expect(res.atlas?.receipt).not.toBeNull();
+    expect(r.world.chain.memos).toContain('invoice #4821');
   });
 
   it('uses the URL that was actually requested, not the seller-claimed resource, when scoping the mandate', async () => {
@@ -169,6 +184,8 @@ describe('createAtlasFetch — scene 4: escalation and human approval', () => {
     expect(res.atlas?.receipt?.decision.record.kind).toBe('APPROVED');
     expect(r.seller.settled).toHaveLength(1);
     expect(r.world.chain.tokenBalance(r.world.keys.merchant.publicKey, r.world.mandate.scope.limits.mint)).toBe(40_000_000n);
+    // One logical payment despite the rebuild-with-fresh-blockhash after approval: same receipt id.
+    expect(res.atlas?.expectedReceiptId).toBe(res.atlas?.receipt?.id);
     expect(r.events.map((e) => e.type)).toEqual(
       expect.arrayContaining(['payment_required', 'gate_decision', 'awaiting_approval', 'approval_granted', 'payment_signed', 'settled', 'receipt_issued']),
     );
@@ -227,6 +244,12 @@ describe('createAtlasFetch — unsupported and failing sellers', () => {
   it('surfaces a seller that rejects the signed payment as PaymentSettlementError', async () => {
     const r = await rig({ seller: { rejectPayments: true } });
     await expect(r.atlasFetch(`${r.origin}/research/summary`)).rejects.toBeInstanceOf(PaymentSettlementError);
+  });
+
+  it('releases the reserved spend when the seller rejects after ALLOW', async () => {
+    const r = await rig({ seller: { rejectPayments: true } });
+    await expect(r.atlasFetch(`${r.origin}/research/summary`)).rejects.toBeInstanceOf(PaymentSettlementError);
+    expect((await r.world.store.spend.totals(r.world.mandate.id, r.world.clock.now, 86_400)).totalBaseUnits).toBe('0');
   });
 
   it('still returns the paid resource if receipt issuance fails, reporting receiptError', async () => {

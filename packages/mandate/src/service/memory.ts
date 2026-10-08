@@ -105,12 +105,11 @@ class InMemoryDecisionStore implements DecisionStore {
 class InMemorySpendStore implements SpendStore {
   private readonly entries: SpendEntry[] = [];
 
-  async totals(mandateId: string, now: number, windowSeconds: number, reservationTtlSeconds: number): Promise<SpendTotals> {
+  async totals(mandateId: string, now: number, windowSeconds: number): Promise<SpendTotals> {
     let windowAutonomous = '0';
     let total = '0';
     for (const entry of this.entries) {
       if (entry.mandateId !== mandateId || entry.status === 'RELEASED') continue;
-      if (entry.status === 'RESERVED' && entry.createdAt <= now - reservationTtlSeconds) continue;
       total = addBaseUnits(total, entry.amountBaseUnits);
       if (entry.autonomous && entry.createdAt > now - windowSeconds) {
         windowAutonomous = addBaseUnits(windowAutonomous, entry.amountBaseUnits);

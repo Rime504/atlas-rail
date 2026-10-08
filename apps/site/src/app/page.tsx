@@ -17,6 +17,7 @@ import {
 const GITHUB_URL = 'https://github.com/Rime504/atlas-rail';
 const ISSUE_URL = 'https://github.com/x402-foundation/x402/issues/3500';
 const SPEC_URL = `${GITHUB_URL}/blob/master/spec/agent-mandate-v0.1.md`;
+const PLAYGROUND_URL = 'https://atlas-rail-playground.vercel.app';
 
 function Nav() {
   return (
@@ -58,21 +59,16 @@ function Hero() {
           Atlas Rail is an open-source policy and evidence layer for agent payments on Solana.
         </p>
         <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="btn-gradient w-full sm:w-auto">
+          <a href={PLAYGROUND_URL} target="_blank" rel="noreferrer" className="btn-gradient w-full sm:w-auto">
+            <Play className="h-4 w-4" />
+            Try the live demo
+          </a>
+          <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="btn-ghost w-full sm:w-auto">
             <Github className="h-4 w-4" />
             View on GitHub
           </a>
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            title="Video coming soon"
-            className="btn-ghost w-full cursor-not-allowed opacity-60 sm:w-auto"
-          >
-            <Play className="h-4 w-4" />
-            Watch the demo
-          </button>
         </div>
+        <p className="mt-4 text-xs text-mutedText">No signup, nothing to install &mdash; runs in your browser.</p>
       </div>
       <div
         aria-hidden

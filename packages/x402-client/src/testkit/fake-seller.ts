@@ -10,6 +10,9 @@ export interface FakeSellerRoute {
   body: unknown;
   /** What the seller claims its resource URL is in the 402 body (a lie, in adversarial tests). */
   claimedResource?: string;
+  /** Advertises `extra.memo`, claiming the transaction's one memo slot for itself — Atlas Rail's own
+   * self-proving receipt pointer is never injected on top of a seller-mandated memo. */
+  memo?: string;
 }
 
 export interface FakeSellerOptions {
@@ -62,7 +65,7 @@ export async function startFakeSeller(options: FakeSellerOptions): Promise<FakeS
       asset: options.mint,
       payTo: route.payTo ?? options.payTo,
       maxTimeoutSeconds: 60,
-      extra: options.omitFeePayer ? {} : { feePayer: options.facilitator.publicKey },
+      extra: options.omitFeePayer ? {} : { feePayer: options.facilitator.publicKey, ...(route.memo ? { memo: route.memo } : {}) },
     };
     const paymentRequired = {
       x402Version: 2,

@@ -14,7 +14,7 @@ export class WebhookService {
   }
 
   async create(orgId: string, url: string, eventTypes: string[]) {
-    const allowPrivate = process.env.WEBHOOK_ALLOW_PRIVATE_NETWORKS !== 'false';
+    const allowPrivate = process.env.WEBHOOK_ALLOW_PRIVATE_NETWORKS === 'true';
     if (!isValidWebhookUrl(url, allowPrivate)) {
       throw new BadRequestException('Invalid or prohibited webhook destination URL.');
     }

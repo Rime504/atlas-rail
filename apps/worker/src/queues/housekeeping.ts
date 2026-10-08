@@ -1,6 +1,7 @@
 export const STUCK_EXECUTION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
-const STUCK_ELIGIBLE_STATUSES = ['QUEUED_FOR_EXECUTION', 'SIMULATING', 'SUBMITTED'] as const;
+// SUBMITTED is excluded: a signature may already be on-chain, so fail-and-retry would double-pay.
+const STUCK_ELIGIBLE_STATUSES = ['QUEUED_FOR_EXECUTION', 'SIMULATING'] as const;
 
 /**
  * A payout is considered stuck if it has sat in an in-flight execution status for longer than

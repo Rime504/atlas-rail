@@ -49,8 +49,12 @@ export const envSchema = z.object({
   // off-chain demo keeps working unchanged until this is explicitly turned on.
   ATLAS_ONCHAIN: envBoolean.default(false),
   MANDATE_PROGRAM_ID: z.string().min(32).default('CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k'),
+  // Switches receipt anchoring from an SPL Memo to the program's `anchor_root` instruction (a
+  // per-mandate Root PDA). Off by default; requires ATLAS_ONCHAIN=1 (anchor_root needs the mandate
+  // to already be registered on-chain) and only takes effect once the deployed program includes it.
+  ATLAS_ANCHOR_ROOT: envBoolean.default(false),
 
-  WEBHOOK_ALLOW_PRIVATE_NETWORKS: envBoolean.default(true),
+  WEBHOOK_ALLOW_PRIVATE_NETWORKS: envBoolean.default(false),
   WEBHOOK_MAX_ATTEMPTS: z.coerce.number().default(6),
   WEBHOOK_TIMEOUT_MS: z.coerce.number().default(10000),
 

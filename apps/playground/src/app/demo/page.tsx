@@ -1,11 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Github, FileText, Loader2, RotateCcw, ShieldCheck } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowLeft, ArrowRight, Github, FileText, Loader2, RotateCcw, Search, ShieldCheck } from 'lucide-react';
 import { ProgressBar } from '@/components/ProgressBar';
 import { VerdictBanner } from '@/components/Verdict';
 import { RuleList } from '@/components/RuleList';
 import { Details, ExplorerLink, MonoAddress } from '@/components/Details';
+import { EXPECTED_PRICE, MAX_PER_PAYMENT, MAX_PER_WINDOW, MODERATE_SPIKE_AMOUNT, SEVERE_SPIKE_AMOUNT } from '@/lib/amounts';
+import { formatUsd } from '@/lib/format';
 import type { ActionType, PaymentOutcome, StepResponse, World } from '@/lib/types';
 import type { ReceiptVerification } from '@atlas-rail/receipt';
 
@@ -25,11 +28,12 @@ interface DemoState {
   world: World | null;
   outcomes: Outcomes;
   verification: ReceiptVerification | null;
+  publication: StepResponse['publication'] | null;
   useDevnet: boolean;
   finished: boolean;
 }
 
-const INITIAL_STATE: DemoState = { step: 1, world: null, outcomes: {}, verification: null, useDevnet: false, finished: false };
+const INITIAL_STATE: DemoState = { step: 1, world: null, outcomes: {}, verification: null, publication: null, useDevnet: false, finished: false };
 
 async function callApi(world: World | null, action: { type: ActionType; approve?: boolean; useDevnet?: boolean }): Promise<StepResponse> {
   const res = await fetch('/api/step', {
@@ -54,7 +58,7 @@ export default function DemoPage() {
     setError(null);
     try {
       const data = await callApi(null, { type: 'init', useDevnet });
-      setState({ step: 1, world: data.world, outcomes: {}, verification: null, useDevnet, finished: false });
+      setState({ step: 1, world: data.world, outcomes: {}, verification: null, publication: null, useDevnet, finished: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the demo');
     } finally {
@@ -109,6 +113,7 @@ export default function DemoPage() {
   return (
     <main className="mx-auto min-h-screen max-w-2xl px-6 py-12 sm:py-16">
       <ProgressBar step={Math.min(state.step, TOTAL_STEPS)} total={TOTAL_STEPS} />
+      {state.world && <ModeBadge mode={state.world.mode} />}
 
       {error && (
         <div role="alert" className="mb-6 rounded-xl border border-deny/40 bg-deny/10 px-4 py-3 text-sm text-deny">
@@ -177,8 +182,11 @@ export default function DemoPage() {
             <StepProve
               world={world}
               verification={state.verification}
+              publication={state.publication}
               loading={loading}
-              onVerify={() => run({ type: 'prove' }, (d) => ({ ...state, world: d.world, verification: d.verification ?? null }))}
+              onVerify={() =>
+                run({ type: 'prove' }, (d) => ({ ...state, world: d.world, verification: d.verification ?? null, publication: d.publication ?? null }))
+              }
             />
           ) : (
             <StepRevoke
@@ -245,6 +253,18 @@ function canAdvance(state: DemoState): boolean {
 }
 
 /* ---- shared bits -------------------------------------------------------------------------------- */
+
+/** Shown on every step so the mode is never ambiguous mid-walkthrough — the toggle itself only
+ * appears on step 1. */
+function ModeBadge({ mode }: { mode: World['mode'] }) {
+  const isDevnet = mode === 'devnet';
+  return (
+    <div className="mb-6 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-mutedText">
+      <span className={`h-1.5 w-1.5 rounded-full ${isDevnet ? 'bg-solana-green' : 'bg-mutedText'}`} aria-hidden="true" />
+      {isDevnet ? 'Real Solana devnet' : 'Instant mode (no chain)'}
+    </div>
+  );
+}
 
 function LoadingCard({ label }: { label: string }) {
   return (
@@ -342,10 +362,10 @@ function StepGiveRules({ world, loading, onSign }: { world: World; loading: bool
       <StepHeading title="Give it rules" subtitle="The owner drafts a mandate; an independent approver and the agent itself each sign it. These are the hard limits the gate will enforce on every payment." />
       <Card>
         <dl className="grid grid-cols-2 gap-4 text-sm">
-          <Rule label="Max per payment" value="$5.00" />
-          <Rule label="Max per hour" value="$20.00" />
+          <Rule label="Max per payment" value={formatUsd(MAX_PER_PAYMENT)} />
+          <Rule label="Max per hour" value={formatUsd(MAX_PER_WINDOW)} />
           <Rule label="Allowed sellers" value="2 research sellers" />
-          <Rule label="Research call price" value="about $0.01" />
+          <Rule label="Research call price" value={`about ${formatUsd(EXPECTED_PRICE)}`} />
         </dl>
         <Details label="Show the signed mandate">
           <ol className="space-y-2 text-xs text-mutedText">
@@ -391,7 +411,7 @@ function Rule({ label, value }: { label: string; value: string }) {
 function StepNormalPayment({ outcome, loading, onRun }: { outcome?: PaymentOutcome; loading: boolean; onRun: () => void }) {
   return (
     <section>
-      <StepHeading title="A normal payment" subtitle="The agent buys a $0.01 research summary from a seller the mandate allows." />
+      <StepHeading title="A normal payment" subtitle={`The agent buys a ${formatUsd(EXPECTED_PRICE)} research summary from a seller the mandate allows.`} />
       {!outcome ? (
         <PrimaryButton onClick={onRun} loading={loading}>
           Run the payment
@@ -407,6 +427,7 @@ function PaymentResult({ outcome }: { outcome: PaymentOutcome }) {
   return (
     <div className="space-y-4">
       <VerdictBanner verdict={outcome.verdict} headline={outcome.headline} />
+      {outcome.onchain && <ExplorerLink url={outcome.onchain.explorerUrl} />}
       <Details label="Show the rules it was checked against">
         <RuleList rules={outcome.rules} />
       </Details>
@@ -456,20 +477,24 @@ function StepPriceSpike({
         subtitle="The same, approved seller suddenly charges more for the same research call. The mandate's price limit (rule 15) has two zones."
       />
       <div>
-        <p className="mb-2 text-sm font-medium text-mutedText">A moderate rise — $0.01 → $0.02</p>
+        <p className="mb-2 text-sm font-medium text-mutedText">
+          A moderate rise — {formatUsd(EXPECTED_PRICE)} → {formatUsd(MODERATE_SPIKE_AMOUNT)}
+        </p>
         {!moderate ? (
           <PrimaryButton onClick={onRunModerate} loading={loading}>
-            Charge $0.02 instead
+            Charge {formatUsd(MODERATE_SPIKE_AMOUNT)} instead
           </PrimaryButton>
         ) : (
           <PaymentResult outcome={moderate} />
         )}
       </div>
       <div>
-        <p className="mb-2 text-sm font-medium text-mutedText">A 5× spike — $0.01 → $0.05</p>
+        <p className="mb-2 text-sm font-medium text-mutedText">
+          A 5× spike, above the hard maximum — {formatUsd(EXPECTED_PRICE)} → {formatUsd(SEVERE_SPIKE_AMOUNT)}
+        </p>
         {!severe ? (
           <PrimaryButton onClick={onRunSevere} loading={loading} disabled={!moderate}>
-            Charge $0.05 instead
+            Charge {formatUsd(SEVERE_SPIKE_AMOUNT)} instead
           </PrimaryButton>
         ) : (
           <PaymentResult outcome={severe} />
@@ -497,7 +522,9 @@ function StepHuman({
       <StepHeading title="You are the human" subtitle="The moderate price rise from the last step needs a person to decide. It's you." />
       {moderate && (
         <Card>
-          <p className="text-sm text-mutedText">Seller wants $0.02 for a call the mandate expects to cost $0.01.</p>
+          <p className="text-sm text-mutedText">
+            Seller wants {formatUsd(MODERATE_SPIKE_AMOUNT)} for a call the mandate expects to cost {formatUsd(EXPECTED_PRICE)}.
+          </p>
         </Card>
       )}
       {!human ? (
@@ -525,21 +552,38 @@ function StepHuman({
 
 /* ---- Step 7 --------------------------------------------------------------------------------------- */
 
+/** A bare "SKIP" badge doesn't tell a visitor whether that's expected or a problem — this gives the
+ * on-chain checks (the only ones that can SKIP in this walkthrough) a reason tied to what's actually
+ * true for this run. In devnet mode, a SKIP here means the on-chain attempt itself failed; the
+ * banner at the top of the page already explains why, so this just points there instead of
+ * repeating the CLI-oriented message `verifyReceipt` generates for an offline `atlas verify` run. */
+function skipReason(check: ReceiptVerification['checks'][number], mode: World['mode']): string {
+  if (check.id === 'ANCHOR_ONCHAIN' || check.id === 'SETTLEMENT_ONCHAIN') {
+    return mode === 'devnet' ? 'Devnet attempt did not complete this run — see the notice above.' : 'Instant mode — turn on real devnet to check this on-chain.';
+  }
+  return check.message;
+}
+
 function StepProve({
   world,
   verification,
+  publication,
   loading,
   onVerify,
 }: {
   world: World;
   verification: ReceiptVerification | null;
+  publication: StepResponse['publication'] | null;
   loading: boolean;
   onVerify: () => void;
 }) {
   const receipt = world.receipts[world.receipts.length - 1];
   return (
     <section>
-      <StepHeading title="Proof" subtitle="Every allowed payment gets a signed receipt. Anyone can check it — no account, no trust required." />
+      <StepHeading
+        title="Proof"
+        subtitle="Every decision — allowed, escalated or blocked — is signed and recorded. An allowed payment also gets a verifiable receipt anyone can check, with no account and no trust required."
+      />
       {!receipt ? (
         <Card>
           <p className="text-sm text-mutedText">No receipt yet — go back and approve a payment first.</p>
@@ -565,7 +609,7 @@ function StepProve({
                 {verification.checks.map((check) => (
                   <li
                     key={check.id}
-                    className={`animate-pop-in flex items-center gap-3 rounded-xl border px-4 py-3 text-sm ${
+                    className={`animate-pop-in flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${
                       check.status === 'PASS'
                         ? 'border-allow/30 bg-allow/5 text-allow'
                         : check.status === 'FAIL'
@@ -573,16 +617,46 @@ function StepProve({
                           : 'border-border bg-surface text-mutedText'
                     }`}
                   >
-                    <span className="font-medium">{check.title}</span>
-                    <span className="ml-auto text-xs opacity-80">{check.status}</span>
+                    <div className="flex-1">
+                      <span className="font-medium">{check.title}</span>
+                      {check.status === 'SKIP' && <p className="mt-0.5 text-xs opacity-80">{skipReason(check, world.mode)}</p>}
+                    </div>
+                    <span className="ml-auto flex-shrink-0 text-xs font-medium opacity-80">{check.status === 'SKIP' ? 'N/A' : check.status}</span>
                   </li>
                 ))}
               </ul>
             )}
           </div>
+          {verification && <VerifyFromChain world={world} publication={publication} />}
         </>
       )}
     </section>
+  );
+}
+
+/** The payoff of the proof step: hand the real payment to /verify, which knows nothing about this session. */
+function VerifyFromChain({ world, publication }: { world: World; publication: StepResponse['publication'] | null }) {
+  if (publication?.stored) {
+    return (
+      <div className="mt-6 rounded-2xl border border-allow/30 bg-allow/5 p-5">
+        <p className="text-sm text-white/90">This payment is on Solana devnet and its receipt is public. Check it the way a stranger would, from the transaction alone.</p>
+        <Link href={`/verify?tx=${publication.txSignature}`} className="mt-4 inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow">
+          <Search className="h-4 w-4" aria-hidden="true" /> Verify this payment from the chain
+        </Link>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-6 rounded-2xl border border-border bg-surface p-5">
+      <p className="text-sm text-mutedText">
+        {world.mode === 'devnet'
+          ? `This run's receipt wasn't published${publication ? ` (${publication.reason})` : ''}, so it can't be looked up from the chain.`
+          : 'In Instant mode this payment is simulated, so there is nothing on-chain to look up. Turn on real devnet at step 1 to make one you can check, or check a real one now.'}
+      </p>
+      <Link href="/verify" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-solana-green hover:underline">
+        <Search className="h-4 w-4" aria-hidden="true" /> Verify a real devnet payment
+      </Link>
+    </div>
   );
 }
 
@@ -610,9 +684,12 @@ function StepRevoke({
   if (finished) {
     return (
       <section className="text-center">
-        <h1 className="font-display text-3xl font-semibold">That&rsquo;s Atlas Rail</h1>
-        <p className="mt-3 text-sm text-mutedText">Signed mandates, a policy gate, human escalation, and receipts anyone can verify.</p>
+        <h1 className="font-display text-3xl font-semibold">Every payment proves it was allowed.</h1>
+        <p className="mt-3 text-lg text-white/90">Check any one yourself.</p>
         <div className="mt-8 flex flex-col items-center gap-3">
+          <Link href="/verify" className="inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow">
+            <Search className="h-4 w-4" aria-hidden="true" /> Verify a payment
+          </Link>
           <a href="https://github.com/Rime504/atlas-rail" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-mutedText hover:text-white">
             <Github className="h-4 w-4" aria-hidden="true" /> View the code
           </a>
@@ -632,7 +709,7 @@ function StepRevoke({
           >
             The program on Explorer ↗
           </a>
-          <button type="button" onClick={onRestart} className="mt-4 inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow">
+          <button type="button" onClick={onRestart} className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-6 py-3 text-sm font-semibold text-white hover:bg-surfaceRaised">
             <RotateCcw className="h-4 w-4" aria-hidden="true" /> Run it again
           </button>
         </div>
