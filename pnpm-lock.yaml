@@ -159,6 +159,9 @@ importers:
       '@atlas-rail/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@atlas-rail/database':
+        specifier: workspace:^
+        version: link:../../packages/database
       '@atlas-rail/mandate':
         specifier: workspace:*
         version: link:../../packages/mandate

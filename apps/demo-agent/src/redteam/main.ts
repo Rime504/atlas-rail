@@ -11,6 +11,8 @@ import { CASES } from './cases';
 import { CaseOutcome, renderReport, runCase } from './harness';
 import { memoryRig } from './memory-rig';
 import { devnetRig } from './devnet-rig';
+import { ConcurrencyResult, renderConcurrency, runConcurrencyProof, unlockedMemoryStore } from './concurrency';
+import { InMemoryAgentStore } from '@atlas-rail/mandate';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -28,7 +30,22 @@ async function main() {
   leaked += memory.reduce((n, o) => n + o.outsideMandateBaseUnits, 0n);
   console.log(`in-memory: ${memory.filter((o) => o.pass).length}/${memory.length} case runs passed`);
 
-  if (concurrencySection) extra.push(...(await concurrencySection()));
+  const concurrency: ConcurrencyResult[] = [await runConcurrencyProof(new InMemoryAgentStore(), 'org_test', 'In-memory store')];
+  const dbUrl = process.env.ATLAS_CONCURRENCY_DATABASE_URL;
+  if (dbUrl) {
+    process.env.DATABASE_URL = dbUrl;
+    const { prisma, PrismaAgentStore } = await import('@atlas-rail/database');
+    const orgId = `org_concurrency_${Date.now()}`;
+    await prisma.organization.create({ data: { id: orgId, name: 'Concurrency proof', slug: orgId } });
+    concurrency.push(await runConcurrencyProof(new PrismaAgentStore(prisma), orgId, 'Postgres (production store, advisory lock)'));
+    await prisma.$disconnect();
+  }
+  concurrency.push(await runConcurrencyProof(unlockedMemoryStore(), 'org_test', 'Control: in-memory store with the lock removed'));
+  for (const r of concurrency) console.log(`concurrency ${r.label}: ${r.allowed} allowed, settled ${r.settledBaseUnits}`);
+  // The control is supposed to overspend; only the real stores count toward the verdict.
+  leaked += concurrency.filter((r) => !r.label.startsWith('Control')).reduce((n, r) => n + (r.settledBaseUnits > r.capBaseUnits ? r.settledBaseUnits - r.capBaseUnits : 0n), 0n);
+  extra.push(...renderConcurrency(concurrency));
+  if (!dbUrl) extra.push('', 'Postgres row not run here (no ATLAS_CONCURRENCY_DATABASE_URL); see apps/demo-agent/src/redteam/concurrency.test.ts.');
 
   let report = renderReport(memory, { date, cluster: 'in-memory Solana cluster, run in CI on every PR', repetitions, extra });
 
@@ -57,12 +74,6 @@ async function main() {
     console.error(`\n!!! MONEY MOVED OUTSIDE THE MANDATE: ${leaked} base units. STOP: see the report.`);
     process.exitCode = 1;
   }
-}
-
-/** Filled in by the concurrency proof (step 5); kept optional so the red team runs on its own. */
-let concurrencySection: (() => Promise<string[]>) | null = null;
-export function registerConcurrencySection(fn: () => Promise<string[]>) {
-  concurrencySection = fn;
 }
 
 main().catch((err) => {
