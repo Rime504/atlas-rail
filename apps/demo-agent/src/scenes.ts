@@ -188,6 +188,12 @@ function toolError(trace: AgentTrace): string | null {
   return failed?.result?.slice('TOOL_ERROR:'.length).trim() ?? null;
 }
 
+function saveShowcase(outDir: string, name: string, data: unknown): void {
+  const file = join(outDir, 'showcase', name);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
 function narrateDecision(decision: SignedDecision): void {
   const { record } = decision;
   const badge = record.decision === 'ALLOW' ? c.green('ALLOW') : record.decision === 'DENY' ? c.red('DENY') : c.yellow('ESCALATE');
@@ -385,6 +391,9 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
         narrateDecision(denied.decision);
         ok('nothing was signed, nothing left the wallet');
         summary.scenes.attack = { denied: true, failedRules: denied.failedRules, decisionId: denied.decision.record.id };
+        // A blocked attempt has no transaction to point at; the signed decision plus its mandate is the
+        // proof. Saved for apps/playground/scripts/publish-showcase.mts.
+        if (mandate) saveShowcase(options.outDir, `blocked-${denied.decision.record.id}.json`, { mandate, decision: denied.decision });
       } else {
         bad('EXPECTED a denial but the payment was not denied');
         summary.ok = false;
@@ -523,6 +532,10 @@ export async function runScenes(options: SceneOptions): Promise<SceneSummary> {
       const file = join(options.outDir, `receipt-${fresh.id}.json`);
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, JSON.stringify(fresh, null, 2));
+      // Both settled payments are anchored in this same batch, so both are now publishable proofs.
+      saveShowcase(options.outDir, `receipt-${fresh.id}.json`, fresh);
+      const payId = (summary.scenes.pay as { receiptId?: string | null } | undefined)?.receiptId;
+      if (payId) saveShowcase(options.outDir, `receipt-${payId}.json`, await api.get<BoundReceipt>(`/v1/agent/receipts/${payId}`, { token: owner }));
       step(`$ atlas verify ${file} --trusted-key ${short(state.instance)} --check-settlement --require-anchor`);
       say();
       const result = spawnSync(
