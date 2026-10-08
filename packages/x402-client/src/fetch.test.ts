@@ -276,12 +276,24 @@ describe('GatedSignerAdapter — the wallet-side enforcement point', () => {
     const research = `${r.origin}/research/summary`;
     const first = await r.world.requestGate({ amount: '10000', resourceUrl: research });
     const second = await r.world.requestGate({ amount: '10000', resourceUrl: research });
-    await expect(r.signer.signWithAuthorization(first.transactionBase64, null)).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
+    await expect(r.signer.signWithAuthorization(first.transactionBase64, null, null, null)).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
     // Confused deputy: the gate approved transaction A, the agent is talked into signing transaction B.
-    await expect(r.signer.signWithAuthorization(second.transactionBase64, first.outcome.authorization)).rejects.toThrow(/does not cover this transaction/);
+    await expect(
+      r.signer.signWithAuthorization(
+        second.transactionBase64,
+        first.outcome.authorization,
+        first.outcome.decision,
+        first.outcome.mandate,
+      ),
+    ).rejects.toThrow(/does not cover this transaction/);
     expect(r.signCalls).toHaveLength(0);
     // The matching pair is signed.
-    const ok = await r.signer.signWithAuthorization(first.transactionBase64, first.outcome.authorization);
+    const ok = await r.signer.signWithAuthorization(
+      first.transactionBase64,
+      first.outcome.authorization,
+      first.outcome.decision,
+      first.outcome.mandate,
+    );
     expect(ok.signedBase64).toBeTruthy();
     expect(r.signCalls).toHaveLength(1);
   });
@@ -290,17 +302,38 @@ describe('GatedSignerAdapter — the wallet-side enforcement point', () => {
     const r = await rig();
     const req = await r.world.requestGate({ amount: '10000', resourceUrl: `${r.origin}/research/summary` });
     r.world.clock.advance(121); // authorisation TTL is 120s
-    await expect(r.signer.signWithAuthorization(req.transactionBase64, req.outcome.authorization)).rejects.toThrow(/validity window/);
+    await expect(
+      r.signer.signWithAuthorization(
+        req.transactionBase64,
+        req.outcome.authorization,
+        req.outcome.decision,
+        req.outcome.mandate,
+      ),
+    ).rejects.toThrow(/validity window/);
 
     const strict = new GatedSignerAdapter({ inner: r.world.keys.agent, trustedInstanceKeys: [r.world.keys.attacker.publicKey], clock: () => r.world.clock.now });
     const fresh = await r.world.requestGate({ amount: '10000', resourceUrl: `${r.origin}/research/summary` });
-    await expect(strict.signWithAuthorization(fresh.transactionBase64, fresh.outcome.authorization)).rejects.toThrow(/trusted Atlas Rail instance/);
+    await expect(
+      strict.signWithAuthorization(
+        fresh.transactionBase64,
+        fresh.outcome.authorization,
+        fresh.outcome.decision,
+        fresh.outcome.mandate,
+      ),
+    ).rejects.toThrow(/trusted Atlas Rail instance/);
   });
 
   it('never yields an authorisation for a DENY, so a denied payment cannot be signed even by a cooperative agent', async () => {
     const r = await rig();
     const denied = await r.world.requestGate({ payTo: r.world.keys.attacker.publicKey, amount: '10000', resourceUrl: `${r.origin}/research/summary` });
     expect(denied.outcome.authorization).toBeNull();
-    await expect(r.signer.signWithAuthorization(denied.transactionBase64, denied.outcome.authorization)).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
+    await expect(
+      r.signer.signWithAuthorization(
+        denied.transactionBase64,
+        denied.outcome.authorization,
+        denied.outcome.decision,
+        denied.outcome.mandate,
+      ),
+    ).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
   });
 });

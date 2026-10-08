@@ -50,6 +50,8 @@ export interface GateOutcome {
   decision: SignedDecision;
   authorization: GateAuthorization | null;
   approval: ApprovalRecord | null;
+  /** Mandate document the decision was evaluated under (for wallet-side ALLOW replay). */
+  mandate: MandateRecord['mandate'];
   /** True when this response is a replay of an earlier identical request. */
   replayed: boolean;
 }
@@ -100,7 +102,7 @@ export class AgentGateService {
           throw new AgentServiceError('NONCE_REUSED', 'This nonce was already used with a different request');
         }
         const approval = existing.approvalId ? await store.approvals.get(organizationId, existing.approvalId) : null;
-        return { decision: existing.signed, authorization: existing.authorization, approval, replayed: true };
+        return { decision: existing.signed, authorization: existing.authorization, approval, mandate: record.mandate, replayed: true };
       }
       return this.evaluateFresh(organizationId, record, request, requestHash, now);
     });
@@ -248,7 +250,7 @@ export class AgentGateService {
 
     await this.emit(organizationId, result, decisionId, mandate.id, offer.amount, createdApproval);
 
-    return { decision: signed, authorization, approval: createdApproval, replayed: false };
+    return { decision: signed, authorization, approval: createdApproval, mandate: record.mandate, replayed: false };
   }
 
   /**

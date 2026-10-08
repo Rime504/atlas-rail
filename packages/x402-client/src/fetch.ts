@@ -312,7 +312,7 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
       if (outcome.decision.record.decision !== 'ALLOW') throw new MandateDeniedError(outcome.decision);
     }
 
-    // 3. Only now does the wallet sign — and it re-verifies the gate's authorisation itself.
+    // 3. Only now does the wallet sign — and it re-verifies the gate's authorisation + ALLOW decision.
     // ALLOW already reserved budget; free it if sign or settlement fails before a receipt can settle.
     const decisionId = outcome.decision.record.id;
     const releaseReservation = async () => {
@@ -325,7 +325,12 @@ export function createAtlasFetch(config: AtlasFetchConfig): AtlasFetch {
 
     let signed: Awaited<ReturnType<GatedSignerAdapter['signWithAuthorization']>>;
     try {
-      signed = await config.signer.signWithAuthorization(transactionBase64, outcome.authorization);
+      signed = await config.signer.signWithAuthorization(
+        transactionBase64,
+        outcome.authorization,
+        outcome.decision,
+        outcome.mandate,
+      );
     } catch (error) {
       await releaseReservation();
       throw error;

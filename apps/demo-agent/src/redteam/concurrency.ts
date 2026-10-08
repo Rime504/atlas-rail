@@ -106,7 +106,7 @@ export async function runConcurrencyProof(
     const outcome = outcomes[i];
     if (outcome?.decision.record.decision !== 'ALLOW' || !outcome.authorization) continue;
     allowed++;
-    const signed = await signer.signWithAuthorization(requests[i].tx, outcome.authorization);
+    const signed = await signer.signWithAuthorization(requests[i].tx, outcome.authorization, outcome.decision, outcome.mandate);
     const both = await keys.facilitator.signTransaction(signed.signedBase64);
     await chain.sendAndConfirm(both.signedBase64);
   }
