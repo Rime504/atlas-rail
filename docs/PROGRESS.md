@@ -151,16 +151,17 @@ Verified clean, independently, after all three fixes: both the scene-2 and scene
 
 ## GLM-5 as an agent model (2026-10-08)
 
-- `AGENT_PROVIDER=glm` calls Z.ai's OpenAI-compatible chat completions at `https://api.z.ai/api/paas/v4/chat/completions` with model `glm-5` (override with `AGENT_MODEL` and `GLM_BASE_URL`). Key is `ZAI_API_KEY`. Same two tools; the model still never sees a payment key.
-- Tests: llm-model unit tests cover the default URL, a BigModel-style base override, bearer auth, and a GLM 401. Not run live against Z.ai (no key in this environment).
-- Gaps: no live GLM e2e yet. Next: set `ZAI_API_KEY` and run `AGENT_MODE=llm AGENT_PROVIDER=glm pnpm agent:e2e` on devnet.
+- `AGENT_PROVIDER=glm` calls an OpenAI-compatible chat completions endpoint. The default is Z.ai `glm-5` at `https://api.z.ai/api/paas/v4/chat/completions` (`AGENT_MODEL` and `GLM_BASE_URL` override it). Key is `ZAI_API_KEY`. Same two tools; the model still never sees a payment key.
+- Unit tests cover the default URL, a BigModel-style base override, bearer auth, and a GLM 401. The llm-model file passed 16/16 after Bedrock was removed.
+- One offline demo (`--offline`, mock cluster) called `zai.glm-5` with `GLM_BASE_URL=https://bedrock-mantle.us-east-1.api.aws/v1`. The model paid the $0.01 research summary and the approved $40 job. It did not attempt the injected bulletin payment, so the gate never denied that scene and the process exited 1. The revoked-mandate payment was denied `MANDATE_NOT_REVOKED`. Printed gate latency on that mock cluster was p50 64 ms, p95 129 ms (4 samples). Not a call to `api.z.ai`. Devnet `pnpm agent:e2e` with GLM was not run.
 
 ## Gate: overlap on-chain revoke read with simulation (2026-10-08)
 
 - Devnet `getAccountInfo` p50 56–92 ms and `simulateTransaction` p50 53–85 ms. Sequential p50 154–180 ms (one sample 397 ms). Parallel p50 71–77 ms. The allowed-payment path was waiting for both, one after the other.
 - An allowed payment needs two Solana checks: read the mandate account to see if it was revoked, and simulate the transaction to confirm it pays the right person the right amount. Those used to run one after the other. `evaluateFresh` now starts both together when the local rules do not already deny, so the wait is the slower call. A local denial (wrong recipient, over the cap) still skips the simulation.
 - If the chain says the mandate is revoked, the simulation result is thrown away even when the simulation succeeded. The saved decision is a denial named `MANDATE_NOT_REVOKED`. No authorization is issued and no spend is reserved. A successful simulation cannot override a revoke.
-- Tests: gate service 35/35. Extreme cases: chain revoke beats a successful simulation (no spend), failed and thrown simulations reserve nothing, a thrown chain check is not an allow, a wrong recipient never starts a simulation, and 40 overlapping $0.25 payments against a $5 window reserve exactly $5. Red-team burst: 100 payments, lock holds at $5; the unlocked control overspends. Postgres row skipped (no `ATLAS_CONCURRENCY_DATABASE_URL`). Full devnet e2e not re-run.
+- Gate service tests: 35/35. A chain revoke beats a successful simulation and reserves nothing. A failed simulation and a thrown simulation reserve nothing. A thrown chain check is not an allow. A wrong recipient never starts a simulation. Forty overlapping $0.25 payments against a $5 window reserve exactly $5. The red-team burst of 100 payments holds at $5; the unlocked control overspends. The Postgres concurrency row was skipped (no `ATLAS_CONCURRENCY_DATABASE_URL`).
+- Later the same day, on this branch: `pnpm typecheck` 32/32, `pnpm lint` 13/13 with no warnings. `pnpm test` passed 407 tests, skipped 1, and failed to load `apps/mcp` because `@atlas-rail/agent` had no `dist`. After typecheck built that package, `apps/mcp/src/mcp.test.ts` passed 2/2. Red-team case E1 (a Solana mainnet offer) passed in that run. Devnet `pnpm agent:e2e` was not re-run after the overlap. The devnet p50/p95 figures above are the RPC probe, not a new end-to-end scene timer.
 
 ## API image migrate without a .env file (2026-10-08)
 
@@ -170,4 +171,4 @@ Verified clean, independently, after all three fixes: both the scene-2 and scene
 
 ## Spend release still accepts an API key alone (2026-10-08)
 
-- `POST /v1/agent/gate/spend/release` only checks the org API key. `releaseSpend` frees a RESERVED hold, and `markSettled` can still settle that same decision. An API-key holder can free the cap, take a second ALLOW, and settle both. Not fixed in this branch.
+- Read from the code, not executed. `POST /v1/agent/gate/spend/release` only has `@RequirePermission('agent:gate')`. `release` sets a `RESERVED` row to `RELEASED`. `markSettled` updates by `decisionId` with no status check, so a released row can still become `SETTLED`. A run that frees the cap and settles two allows was not performed. Not fixed on this branch.
