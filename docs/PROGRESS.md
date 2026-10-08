@@ -179,3 +179,8 @@ Verified clean, independently, after all three fixes: both the scene-2 and scene
 - **Integration** ([#78](https://github.com/Rime504/atlas-rail/pull/78)): `@atlas-rail/agent` `wrapFetch` + `AtlasDenied`, `atlas-rail-mcp` with one `pay(url)` tool, `docs/INTEGRATE.md`.
 - **Docs**: `README_NEW.md` for review ([#79](https://github.com/Rime504/atlas-rail/pull/79)); `docs/CLAIMS.md`, refreshed `docs/THREAT_MODEL.md`, `docs/DEMO_VIDEO.md` rewritten to the final playground.
 - **Open:** the playground's own devnet-mode publish-and-verify path has not completed live yet (public devnet RPC rate-limited the anchor step; a dedicated RPC endpoint would fix it). The Grok/Bankr incident on the site has no source link. README swap and site positioning wait for approval.
+
+## Live playground devnet path, 2026-10-08
+
+- The playground's own devnet path now completes live: three runs of publish → `/verify` → PROVEN on the production deployment with a dedicated devnet RPC, each re-read from the public RPC. See [reports/playground-live-2026-10-08.md](../reports/playground-live-2026-10-08.md). Closes the open item above.
+- The Grok/Bankr line now cites three public sources (#85); the site and playground positioning and the site footer team match the README (#86).

@@ -218,11 +218,11 @@ Report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
 - Pinning the program version a mandate was registered under.
 - A solo mode where the approver is your own phone.
 - An optional red team driven by a real AI model.
-- Publishing `@atlas-rail/x402` to npm.
+- Publishing `@atlas-rail/agent` (and the `@atlas-rail/x402` client it wraps) to npm.
 
 ## Also in this repository: treasury payouts
 
-Atlas Rail started as a policy layer for ordinary Solana treasury payouts, and the agent gate is built on the same engine: versioned spend policies, multi-person approval, pre-flight simulation, an append-only ledger and audit trail, idempotent APIs and signed webhooks, with a console for owners, approvers and auditors. Run it with `pnpm demo` (Docker) and see [`docs/architecture/`](docs/architecture/), [`docs/adr/`](docs/adr/) and [`docs/security/threat-model.md`](docs/security/threat-model.md).
+Atlas Rail started as a policy layer for ordinary Solana treasury payouts, and the agent gate is built on the same engine: versioned spend policies, multi-person approval, pre-flight simulation, an append-only ledger and audit trail, idempotent APIs and signed webhooks, with a console for owners, approvers and auditors. Run it with Docker Compose (`make install && make up && make db-migrate && make db-seed`; the console is at `http://localhost:3000`) and see [`docs/architecture/`](docs/architecture/), [`docs/adr/`](docs/adr/) and [`docs/security/threat-model.md`](docs/security/threat-model.md).
 
 ## Team
 
