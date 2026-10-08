@@ -74,6 +74,11 @@ describe('findPaymentOutcome', () => {
     await expect(findPaymentOutcome(history({ rows }), input)).resolves.toEqual({ status: 'PENDING' });
   });
 
+  it('PENDING, never EXPIRED, when a listed transaction cannot be fetched (it might be ours)', async () => {
+    const h = history({ rows: [{ signature: 'unreadable', blockTime: NOW + 1 }], blockhashValid: false });
+    await expect(findPaymentOutcome(h, input)).resolves.toEqual({ status: 'PENDING' });
+  });
+
   it('stops scanning at history older than the authorisation', async () => {
     const rows = [{ signature: 'old', blockTime: NOW - 10_000 }, ...Array.from({ length: 99 }, (_, i) => ({ signature: `s${i}`, blockTime: null }))];
     await expect(findPaymentOutcome(history({ rows }), input)).resolves.toEqual({ status: 'EXPIRED' });

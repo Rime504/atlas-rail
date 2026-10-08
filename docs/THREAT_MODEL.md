@@ -46,6 +46,15 @@ Signer checks are in [`packages/x402-client/src/gated-signer.ts`](../packages/x4
 | **Borrowed proof**: a payment whose memo copies another payment's receipt id | The receipt must name this exact transaction back, or the verdict is NO PROOF | `proof.test.ts`; `/verify` |
 | **Prompt injection** | Not a rule by itself: the composition of everything above. The agent's reasoning can be fully compromised; the worst it can do is ask for something outside the mandate, which is refused | playground step 4; `/break`; the whole red team |
 
+## Found and fixed by our own red team
+
+Both were in v0.2.0 and are fixed in v0.2.1. Neither moved money outside a test; each now has a red-team case that runs in CI and on real devnet.
+
+| Case | What was wrong | Fix |
+|---|---|---|
+| **Q1**: budget release on the agent's word | The gate freed a payment's reserved budget whenever the agent said the payment had failed. A compromised agent could pay, claim failure, and pay again past every cap. | `resolveSpend` ([#88](https://github.com/Rime504/atlas-rail/pull/88)): the gate looks for the exact authorised transaction on-chain and frees budget only if it landed with an error, or its blockhash has expired and a fresh lookup still does not find it. A failed or incomplete lookup keeps the budget reserved. |
+| **N2**: message signing accepting transaction bytes | The gated signer's "sign message" signed any bytes. A Solana payment signature is a signature over the transaction's message bytes, so an agent could get any payment signed with no gate decision (shown on the in-memory test cluster against the old code: a $60 payment over the $50 cap settled). | [#89](https://github.com/Rime504/atlas-rail/pull/89): the signer signs messages only in the exact Atlas Rail agent-request and mandate-acceptance forms, which no Solana message can match; the agent key moved to a separate signer service with no other signing route. |
+
 ## Issues found and fixed by Divyesh
 
 | PR | What was wrong |

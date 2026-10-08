@@ -61,7 +61,9 @@ export async function findPaymentOutcome(history: PaymentHistory, input: Payment
     for (const { signature, blockTime } of recent) {
       if (blockTime !== null && blockTime < input.notBefore - CLOCK_SLACK_SECONDS) return 'NOT_FOUND';
       const found = await history.getTransactionMessage(signature);
-      if (found?.messageHash === input.expectedMessageHash) {
+      // A listed transaction the RPC cannot return could be ours: the outcome is unknown, not "absent".
+      if (!found) return 'INCOMPLETE';
+      if (found.messageHash === input.expectedMessageHash) {
         return found.err === null ? { status: 'LANDED', txSignature: signature } : { status: 'FAILED', txSignature: signature };
       }
     }
