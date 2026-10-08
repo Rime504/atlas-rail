@@ -117,7 +117,7 @@ Three layers:
 
 1. **The mandate** ([`spec/agent-mandate-v0.1.md`](spec/agent-mandate-v0.1.md), `packages/mandate`): a JSON document, canonicalised and signed by owner, approver and agent, then registered in an on-chain account (program [`CnGoTE5B…LcY4k`](https://explorer.solana.com/address/CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k?cluster=devnet)) so its existence and revocation can be checked without us.
 2. **The gate and the gated signer** (`packages/mandate`, `packages/x402-client`): the gate evaluates every payment against the mandate and simulates the exact transaction; the signer only signs a transaction whose hash the gate authorised, in the last 120 seconds.
-3. **The proof** (`packages/receipt`): each allowed payment gets a receipt binding mandate, offer, decision, settlement and response. Its id is in the payment's memo; receipts are batched into a Merkle tree whose root is written on-chain with `anchor_root`.
+3. **The proof** (`packages/receipt`): each allowed payment gets a receipt binding mandate, offer, decision, settlement and response. Its id is in the payment's memo (unless the seller requires a memo of its own: the payment is then still valid, just not self-proving from the chain alone); receipts are batched into a Merkle tree whose root is written on-chain with `anchor_root`.
 
 ## Why Solana
 

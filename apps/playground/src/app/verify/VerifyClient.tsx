@@ -78,8 +78,8 @@ export function VerifyClient({ initialTx, initialDecision }: { initialTx: string
       <h1 className="font-display text-3xl font-semibold sm:text-4xl">Verify any payment</h1>
       <p className="mt-3 text-sm text-mutedText">
         Paste a Solana devnet transaction signature. We read its memo from the chain, fetch the receipt it names, and re-check everything:
-        who signed the mandate, the limits, the decision, the on-chain anchor and the payment itself. You don&rsquo;t have to trust us; every
-        check links to the chain.
+        who signed the mandate, the limits, the decision, the on-chain anchor and the payment itself. You don&rsquo;t have to trust us: the
+        signatures are re-checked from scratch, and the payment and its anchor link to Solana Explorer.
       </p>
 
       <form
