@@ -93,5 +93,7 @@ export interface StepResponse {
   world: World;
   payment?: PaymentOutcome;
   verification?: ReceiptVerification;
+  /** Devnet mode only: whether this receipt made it into the public store, so /verify can find it. */
+  publication?: { stored: boolean; reason: string; txSignature: string };
   error?: string;
 }

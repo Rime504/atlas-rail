@@ -16,6 +16,7 @@ import {
 import { anchorRootOnchain, rateLimited, registerMandateOnchain, resolveDevnetCoreKeys, revokeMandateOnchain, settlePaymentOnchain, withTimeout } from '@/lib/devnet';
 import { StepRequest, StepResponse, World } from '@/lib/types';
 import { merkleRoot } from '@atlas-rail/receipt';
+import { publishReceipt, storeConfigured } from '@/lib/receipt-store';
 
 // Node runtime, not Edge: packages/mandate, packages/receipt and packages/solana use Node's
 // `crypto` and `@solana/web3.js`, neither of which runs on the Edge runtime.
@@ -135,7 +136,16 @@ export async function POST(req: NextRequest) {
         }
         const { receipt, verification } = await proveReceipt(world, receiptId, onchainAnchor);
         next = { ...next, receipts: next.receipts.map((r) => (r.id === receipt.id ? receipt : r)) };
-        return respond(next, undefined, verification);
+        let publication: StepResponse['publication'];
+        if (onchainAnchor && verification.pass && storeConfigured()) {
+          try {
+            const result = await withTimeout(publishReceipt(receipt, { chain: onchainAnchor.chain }));
+            publication = { ...result, txSignature: receipt.settlement.txSignature };
+          } catch (err) {
+            publication = { stored: false, reason: `Publishing failed (${messageOf(err)})`, txSignature: receipt.settlement.txSignature };
+          }
+        }
+        return respond(next, undefined, verification, publication);
       }
 
       case 'revoke': {
@@ -192,7 +202,12 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function respond(world: World, payment?: StepResponse['payment'], verification?: StepResponse['verification']): NextResponse {
-  const response: StepResponse = { world, payment, verification };
+function respond(
+  world: World,
+  payment?: StepResponse['payment'],
+  verification?: StepResponse['verification'],
+  publication?: StepResponse['publication'],
+): NextResponse {
+  const response: StepResponse = { world, payment, verification, publication };
   return NextResponse.json(response);
 }

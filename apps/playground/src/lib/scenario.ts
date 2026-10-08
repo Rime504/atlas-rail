@@ -340,7 +340,7 @@ async function evaluateAndMaybeReceipt(
   if (gate.decision === 'ALLOW') {
     // Decided before settlement, same as the main demo's createAtlasFetch, so a real settlement can
     // embed it in the transaction's memo and this receipt ends up with the exact id that memo names.
-    const receiptId = `rcp_${randomId()}`;
+    const receiptId = `rcp_${toHex(randomBytes(16))}`; // same shape as createAtlasFetch: parseReceiptMemo only accepts rcp_ + 32 lowercase hex
     let txSignature = syntheticTxSignature();
     let devnetFallbackReason: string | null = null;
     if (settle) {
