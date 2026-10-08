@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Github, FileText, Loader2, RotateCcw, ShieldCheck } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowLeft, ArrowRight, Github, FileText, Loader2, RotateCcw, Search, ShieldCheck } from 'lucide-react';
 import { ProgressBar } from '@/components/ProgressBar';
 import { VerdictBanner } from '@/components/Verdict';
 import { RuleList } from '@/components/RuleList';
@@ -27,11 +28,12 @@ interface DemoState {
   world: World | null;
   outcomes: Outcomes;
   verification: ReceiptVerification | null;
+  publication: StepResponse['publication'] | null;
   useDevnet: boolean;
   finished: boolean;
 }
 
-const INITIAL_STATE: DemoState = { step: 1, world: null, outcomes: {}, verification: null, useDevnet: false, finished: false };
+const INITIAL_STATE: DemoState = { step: 1, world: null, outcomes: {}, verification: null, publication: null, useDevnet: false, finished: false };
 
 async function callApi(world: World | null, action: { type: ActionType; approve?: boolean; useDevnet?: boolean }): Promise<StepResponse> {
   const res = await fetch('/api/step', {
@@ -56,7 +58,7 @@ export default function DemoPage() {
     setError(null);
     try {
       const data = await callApi(null, { type: 'init', useDevnet });
-      setState({ step: 1, world: data.world, outcomes: {}, verification: null, useDevnet, finished: false });
+      setState({ step: 1, world: data.world, outcomes: {}, verification: null, publication: null, useDevnet, finished: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the demo');
     } finally {
@@ -180,8 +182,11 @@ export default function DemoPage() {
             <StepProve
               world={world}
               verification={state.verification}
+              publication={state.publication}
               loading={loading}
-              onVerify={() => run({ type: 'prove' }, (d) => ({ ...state, world: d.world, verification: d.verification ?? null }))}
+              onVerify={() =>
+                run({ type: 'prove' }, (d) => ({ ...state, world: d.world, verification: d.verification ?? null, publication: d.publication ?? null }))
+              }
             />
           ) : (
             <StepRevoke
@@ -562,11 +567,13 @@ function skipReason(check: ReceiptVerification['checks'][number], mode: World['m
 function StepProve({
   world,
   verification,
+  publication,
   loading,
   onVerify,
 }: {
   world: World;
   verification: ReceiptVerification | null;
+  publication: StepResponse['publication'] | null;
   loading: boolean;
   onVerify: () => void;
 }) {
@@ -620,9 +627,36 @@ function StepProve({
               </ul>
             )}
           </div>
+          {verification && <VerifyFromChain world={world} publication={publication} />}
         </>
       )}
     </section>
+  );
+}
+
+/** The payoff of the proof step: hand the real payment to /verify, which knows nothing about this session. */
+function VerifyFromChain({ world, publication }: { world: World; publication: StepResponse['publication'] | null }) {
+  if (publication?.stored) {
+    return (
+      <div className="mt-6 rounded-2xl border border-allow/30 bg-allow/5 p-5">
+        <p className="text-sm text-white/90">This payment is on Solana devnet and its receipt is public. Check it the way a stranger would, from the transaction alone.</p>
+        <Link href={`/verify?tx=${publication.txSignature}`} className="mt-4 inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow">
+          <Search className="h-4 w-4" aria-hidden="true" /> Verify this payment from the chain
+        </Link>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-6 rounded-2xl border border-border bg-surface p-5">
+      <p className="text-sm text-mutedText">
+        {world.mode === 'devnet'
+          ? `This run's receipt wasn't published${publication ? ` (${publication.reason})` : ''}, so it can't be looked up from the chain.`
+          : 'In Instant mode this payment is simulated, so there is nothing on-chain to look up. Turn on real devnet at step 1 to make one you can check, or check a real one now.'}
+      </p>
+      <Link href="/verify" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-solana-green hover:underline">
+        <Search className="h-4 w-4" aria-hidden="true" /> Verify a real devnet payment
+      </Link>
+    </div>
   );
 }
 
@@ -650,9 +684,12 @@ function StepRevoke({
   if (finished) {
     return (
       <section className="text-center">
-        <h1 className="font-display text-3xl font-semibold">That&rsquo;s Atlas Rail</h1>
-        <p className="mt-3 text-sm text-mutedText">Signed mandates, a policy gate, human escalation, and receipts anyone can verify.</p>
+        <h1 className="font-display text-3xl font-semibold">Every payment proves it was allowed.</h1>
+        <p className="mt-3 text-lg text-white/90">Check any one yourself.</p>
         <div className="mt-8 flex flex-col items-center gap-3">
+          <Link href="/verify" className="inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow">
+            <Search className="h-4 w-4" aria-hidden="true" /> Verify a payment
+          </Link>
           <a href="https://github.com/Rime504/atlas-rail" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-mutedText hover:text-white">
             <Github className="h-4 w-4" aria-hidden="true" /> View the code
           </a>
@@ -672,7 +709,7 @@ function StepRevoke({
           >
             The program on Explorer ↗
           </a>
-          <button type="button" onClick={onRestart} className="mt-4 inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow">
+          <button type="button" onClick={onRestart} className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-6 py-3 text-sm font-semibold text-white hover:bg-surfaceRaised">
             <RotateCcw className="h-4 w-4" aria-hidden="true" /> Run it again
           </button>
         </div>

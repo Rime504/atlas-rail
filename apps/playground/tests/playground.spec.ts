@@ -4,6 +4,8 @@ test('landing page has one clear call to action', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.getByRole('link', { name: /start the demo/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: /verify a real payment/i })).toHaveAttribute('href', '/verify');
+  await expect(page.getByRole('link', { name: /watch an attack get blocked/i })).toBeVisible();
 });
 
 test('progress bar announces the step count, with the percentage kept separate for screen readers', async ({ page }) => {
@@ -74,6 +76,8 @@ test('walks through all 8 steps end to end', async ({ page }) => {
   await page.getByRole('button', { name: /verify this receipt/i }).click();
   await expect(page.getByText('PASS').first()).toBeVisible();
   await expect(page.locator('li', { hasText: 'FAIL' })).toHaveCount(0);
+  // Instant mode: the payment is simulated, so the step points to a real one on /verify instead.
+  await expect(page.getByRole('link', { name: /verify a real devnet payment/i })).toHaveAttribute('href', '/verify');
   await page.getByRole('button', { name: /^next$/i }).click();
 
   // Step 8: Revoke
@@ -87,7 +91,9 @@ test('walks through all 8 steps end to end', async ({ page }) => {
 
   // End screen
   await page.getByRole('button', { name: /^finish$/i }).click();
-  await expect(page.getByRole('heading', { name: /that.s atlas rail/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /every payment proves it was allowed/i })).toBeVisible();
+  await expect(page.getByText('Check any one yourself.')).toBeVisible();
+  await expect(page.getByRole('link', { name: /verify a payment/i })).toHaveAttribute('href', '/verify');
   await expect(page.getByRole('link', { name: /view the code/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /run it again/i })).toBeVisible();
 });
