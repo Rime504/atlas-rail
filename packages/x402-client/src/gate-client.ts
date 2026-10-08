@@ -1,4 +1,5 @@
 import {
+  AgentMandate,
   ApprovalState,
   GateAuthorization,
   SignedAgentGateRequest,
@@ -20,6 +21,8 @@ export interface GateResponse {
   decision: SignedDecision;
   authorization: GateAuthorization | null;
   approval: GateApprovalView | null;
+  /** Mandate the decision was evaluated under (wallet re-checks ALLOW against this). */
+  mandate: AgentMandate;
   replayed?: boolean;
 }
 

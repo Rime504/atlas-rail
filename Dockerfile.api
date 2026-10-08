@@ -20,5 +20,6 @@ COPY --from=builder /app .
 EXPOSE 3001
 # Applies any pending Prisma migrations before every start — safe to run on an already-migrated
 # database (no-op), and means a fresh Postgres (first deploy) or a schema change (any later one)
-# never needs a manual step.
+# never needs a manual step. db:migrate loads ../../.env only when that file is present; a host
+# that injects DATABASE_URL directly still reaches Prisma.
 CMD ["sh", "-c", "pnpm --filter @atlas-rail/database db:migrate && pnpm --filter @atlas-rail/api start:prod"]

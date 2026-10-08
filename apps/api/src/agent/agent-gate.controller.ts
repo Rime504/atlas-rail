@@ -70,6 +70,7 @@ export class AgentGateController {
             requiredRoles: outcome.approval.requiredRoles,
           }
         : null,
+      mandate: outcome.mandate,
       replayed: outcome.replayed,
     };
   }

@@ -1,4 +1,4 @@
-import { GateAuthorization, createGateAuthorization, hashCanonical } from '@atlas-rail/mandate';
+import { AgentMandate, GateAuthorization, SignedDecision, createGateAuthorization, hashCanonical } from '@atlas-rail/mandate';
 import { decodeTransaction, transactionMessageHash } from '@atlas-rail/solana';
 import { NOW, TEST_ORIGIN } from '@atlas-rail/mandate/testing';
 import { AUTHORIZED, AttemptResult, CaseContext, RedTeamCase, ask, attempt, trySign } from './harness';
@@ -22,13 +22,16 @@ const repeat = async (n: number, f: (i: number) => Promise<AttemptResult>) => {
 };
 
 /** A GateAuthorization for (legit) transaction A, to be presented for something else. */
-async function realAuthorizationFor(ctx: CaseContext, usd = 0.01): Promise<{ tx: string; authorization: GateAuthorization }> {
+async function realAuthorizationFor(
+  ctx: CaseContext,
+  usd = 0.01,
+): Promise<{ tx: string; authorization: GateAuthorization; decision: SignedDecision; mandate: AgentMandate }> {
   const { rig } = ctx;
   const offer = rig.offer({ amount: $(usd) });
   const tx = await rig.buildTx({ payTo: offer.payTo, amount: offer.amount });
   const { outcome } = await ask(rig, { offer, tx });
   if (!outcome?.authorization) throw new Error('setup: expected an ALLOW with an authorization');
-  return { tx, authorization: outcome.authorization };
+  return { tx, authorization: outcome.authorization, decision: outcome.decision, mandate: outcome.mandate };
 }
 
 const GATE: RedTeamCase['stoppedBy'] = ['GATE'];
@@ -150,15 +153,15 @@ export const CASES: RedTeamCase[] = [
     } },
   { id: 'I2', category: 'Replayed authorization', title: 'Stale authorization, 121 s after it was issued', expected: 'signer refuses: outside its validity window', stoppedBy: ['SIGNER'], needsClock: true,
     run: async (ctx) => {
-      const { tx, authorization } = await realAuthorizationFor(ctx);
+      const { tx, authorization, decision, mandate } = await realAuthorizationFor(ctx);
       ctx.rig.advance!(121);
-      const s = await trySign(ctx.rig, tx, authorization);
+      const s = await trySign(ctx.rig, tx, authorization, decision, mandate);
       return [{ decision: 'ALLOW', failedRules: [], signed: !!s.signed, settled: false, stoppedBy: s.signed ? 'NONE' : 'SIGNER', note: s.error ?? undefined }];
     } },
   { id: 'I3', category: 'Replayed authorization', title: 'Replay an already-settled signed payment 5 times', expected: 'chain rejects the duplicates', stoppedBy: ['CHAIN'], devnet: true,
     run: async (ctx) => {
-      const { tx, authorization } = await realAuthorizationFor(ctx);
-      const s = await trySign(ctx.rig, tx, authorization);
+      const { tx, authorization, decision, mandate } = await realAuthorizationFor(ctx);
+      const s = await trySign(ctx.rig, tx, authorization, decision, mandate);
       await ctx.rig.submit(s.signed!);
       ctx.authorize(10000n);
       const replays = await repeat(5, async () => {
@@ -182,9 +185,9 @@ export const CASES: RedTeamCase[] = [
     id, category: 'Tampered after authorization', title, expected: 'signer refuses: the authorization covers the original bytes only', stoppedBy: ['SIGNER'], devnet: id === 'J1',
     run: async (ctx) => {
       const offer = ctx.rig.offer({ amount: $(0.01) });
-      const { tx, authorization } = await realAuthorizationFor(ctx);
+      const { tx, authorization, decision, mandate } = await realAuthorizationFor(ctx);
       const tampered = await ctx.rig.buildTx({ payTo: offer.payTo, amount: offer.amount, ...change(ctx.rig) });
-      const s = await trySign(ctx.rig, tampered, authorization);
+      const s = await trySign(ctx.rig, tampered, authorization, decision, mandate);
       void tx;
       return [{ decision: 'ALLOW', failedRules: [], signed: !!s.signed, settled: false, stoppedBy: s.signed ? 'NONE' : 'SIGNER', note: s.error ?? undefined }];
     },
@@ -225,16 +228,16 @@ export const CASES: RedTeamCase[] = [
     } },
   { id: 'M2', category: 'Forged authorization', title: 'Real authorization, txMessageHash swapped to the attack transaction', expected: 'signer refuses: signature no longer verifies', stoppedBy: SIGNER,
     run: async (ctx) => {
-      const { authorization } = await realAuthorizationFor(ctx);
+      const { authorization, decision, mandate } = await realAuthorizationFor(ctx);
       const evil = await ctx.rig.buildTx({ payTo: ctx.rig.attacker, amount: $(10) });
       const forged = { ...authorization, txMessageHash: transactionMessageHash(decodeTransaction(evil)) };
-      const s = await trySign(ctx.rig, evil, forged);
+      const s = await trySign(ctx.rig, evil, forged, decision, mandate);
       return [{ decision: 'ALLOW', failedRules: [], signed: !!s.signed, settled: false, stoppedBy: s.signed ? 'NONE' : 'SIGNER', note: s.error ?? undefined }];
     } },
   { id: 'M3', category: 'Forged authorization', title: 'Real authorization with its expiry pushed a day out', expected: 'signer refuses: signature no longer verifies', stoppedBy: SIGNER,
     run: async (ctx) => {
-      const { tx, authorization } = await realAuthorizationFor(ctx);
-      const s = await trySign(ctx.rig, tx, { ...authorization, notAfter: authorization.notAfter + 86_400 });
+      const { tx, authorization, decision, mandate } = await realAuthorizationFor(ctx);
+      const s = await trySign(ctx.rig, tx, { ...authorization, notAfter: authorization.notAfter + 86_400 }, decision, mandate);
       return [{ decision: 'ALLOW', failedRules: [], signed: !!s.signed, settled: false, stoppedBy: s.signed ? 'NONE' : 'SIGNER', note: s.error ?? undefined }];
     } },
 
@@ -276,15 +279,19 @@ export const CASES: RedTeamCase[] = [
       let decision: AttemptResult['decision'] = 'REJECTED';
       let failedRules: string[] = [];
       let authorization: GateAuthorization | null = null;
+      let signedDecision: SignedDecision | null = null;
+      let mandate: AgentMandate | null = null;
       try {
         const outcome = await rig.evaluate(tampered);
         decision = outcome.decision.record.decision;
         failedRules = outcome.decision.record.failedRules;
         authorization = outcome.authorization;
+        signedDecision = outcome.decision;
+        mandate = outcome.mandate;
       } catch {
         /* rejected outright */
       }
-      const s = await trySign(rig, tx, authorization);
+      const s = await trySign(rig, tx, authorization, signedDecision, mandate);
       return [{ decision, failedRules, signed: !!s.signed, settled: false, stoppedBy: s.signed ? 'NONE' : 'GATE', note: s.error ?? undefined }];
     } },
 ];

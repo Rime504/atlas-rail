@@ -166,6 +166,8 @@ describe('gate service — the six demo scenes', () => {
         now: t.now(),
         txMessageHash: sha256Hex(req.transactionBase64!),
         agentPublicKey: signers.agent.publicKey,
+        decision: outcome.decision,
+        mandate: outcome.mandate,
       }).ok,
     ).toBe(true);
     const audit = (t.store.audit as unknown as { entries: { action: string }[] }).entries.map((e) => e.action);
@@ -276,6 +278,185 @@ describe('gate service — on-chain revocation override (Milestone B)', () => {
     const result = await onchainGate.evaluate(ORG, await t.request({ amount: '10000' }, { nonce: 'onchain-2' }));
     expect(result.decision.record.decision).toBe('ALLOW');
   });
+
+  it('overlaps the on-chain revoke read with the payment simulation', async () => {
+    const t = await setup();
+    let chainStarted = false;
+    let simStarted = false;
+    let releaseChain: () => void = () => {};
+    let releaseSim: () => void = () => {};
+    const chainGate = new Promise<void>((resolve) => {
+      releaseChain = resolve;
+    });
+    const simGate = new Promise<void>((resolve) => {
+      releaseSim = resolve;
+    });
+    const simulator: PaymentSimulator = {
+      async simulate(input) {
+        simStarted = true;
+        await simGate;
+        return t.simulator.simulate(input);
+      },
+    };
+    const onchainGate = new AgentGateService({
+      store: t.store,
+      instanceSigner: signers.instance,
+      simulator,
+      clock: t.now,
+      newId: (prefix: string) => `${prefix}_onchain4`,
+      onchainRevocationCheck: async () => {
+        chainStarted = true;
+        await chainGate;
+        return null;
+      },
+    });
+    const pending = onchainGate.evaluate(ORG, await t.request({ amount: '10000' }, { nonce: 'onchain-4' }));
+    for (let i = 0; i < 40 && !(chainStarted && simStarted); i++) await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(chainStarted).toBe(true);
+    expect(simStarted).toBe(true);
+    releaseChain();
+    releaseSim();
+    const result = await pending;
+    expect(result.decision.record.decision).toBe('ALLOW');
+  });
+
+  it('a successful simulation cannot authorize a payment the chain says is revoked', async () => {
+    const t = await setup();
+    let simulated = 0;
+    const simulator: PaymentSimulator = {
+      async simulate(input) {
+        simulated += 1;
+        return t.simulator.simulate(input);
+      },
+    };
+    const onchainGate = new AgentGateService({
+      store: t.store,
+      instanceSigner: signers.instance,
+      simulator,
+      clock: t.now,
+      newId: (prefix: string) => `${prefix}_onchain_revoke_wins`,
+      onchainRevocationCheck: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return { revokedAt: t.now(), reason: 'revoked on-chain after the simulation started' };
+      },
+    });
+    const result = await onchainGate.evaluate(ORG, await t.request({ amount: '10000' }, { nonce: 'revoke-wins' }));
+    expect(simulated).toBe(1);
+    expect(result.decision.record.decision).toBe('DENY');
+    expect(result.decision.record.failedRule).toBe('MANDATE_NOT_REVOKED');
+    expect(result.decision.record.context.simulation).toBeNull();
+    expect(result.authorization).toBeNull();
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('0');
+  });
+
+  it('a failed or thrown simulation reserves nothing when the chain says the mandate is active', async () => {
+    const t = await setup();
+    const failing = new AgentGateService({
+      store: t.store,
+      instanceSigner: signers.instance,
+      simulator: {
+        async simulate(input) {
+          const summary = await t.simulator.simulate(input);
+          return { ...summary, success: false, error: 'InsufficientFunds', matchesOffer: false, mismatch: 'simulation rejected the transfer' };
+        },
+      },
+      clock: t.now,
+      newId: (prefix: string) => `${prefix}_sim_fail`,
+      onchainRevocationCheck: async () => null,
+    });
+    const denied = await failing.evaluate(ORG, await t.request({ amount: '10000' }, { nonce: 'sim-fail' }));
+    expect(denied.decision.record.decision).toBe('DENY');
+    expect(denied.decision.record.failedRule).toBe('TRANSACTION_SIMULATION');
+    expect(denied.authorization).toBeNull();
+
+    const throwing = new AgentGateService({
+      store: t.store,
+      instanceSigner: signers.instance,
+      simulator: {
+        async simulate() {
+          throw new Error('rpc down');
+        },
+      },
+      clock: t.now,
+      newId: (prefix: string) => `${prefix}_sim_throw`,
+      onchainRevocationCheck: async () => null,
+    });
+    await expect(throwing.evaluate(ORG, await t.request({ amount: '10000' }, { nonce: 'sim-throw' }))).rejects.toThrow(/rpc down/);
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('0');
+  });
+
+  it('a thrown on-chain check does not become an allow', async () => {
+    const t = await setup();
+    const onchainGate = new AgentGateService({
+      store: t.store,
+      instanceSigner: signers.instance,
+      simulator: t.simulator,
+      clock: t.now,
+      newId: (prefix: string) => `${prefix}_chain_throw`,
+      onchainRevocationCheck: async () => {
+        throw new Error('devnet timeout');
+      },
+    });
+    await expect(onchainGate.evaluate(ORG, await t.request({ amount: '10000' }, { nonce: 'chain-throw' }))).rejects.toThrow(/devnet timeout/);
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('0');
+  });
+
+  it('a local denial does not start a simulation', async () => {
+    const t = await setup();
+    let simulated = 0;
+    let chainCalls = 0;
+    const onchainGate = new AgentGateService({
+      store: t.store,
+      instanceSigner: signers.instance,
+      simulator: {
+        async simulate(input) {
+          simulated += 1;
+          return t.simulator.simulate(input);
+        },
+      },
+      clock: t.now,
+      newId: (prefix: string) => `${prefix}_local_deny`,
+      onchainRevocationCheck: async () => {
+        chainCalls += 1;
+        return null;
+      },
+    });
+    const result = await onchainGate.evaluate(ORG, await t.request({ payTo: signers.attacker.publicKey }, { nonce: 'wrong-payee' }));
+    expect(result.decision.record.decision).toBe('DENY');
+    expect(result.decision.record.failedRule).toBe('PAYTO_ALLOWED');
+    expect(result.authorization).toBeNull();
+    expect(simulated).toBe(0);
+    expect(chainCalls).toBe(1);
+    expect((await t.store.spend.totals(t.mandate.id, t.now(), 86_400)).totalBaseUnits).toBe('0');
+  });
+
+  it('forty overlapping payments against a $5 window reserve exactly $5', async () => {
+    const t = await setup();
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 15));
+    const onchainGate = new AgentGateService({
+      store: t.store,
+      instanceSigner: signers.instance,
+      simulator: {
+        async simulate(input) {
+          await pause();
+          return t.simulator.simulate(input);
+        },
+      },
+      clock: t.now,
+      newId: (prefix: string) => `${prefix}_burst_${Math.random().toString(36).slice(2, 8)}`,
+      onchainRevocationCheck: async () => {
+        await pause();
+        return null;
+      },
+    });
+    const requests = await Promise.all(Array.from({ length: 40 }, (_, i) => t.request({ amount: '250000' }, { nonce: `burst-${i}` })));
+    const outcomes = await Promise.all(requests.map((request) => onchainGate.evaluate(ORG, request)));
+    const allowed = outcomes.filter((outcome) => outcome.decision.record.decision === 'ALLOW');
+    const spent = await t.store.spend.totals(t.mandate.id, t.now(), 86_400);
+    expect(allowed).toHaveLength(20);
+    expect(spent.totalBaseUnits).toBe('5000000');
+    expect(outcomes.filter((outcome) => outcome.authorization).length).toBe(20);
+  }, 20_000);
 
   it('never calls the on-chain check once the database already says revoked', async () => {
     const t = await setup();

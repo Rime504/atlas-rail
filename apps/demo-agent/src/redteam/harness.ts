@@ -7,9 +7,11 @@
  * balances before and after, never from what the gate or the signer report.
  */
 import {
+  AgentMandate,
   GateAuthorization,
   GateOutcome,
   MessageSigner,
+  SignedDecision,
   X402Offer,
   signGateRequest,
 } from '@atlas-rail/mandate';
@@ -88,10 +90,16 @@ export async function ask(
   }
 }
 
-/** Try to get the gated signer to sign `tx` with `authorization`; a compromised agent always tries. */
-export async function trySign(rig: Rig, tx: string, authorization: GateAuthorization | null): Promise<{ signed: string | null; error: string | null }> {
+/** Try to get the gated signer to sign `tx`; a compromised agent always tries. */
+export async function trySign(
+  rig: Rig,
+  tx: string,
+  authorization: GateAuthorization | null,
+  decision: SignedDecision | null,
+  mandate: AgentMandate | null,
+): Promise<{ signed: string | null; error: string | null }> {
   try {
-    return { signed: (await rig.signer.signWithAuthorization(tx, authorization)).signedBase64, error: null };
+    return { signed: (await rig.signer.signWithAuthorization(tx, authorization, decision, mandate)).signedBase64, error: null };
   } catch (err) {
     return { signed: null, error: err instanceof Error ? err.message : String(err) };
   }
@@ -125,7 +133,7 @@ export async function attempt(
   const failedRules = outcome ? outcome.decision.record.failedRules : [];
   const authorization = p.authorization ? await p.authorization(outcome?.authorization ?? null) : (outcome?.authorization ?? null);
   const signTx = p.signTx ? await p.signTx(gateTx) : gateTx;
-  const sign = await trySign(rig, signTx, authorization);
+  const sign = await trySign(rig, signTx, authorization, outcome?.decision ?? null, outcome?.mandate ?? null);
   if (!sign.signed) {
     // A case that hands the signer a substituted authorization is testing the signer, whatever the gate said.
     const stoppedBy: Stage = p.authorization ? 'SIGNER' : !outcome || decision === 'DENY' ? 'GATE' : decision === 'ESCALATE' ? 'APPROVAL' : 'SIGNER';

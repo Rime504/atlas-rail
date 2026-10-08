@@ -136,49 +136,102 @@ describe('agent gate requests', () => {
 
 describe('gate authorizations (wallet-side check)', () => {
   const TX_HASH = 'b'.repeat(64);
-  const body = (): GateAuthorizationBody => ({
-    type: 'atlasrail.gate-authorization',
-    version: '0.1',
-    decisionId: 'dec_TEST',
-    decisionHash: 'c'.repeat(64),
-    mandateHash: 'd'.repeat(64),
-    offerHash: 'e'.repeat(64),
-    txMessageHash: TX_HASH,
-    agentPublicKey: signers.agent.publicKey,
-    notBefore: NOW,
-    notAfter: NOW + 120,
-  });
-  const expected = (overrides = {}) => ({
-    trustedInstanceKeys: [signers.instance.publicKey],
-    now: NOW + 10,
-    txMessageHash: TX_HASH,
-    agentPublicKey: signers.agent.publicKey,
-    ...overrides,
-  });
+
+  async function allowAuth() {
+    const { mandate, offer, signed } = await makeSignedDecision();
+    expect(signed.record.decision).toBe('ALLOW');
+    const body: GateAuthorizationBody = {
+      type: 'atlasrail.gate-authorization',
+      version: '0.1',
+      decisionId: signed.record.id,
+      decisionHash: signed.decisionHash,
+      mandateHash: signed.record.mandateHash,
+      offerHash: hashOffer(offer),
+      txMessageHash: TX_HASH,
+      agentPublicKey: signers.agent.publicKey,
+      notBefore: NOW,
+      notAfter: NOW + 120,
+    };
+    const auth = await createGateAuthorization(body, signers.instance);
+    const expected = (overrides: Record<string, unknown> = {}) => ({
+      trustedInstanceKeys: [signers.instance.publicKey],
+      now: NOW + 10,
+      txMessageHash: TX_HASH,
+      agentPublicKey: signers.agent.publicKey,
+      decision: signed,
+      mandate,
+      ...overrides,
+    });
+    return { auth, expected, mandate, signed, offer };
+  }
 
   it('accepts a valid authorization for exactly this transaction and agent', async () => {
-    const auth = await createGateAuthorization(body(), signers.instance);
+    const { auth, expected } = await allowAuth();
     expect(verifyGateAuthorization(auth, expected())).toEqual({ ok: true, error: null });
   });
 
   it('refuses a different transaction (confused deputy: gate saw offer A, wallet asked to sign B)', async () => {
-    const auth = await createGateAuthorization(body(), signers.instance);
+    const { auth, expected } = await allowAuth();
     const result = verifyGateAuthorization(auth, expected({ txMessageHash: 'f'.repeat(64) }));
     expect(result.ok).toBe(false);
     expect(result.error).toContain('does not cover this transaction');
   });
 
   it('refuses a different agent, an untrusted issuer, and tampered content', async () => {
-    const auth = await createGateAuthorization(body(), signers.instance);
+    const { auth, expected, signed, offer } = await allowAuth();
     expect(verifyGateAuthorization(auth, expected({ agentPublicKey: signers.attacker.publicKey })).ok).toBe(false);
     expect(verifyGateAuthorization(auth, expected({ trustedInstanceKeys: [signers.attacker.publicKey] })).ok).toBe(false);
     expect(verifyGateAuthorization({ ...auth, decisionId: 'dec_OTHER' }, expected()).ok).toBe(false);
-    const forged = await createGateAuthorization(body(), signers.attacker);
+    const forged = await createGateAuthorization(
+      {
+        type: 'atlasrail.gate-authorization',
+        version: '0.1',
+        decisionId: signed.record.id,
+        decisionHash: signed.decisionHash,
+        mandateHash: signed.record.mandateHash,
+        offerHash: hashOffer(offer),
+        txMessageHash: TX_HASH,
+        agentPublicKey: signers.agent.publicKey,
+        notBefore: NOW,
+        notAfter: NOW + 120,
+      },
+      signers.attacker,
+    );
     expect(verifyGateAuthorization(forged, expected()).ok).toBe(false);
   });
 
+  it('refuses an authorization whose decision is not a reproducible ALLOW', async () => {
+    const denied = await makeSignedDecision({ payTo: signers.attacker.publicKey });
+    expect(denied.signed.record.decision).toBe('DENY');
+    const auth = await createGateAuthorization(
+      {
+        type: 'atlasrail.gate-authorization',
+        version: '0.1',
+        decisionId: denied.signed.record.id,
+        decisionHash: denied.signed.decisionHash,
+        mandateHash: denied.signed.record.mandateHash,
+        offerHash: denied.signed.record.offerHash,
+        txMessageHash: TX_HASH,
+        agentPublicKey: signers.agent.publicKey,
+        notBefore: NOW,
+        notAfter: NOW + 120,
+      },
+      signers.instance,
+    );
+    expect(
+      verifyGateAuthorization(auth, {
+        trustedInstanceKeys: [signers.instance.publicKey],
+        now: NOW + 10,
+        txMessageHash: TX_HASH,
+        agentPublicKey: signers.agent.publicKey,
+        decision: denied.signed,
+        mandate: denied.mandate,
+      }).ok,
+    ).toBe(false);
+  });
+
   it('validity window boundaries: notBefore inclusive, notAfter exclusive', async () => {
-    const auth = await createGateAuthorization(body(), signers.instance);
+    const { auth, expected } = await allowAuth();
     expect(verifyGateAuthorization(auth, expected({ now: NOW - 1 })).ok).toBe(false);
     expect(verifyGateAuthorization(auth, expected({ now: NOW })).ok).toBe(true);
     expect(verifyGateAuthorization(auth, expected({ now: NOW + 119 })).ok).toBe(true);
@@ -186,7 +239,10 @@ describe('gate authorizations (wallet-side check)', () => {
   });
 
   it('refuses malformed transaction hashes', async () => {
-    const auth = await createGateAuthorization({ ...body(), txMessageHash: 'nothex' }, signers.instance);
-    expect(verifyGateAuthorization(auth, expected({ txMessageHash: 'nothex' })).ok).toBe(false);
+    const { auth, expected } = await allowAuth();
+    const { instance: _instance, ...body } = auth;
+    void _instance;
+    const bad = await createGateAuthorization({ ...body, txMessageHash: 'nothex' }, signers.instance);
+    expect(verifyGateAuthorization(bad, expected({ txMessageHash: 'nothex' })).ok).toBe(false);
   });
 });
