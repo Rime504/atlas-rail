@@ -168,7 +168,3 @@ Verified clean, independently, after all three fixes: both the scene-2 and scene
 - `db:migrate`, `db:push`, `db:seed`, and `db:migrate:dev` used `node --env-file=../../.env`. That flag exits 9 when the file is missing, before Prisma starts. `.dockerignore` keeps `.env` out of the image, so a deploy that only injects `DATABASE_URL` would die in `Dockerfile.api` before `start:prod`. That container start was not run.
 - Those scripts now use `--env-file-if-exists`. If `.env` is present, Node loads it. If it is missing, Node continues and Prisma uses the process environment. Probe on this machine: the strict flag exited 9; the optional flag exited 0 and kept an injected variable.
 - Not done: the API image was not rebuilt or started. `--env-file-if-exists` needs Node 22.9 or newer. This machine is past that. `node:22-alpine` is unpinned, so the image's exact Node patch was not checked.
-
-## Spend release still accepts an API key alone (2026-10-08)
-
-- Read from the code, not executed. `POST /v1/agent/gate/spend/release` only has `@RequirePermission('agent:gate')`. `release` sets a `RESERVED` row to `RELEASED`. `markSettled` updates by `decisionId` with no status check, so a released row can still become `SETTLED`. A run that frees the cap and settles two allows was not performed. Not fixed on this branch.
