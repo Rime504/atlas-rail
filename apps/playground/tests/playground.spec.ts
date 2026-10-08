@@ -5,7 +5,7 @@ test('landing page has one clear call to action', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.getByRole('link', { name: /start the demo/i })).toBeVisible();
   await expect(page.getByRole('link', { name: /verify a real payment/i })).toHaveAttribute('href', '/verify');
-  await expect(page.getByRole('link', { name: /watch an attack get blocked/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: /watch an attack get blocked/i })).toHaveAttribute('href', '/break');
 });
 
 test('progress bar announces the step count, with the percentage kept separate for screen readers', async ({ page }) => {

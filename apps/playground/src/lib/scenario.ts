@@ -541,3 +541,70 @@ export async function proveReceipt(
   });
   return { receipt: anchored, verification };
 }
+
+/* ---- "Try to break it" (/break) ------------------------------------------------------------------ */
+
+export type BreakAttack = 'pay-stranger' | 'overcharge' | 'split' | 'after-revoke';
+
+export interface BreakAttempt {
+  outcome: PaymentOutcome;
+  /** The gate's signed decision record: the evidence for a refusal, since a refusal has no payment or receipt. */
+  decision: { id: string; decisionHash: string; signedBy: string; signature: string };
+}
+
+export interface BreakResult {
+  attack: BreakAttack;
+  attempts: BreakAttempt[];
+  allowedUsd: string;
+  /** Payee and limits the visitor is attacking, so the page can say what "allowed" means here. */
+  mandate: { allowedSellers: string[]; maxPerPaymentUsd: string; maxPerHourUsd: string };
+}
+
+export const BREAK_SLICES = 10;
+
+/**
+ * One visitor's attack against a fresh mandate, decided by the real gate code. Every attempt gets
+ * its signed decision record; a slice that is genuinely inside the mandate is allowed and counted
+ * toward the budget, exactly as in the walkthrough, so splitting is shown honestly: slices fit
+ * until the signed hourly budget is used, then every further slice needs a human.
+ */
+export async function tryToBreak(attack: BreakAttack, opts: { amountBaseUnits?: string; recipient?: string } = {}): Promise<BreakResult> {
+  let world = await signMandateStep(initWorld('instant', null).world);
+  const instanceSigner = materializeSigner(world.keys.instance);
+  const defaults: Record<BreakAttack, { amount: string; payTo: string }> = {
+    'pay-stranger': { amount: ATTACK_AMOUNT, payTo: world.keys.attacker.publicKey },
+    overcharge: { amount: SEVERE_SPIKE_AMOUNT, payTo: world.keys.sellerA.publicKey },
+    // Seller B: no per-resource price limit, so splitting is decided by the budget, which is the point.
+    split: { amount: MAX_PER_PAYMENT, payTo: world.keys.sellerB.publicKey },
+    'after-revoke': { amount: EXPECTED_PRICE, payTo: world.keys.sellerA.publicKey },
+  };
+  const offer = baseOffer(world, {
+    amount: opts.amountBaseUnits ?? defaults[attack].amount,
+    payTo: opts.recipient ?? defaults[attack].payTo,
+    ...(attack === 'split' ? { resourceUrl: `${SELLER_B_ORIGIN}/summary/batch` } : {}),
+  });
+  if (attack === 'after-revoke') world = revokeMandate(world, 'Owner revoked the mandate before this payment');
+
+  const attempts: BreakAttempt[] = [];
+  let allowed = 0n;
+  for (let i = 0; i < (attack === 'split' ? BREAK_SLICES : 1); i++) {
+    const context = baseContext(world);
+    const gate = evaluateGate(world.mandate!, offer, context);
+    const record = buildDecisionRecord({ id: `dec_${randomId()}`, organizationId: world.mandate!.issuer.organizationId, mandate: world.mandate!, offer, result: gate, context, request: null });
+    const signed = await signDecision(record, instanceSigner);
+    const step = await evaluateAndMaybeReceipt(world, offer, context, attack === 'pay-stranger' ? 'attack' : 'normal');
+    world = step.world;
+    if (gate.decision === 'ALLOW') allowed += BigInt(offer.amount);
+    attempts.push({ outcome: step.outcome, decision: { id: signed.record.id, decisionHash: signed.decisionHash, signedBy: signed.instance.publicKey, signature: signed.instance.signature } });
+  }
+  return {
+    attack,
+    attempts,
+    allowedUsd: formatUsd(allowed.toString(), DEMO_MINT_DECIMALS),
+    mandate: {
+      allowedSellers: [world.keys.sellerA.publicKey, world.keys.sellerB.publicKey],
+      maxPerPaymentUsd: formatUsd(MAX_PER_PAYMENT, DEMO_MINT_DECIMALS),
+      maxPerHourUsd: formatUsd(MAX_PER_WINDOW, DEMO_MINT_DECIMALS),
+    },
+  };
+}
