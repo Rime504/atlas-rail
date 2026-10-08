@@ -70,13 +70,11 @@ The default `ScriptedModel` is deterministic and calls no external API, which is
 | Env var | Values | Default |
 |---|---|---|
 | `AGENT_MODE` | `scripted` \| `llm` | `scripted` |
-| `AGENT_PROVIDER` | `anthropic` \| `openai` \| `glm` \| `bedrock` | `anthropic` |
-| `AGENT_MODEL` | any model id | `claude-haiku-4-5-20251001` for `anthropic`; `glm-5` for `glm`; `us.anthropic.claude-sonnet-5` for `bedrock`; **required** for `openai` (no default is assumed current) |
+| `AGENT_PROVIDER` | `anthropic` \| `openai` \| `glm` | `anthropic` |
+| `AGENT_MODEL` | any model id | `claude-haiku-4-5-20251001` for `anthropic`; `glm-5` for `glm`; **required** for `openai` (no default is assumed current) |
 | `GLM_BASE_URL` | Z.ai API base, or a full `/chat/completions` URL | `https://api.z.ai/api/paas/v4` |
-| `BEDROCK_REGION` | Bedrock runtime region | `us-east-1` (`AWS_REGION` is used when `BEDROCK_REGION` is unset) |
-| `BEDROCK_BASE_URL` | runtime host, `/anthropic` base, or the full messages URL | derived from the region |
 
-The model gets exactly two tools, `fetch_page(url)` and `fetch_paid_resource(url)`, and never sees a payment key — it can only ask for a fetch; the policy gate independently decides whether any resulting payment is allowed. The key comes from `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `ZAI_API_KEY` (for `AGENT_PROVIDER=glm`, which calls Z.ai's OpenAI-compatible endpoint for `glm-5`), or `AWS_BEARER_TOKEN_BEDROCK` (for `AGENT_PROVIDER=bedrock`, which calls [Bedrock's Anthropic Messages API](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html)); if it isn't set, the run falls back to the scripted agent for that step with a visible console notice instead of failing. Nothing about the mandate, the gate, or the receipt changes — the model only decides *what to ask for*; the gate still decides *whether it's allowed to pay*.
+The model gets exactly two tools, `fetch_page(url)` and `fetch_paid_resource(url)`, and never sees a payment key — it can only ask for a fetch; the policy gate independently decides whether any resulting payment is allowed. The key comes from `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `ZAI_API_KEY` (for `AGENT_PROVIDER=glm`, which calls Z.ai's OpenAI-compatible endpoint for `glm-5`); if it isn't set, the run falls back to the scripted agent for that step with a visible console notice instead of failing. Nothing about the mandate, the gate, or the receipt changes — the model only decides *what to ask for*; the gate still decides *whether it's allowed to pay*.
 
 ## Running the full devnet e2e check (`pnpm agent:e2e`)
 
@@ -95,7 +93,6 @@ To exercise the real LLM agent instead of the scripted one, set `AGENT_MODE=llm`
 ```bash
 AGENT_MODE=llm ANTHROPIC_API_KEY=sk-... pnpm agent:e2e
 AGENT_MODE=llm AGENT_PROVIDER=glm ZAI_API_KEY=... pnpm agent:e2e
-AGENT_MODE=llm AGENT_PROVIDER=bedrock AWS_BEARER_TOKEN_BEDROCK=... pnpm agent:e2e
 ```
 
 Re-run it as many times as you like — like `pnpm demo`, it seeds idempotently rather than duplicating mandates or accounts.

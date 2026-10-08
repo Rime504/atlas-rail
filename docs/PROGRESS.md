@@ -155,12 +155,6 @@ Verified clean, independently, after all three fixes: both the scene-2 and scene
 - Tests: llm-model unit tests cover the default URL, a BigModel-style base override, bearer auth, and a GLM 401. Not run live against Z.ai (no key in this environment).
 - Gaps: no live GLM e2e yet. Next: set `ZAI_API_KEY` and run `AGENT_MODE=llm AGENT_PROVIDER=glm pnpm agent:e2e` on devnet.
 
-## Bedrock Anthropic provider (2026-10-08)
-
-- `AGENT_PROVIDER=bedrock` calls `https://bedrock-runtime.<region>.amazonaws.com/anthropic/v1/messages` with `x-api-key: $AWS_BEARER_TOKEN_BEDROCK`. Default model `us.anthropic.claude-sonnet-5`, default region `us-east-1` (`BEDROCK_REGION` / `AWS_REGION` / `BEDROCK_BASE_URL` override). Same two tools; the model still never sees a payment key.
-- Tests: llm-model unit tests cover the default URL, a regional host override, the `x-api-key` header, and a Bedrock 403. Not run live (the key stays in the operator's shell).
-- Docs: [AWS Messages API](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html). Next: `$env:AWS_BEARER_TOKEN_BEDROCK` set, then `AGENT_MODE=llm AGENT_PROVIDER=bedrock pnpm agent:e2e`.
-
 ## Gate: overlap on-chain revoke read with simulation (2026-10-08)
 
 - Devnet `getAccountInfo` p50 56–92 ms and `simulateTransaction` p50 53–85 ms. Sequential p50 154–180 ms (one sample 397 ms). Parallel p50 71–77 ms. The allowed-payment path was waiting for both, one after the other.

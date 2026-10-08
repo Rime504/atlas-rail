@@ -25,7 +25,7 @@ Options (env vars in brackets):
   --state <path>         Demo state file                [DEMO_STATE_FILE, default .demo/state.json]
   --cli <path>           Built atlas CLI                [default apps/cli/dist/main.js]
   --agent-mode <scripted|llm>                            [AGENT_MODE, default scripted]
-  --agent-provider <openai|anthropic|glm|bedrock>        [AGENT_PROVIDER, default anthropic]
+  --agent-provider <openai|anthropic|glm>               [AGENT_PROVIDER, default anthropic]
   --agent-model <id>     Required for --agent-provider openai [AGENT_MODEL]
 
 Devnet only. Refuses mainnet RPC endpoints.`;
@@ -67,7 +67,7 @@ async function main(argv: string[]): Promise<number> {
     const state = readState(env.stateFile) ?? (await prepareDemo(env));
     const onlyArg = arg(args, '--only');
     const agentMode = (arg(args, '--agent-mode') ?? process.env.AGENT_MODE ?? 'scripted') as 'scripted' | 'llm';
-    const agentProvider = (arg(args, '--agent-provider') ?? process.env.AGENT_PROVIDER ?? 'anthropic') as 'openai' | 'anthropic' | 'glm' | 'bedrock';
+    const agentProvider = (arg(args, '--agent-provider') ?? process.env.AGENT_PROVIDER ?? 'anthropic') as 'openai' | 'anthropic' | 'glm';
     const summary = await runScenes({
       env,
       state,
