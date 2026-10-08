@@ -54,7 +54,7 @@ export const envSchema = z.object({
   // to already be registered on-chain) and only takes effect once the deployed program includes it.
   ATLAS_ANCHOR_ROOT: envBoolean.default(false),
 
-  WEBHOOK_ALLOW_PRIVATE_NETWORKS: envBoolean.default(true),
+  WEBHOOK_ALLOW_PRIVATE_NETWORKS: envBoolean.default(false),
   WEBHOOK_MAX_ATTEMPTS: z.coerce.number().default(6),
   WEBHOOK_TIMEOUT_MS: z.coerce.number().default(10000),
 

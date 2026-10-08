@@ -44,9 +44,24 @@ describe('isValidWebhookUrl', () => {
     expect(isValidWebhookUrl('http://127.0.0.1/hook', false)).toBe(false);
     expect(isValidWebhookUrl('http://10.0.0.5/hook', false)).toBe(false);
     expect(isValidWebhookUrl('http://192.168.1.5/hook', false)).toBe(false);
+    expect(isValidWebhookUrl('http://169.254.169.254/latest/meta-data/', false)).toBe(false);
+    expect(isValidWebhookUrl('http://172.17.0.1/hook', false)).toBe(false);
   });
 
-  it('allows private hosts when allowPrivateNetworks is true (devnet default)', () => {
+  it('rejects private hosts by default', () => {
+    expect(isValidWebhookUrl('http://169.254.169.254/latest/meta-data/')).toBe(false);
+    expect(isValidWebhookUrl('https://example.com/webhook')).toBe(true);
+  });
+
+  it('rejects IPv4-mapped IPv6 (::ffff:) forms of private and metadata hosts', () => {
+    expect(isValidWebhookUrl('http://[::ffff:127.0.0.1]/hook', false)).toBe(false);
+    expect(isValidWebhookUrl('http://[::ffff:10.0.0.1]/hook', false)).toBe(false);
+    expect(isValidWebhookUrl('http://[::ffff:192.168.1.5]/hook', false)).toBe(false);
+    expect(isValidWebhookUrl('http://[::ffff:169.254.169.254]/latest/meta-data/', false)).toBe(false);
+    expect(isValidWebhookUrl('http://[::ffff:172.17.0.1]/hook', false)).toBe(false);
+  });
+
+  it('allows private hosts when allowPrivateNetworks is true', () => {
     expect(isValidWebhookUrl('http://localhost:3000/hook', true)).toBe(true);
   });
 });
