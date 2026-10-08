@@ -86,7 +86,7 @@ export async function createDemoApi(options: DemoApiOptions): Promise<FastifyIns
   app.get('/research/summary', async () => ({
     topic: 'stablecoin settlement on Solana',
     summary:
-      'Devnet USDC transfers finalise in well under a second. Agent-initiated payments need scoped, revocable authority and verifiable evidence.',
+      'Devnet USDC transfers confirm in about a second. Agent-initiated payments need scoped, revocable authority and verifiable evidence.',
     generatedAt: new Date().toISOString(),
   }));
 
@@ -95,7 +95,7 @@ export async function createDemoApi(options: DemoApiOptions): Promise<FastifyIns
   app.get('/research/summary-premium', async () => ({
     topic: 'stablecoin settlement on Solana',
     summary:
-      'Devnet USDC transfers finalise in well under a second. Agent-initiated payments need scoped, revocable authority and verifiable evidence.',
+      'Devnet USDC transfers confirm in about a second. Agent-initiated payments need scoped, revocable authority and verifiable evidence.',
     generatedAt: new Date().toISOString(),
   }));
 

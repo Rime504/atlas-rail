@@ -130,7 +130,7 @@ Three layers:
 
 | What | Number | Source |
 |---|---|---|
-| Automated tests (CI) | 438 passing | `pnpm test`, [CI](https://github.com/Rime504/atlas-rail/actions) |
+| Automated tests (CI) | 439 passing | `pnpm test`, [CI](https://github.com/Rime504/atlas-rail/actions) |
 | Red team: fully compromised agent | 51 attack types, 1,014 attempts, **0 signatures obtained, $0.00 moved outside the mandate** | [reports/redteam-2026-10-08.md](reports/redteam-2026-10-08.md) |
 | Red team on real devnet | 16 attack types, $0.00 moved outside the mandate | same report |
 | 100 simultaneous payments vs a $5 cap | $5.00 spent (in-memory and Postgres); $10.00 with the lock removed | same report |

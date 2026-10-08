@@ -132,7 +132,7 @@ The original core of Atlas Rail, which the agent layer is built on.
 
 ### The Problem: A Wallet Is Not a Treasury
 
-Solana settles a token transfer in under a second for a fraction of a cent. That's the easy part, and it's been solved for years. The part that's still genuinely hard — the part every fintech and Web3 payroll team rebuilds from scratch — is everything *around* the transfer:
+Solana settles a token transfer in about a second for a fraction of a cent. That's the easy part, and it's been solved for years. The part that's still genuinely hard — the part every fintech and Web3 payroll team rebuilds from scratch — is everything *around* the transfer:
 
 - Who is allowed to initiate a $50,000 vendor payout, and who has to independently sign off on it before it happens?
 - What stops someone from quietly paying an unverified wallet, or blowing through a monthly spend limit?
