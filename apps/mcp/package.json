@@ -1,0 +1,29 @@
+{
+  "name": "@atlas-rail/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "atlas-rail-mcp: an MCP server with one tool, pay(url), that pays x402 resources only as an Atlas Rail mandate allows.",
+  "license": "Apache-2.0",
+  "bin": {
+    "atlas-rail-mcp": "./dist/main.js"
+  },
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/main.js",
+    "clean": "rimraf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@atlas-rail/agent": "workspace:*",
+    "@atlas-rail/mandate": "workspace:*",
+    "@atlas-rail/solana": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.32.1"
+  },
+  "devDependencies": {
+    "@atlas-rail/typescript-config": "workspace:*",
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
