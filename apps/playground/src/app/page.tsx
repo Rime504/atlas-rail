@@ -25,7 +25,7 @@ export default function LandingPage() {
           <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" aria-hidden="true" />
         </Link>
         <div className="mt-6 flex flex-col items-center gap-3 text-sm font-medium sm:flex-row sm:gap-6">
-          <Link href="/demo" className="inline-flex items-center gap-1.5 text-white/90 hover:text-white">
+          <Link href="/break" className="inline-flex items-center gap-1.5 text-white/90 hover:text-white">
             <ShieldX className="h-4 w-4 text-deny" aria-hidden="true" /> Watch an attack get blocked
           </Link>
           <Link href="/verify" className="inline-flex items-center gap-1.5 text-white/90 hover:text-white">
