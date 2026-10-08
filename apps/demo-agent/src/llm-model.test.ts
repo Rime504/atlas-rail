@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AgentMessage } from './model';
-import { LlmModel, resolveLlmModel } from './llm-model';
+import { bedrockMessagesUrl, glmChatCompletionsUrl, LlmModel, resolveLlmModel } from './llm-model';
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return {
@@ -29,6 +29,20 @@ describe('resolveLlmModel', () => {
   it('accepts an explicit model override for either provider', () => {
     expect(resolveLlmModel({ provider: 'openai', apiKey: 'k', model: 'gpt-x' }).name).toContain('openai:gpt-x');
     expect(resolveLlmModel({ provider: 'anthropic', apiKey: 'k', model: 'claude-x' }).name).toContain('anthropic:claude-x');
+  });
+
+  it('defaults glm-5 and posts to the Z.ai chat-completions URL', () => {
+    const previous = process.env.GLM_BASE_URL;
+    delete process.env.GLM_BASE_URL;
+    try {
+      expect(resolveLlmModel({ provider: 'glm', apiKey: 'k' }).name).toContain('glm:glm-5');
+      expect(glmChatCompletionsUrl()).toBe('https://api.z.ai/api/paas/v4/chat/completions');
+      expect(glmChatCompletionsUrl('https://open.bigmodel.cn/api/paas/v4/')).toBe('https://open.bigmodel.cn/api/paas/v4/chat/completions');
+      expect(glmChatCompletionsUrl('https://api.z.ai/api/paas/v4/chat/completions')).toBe('https://api.z.ai/api/paas/v4/chat/completions');
+    } finally {
+      if (previous === undefined) delete process.env.GLM_BASE_URL;
+      else process.env.GLM_BASE_URL = previous;
+    }
   });
 });
 
@@ -122,5 +136,107 @@ describe('LlmModel — openai', () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ error: 'rate limited' }, false, 429));
     const model = new LlmModel({ provider: 'openai', apiKey: 'k', model: 'gpt-x', fetchImpl });
     await expect(model.next(history)).rejects.toThrow(/OpenAI API error 429/);
+  });
+
+  it('posts OpenAI tool calls to api.openai.com', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { content: 'Finished.' } }] }));
+    const model = new LlmModel({ provider: 'openai', apiKey: 'k', model: 'gpt-x', fetchImpl });
+    await model.next(history);
+    expect(fetchImpl).toHaveBeenCalledWith('https://api.openai.com/v1/chat/completions', expect.objectContaining({ method: 'POST' }));
+  });
+});
+
+describe('LlmModel — glm', () => {
+  it('sends glm-5 to the Z.ai chat-completions endpoint with a bearer key', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        choices: [
+          {
+            message: {
+              content: 'Fetching the bulletin.',
+              tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'fetch_page', arguments: JSON.stringify({ url: 'https://bulletin' }) } }],
+            },
+          },
+        ],
+      }),
+    );
+    const model = resolveLlmModel({ provider: 'glm', apiKey: 'zai-key', fetchImpl });
+    const action = await model.next(history);
+    expect(action).toEqual({ type: 'tool_call', tool: 'fetch_page', url: 'https://bulletin', thought: 'Fetching the bulletin.' });
+    expect(fetchImpl).toHaveBeenCalledWith('https://api.z.ai/api/paas/v4/chat/completions', expect.anything());
+    const init = fetchImpl.mock.calls[0][1] as RequestInit;
+    expect(init.headers).toMatchObject({ authorization: 'Bearer zai-key' });
+    const body = JSON.parse(init.body as string);
+    expect(body.model).toBe('glm-5');
+    expect(body.tools.map((t: { function: { name: string } }) => t.function.name)).toEqual(['fetch_page', 'fetch_paid_resource']);
+  });
+
+  it('honours an explicit chat URL and model id', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { content: 'Done.' } }] }));
+    const model = resolveLlmModel({ provider: 'glm', apiKey: 'k', model: 'glm-5', chatUrl: 'https://open.bigmodel.cn/api/paas/v4', fetchImpl });
+    expect(await model.next(history)).toEqual({ type: 'final', content: 'Done.' });
+    expect(fetchImpl).toHaveBeenCalledWith('https://open.bigmodel.cn/api/paas/v4/chat/completions', expect.anything());
+  });
+
+  it('throws a clear error on a non-OK response', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ error: 'bad key' }, false, 401));
+    const model = new LlmModel({ provider: 'glm', apiKey: 'bad', model: 'glm-5', fetchImpl });
+    await expect(model.next(history)).rejects.toThrow(/GLM API error 401/);
+  });
+});
+
+describe('LlmModel — bedrock', () => {
+  it('defaults the documented Messages API model and us-east-1 URL', () => {
+    const previous = { base: process.env.BEDROCK_BASE_URL, region: process.env.BEDROCK_REGION, aws: process.env.AWS_REGION };
+    delete process.env.BEDROCK_BASE_URL;
+    delete process.env.BEDROCK_REGION;
+    delete process.env.AWS_REGION;
+    try {
+      expect(resolveLlmModel({ provider: 'bedrock', apiKey: 'k' }).name).toContain('bedrock:us.anthropic.claude-sonnet-5');
+      expect(bedrockMessagesUrl()).toBe('https://bedrock-runtime.us-east-1.amazonaws.com/anthropic/v1/messages');
+      expect(bedrockMessagesUrl('https://bedrock-runtime.eu-west-1.amazonaws.com')).toBe('https://bedrock-runtime.eu-west-1.amazonaws.com/anthropic/v1/messages');
+      expect(bedrockMessagesUrl('https://bedrock-runtime.eu-west-1.amazonaws.com/anthropic')).toBe('https://bedrock-runtime.eu-west-1.amazonaws.com/anthropic/v1/messages');
+    } finally {
+      for (const [key, value] of Object.entries({ BEDROCK_BASE_URL: previous.base, BEDROCK_REGION: previous.region, AWS_REGION: previous.aws })) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it('posts the Anthropic messages body to Bedrock with the bearer token as x-api-key', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        content: [
+          { type: 'text', text: 'The bulletin is the page to read.' },
+          { type: 'tool_use', id: 'call_1', name: 'fetch_page', input: { url: 'https://bulletin' } },
+        ],
+      }),
+    );
+    const model = resolveLlmModel({
+      provider: 'bedrock',
+      apiKey: 'bedrock-key',
+      chatUrl: 'https://bedrock-runtime.us-east-1.amazonaws.com',
+      fetchImpl,
+    });
+    const action = await model.next(history);
+    expect(action).toEqual({
+      type: 'tool_call',
+      tool: 'fetch_page',
+      url: 'https://bulletin',
+      thought: 'The bulletin is the page to read.',
+    });
+    expect(fetchImpl).toHaveBeenCalledWith('https://bedrock-runtime.us-east-1.amazonaws.com/anthropic/v1/messages', expect.anything());
+    const init = fetchImpl.mock.calls[0][1] as RequestInit;
+    expect(init.headers).toMatchObject({ 'x-api-key': 'bedrock-key', 'anthropic-version': '2023-06-01' });
+    const body = JSON.parse(init.body as string);
+    expect(body.model).toBe('us.anthropic.claude-sonnet-5');
+    expect(body.tools.map((t: { name: string }) => t.name)).toEqual(['fetch_page', 'fetch_paid_resource']);
+  });
+
+  it('throws a clear error on a non-OK response', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ error: 'denied' }, false, 403));
+    const model = new LlmModel({ provider: 'bedrock', apiKey: 'bad', model: 'us.anthropic.claude-sonnet-5', chatUrl: 'https://bedrock-runtime.us-east-1.amazonaws.com/anthropic/v1/messages', fetchImpl });
+    await expect(model.next(history)).rejects.toThrow(/Bedrock API error 403/);
   });
 });

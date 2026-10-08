@@ -4,7 +4,7 @@
 // times, and anchor_root compute units + fees.
 //
 //   pnpm agent:e2e                 scripted agent (default), real devnet
-//   AGENT_MODE=llm pnpm agent:e2e  real LLM agent — needs ANTHROPIC_API_KEY or OPENAI_API_KEY set
+//   AGENT_MODE=llm pnpm agent:e2e  real LLM agent — needs ANTHROPIC_API_KEY, OPENAI_API_KEY, ZAI_API_KEY, or AWS_BEARER_TOKEN_BEDROCK set
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';

@@ -1,7 +1,8 @@
 /**
- * A genuinely LLM-backed {@link AgentModel}: calls a real provider (Anthropic or OpenAI) with tool
- * calling, instead of {@link ScriptedModel}'s deterministic script (see ./model.ts). Selected with
- * `AGENT_MODE=llm` — see docs/DEMO.md.
+ * A genuinely LLM-backed {@link AgentModel}: calls a real provider (Anthropic, OpenAI, Z.ai GLM,
+ * or Anthropic-on-Amazon-Bedrock) with tool calling, instead of {@link ScriptedModel}'s
+ * deterministic script (see ./model.ts).
+ * Selected with `AGENT_MODE=llm` — see docs/DEMO.md.
  *
  * The model never sees a payment key and cannot sign anything: it can only choose between
  * `fetch_page` (free, pages may carry untrusted/adversarial content) and `fetch_paid_resource`
@@ -11,19 +12,69 @@
  */
 import { AgentAction, AgentMessage, AgentModel } from './model';
 
-export type LlmProvider = 'openai' | 'anthropic';
+export type LlmProvider = 'openai' | 'anthropic' | 'glm' | 'bedrock';
 
 export interface LlmModelOptions {
   provider: LlmProvider;
   apiKey: string;
   /** Required for 'openai' — there is no default we're confident is current. Anthropic defaults to a
-   * current, fast, inexpensive model (suited to repeated e2e/red-team runs). */
+   * current, fast, inexpensive model (suited to repeated e2e/red-team runs). GLM defaults to `glm-5`.
+   * Bedrock defaults to the model id in AWS's Messages API example. */
   model?: string;
+  /** GLM: API base or chat-completions URL. Bedrock: runtime base, `/anthropic` base, or the full
+   * messages URL. Otherwise the provider default. */
+  chatUrl?: string;
   /** Injectable for tests; defaults to the global `fetch`. */
   fetchImpl?: typeof fetch;
 }
 
 export const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
+
+/** Z.ai's OpenAI-compatible GLM API. Documented model id `glm-5`: https://docs.z.ai/guides/llm/glm-5 */
+export const DEFAULT_GLM_MODEL = 'glm-5';
+export const DEFAULT_GLM_BASE_URL = 'https://api.z.ai/api/paas/v4';
+
+/** Env var that holds the key for `provider`. GLM uses a Z.ai key. Bedrock uses the bearer token from the Bedrock console. */
+export function providerApiKeyEnv(provider: LlmProvider): 'ANTHROPIC_API_KEY' | 'OPENAI_API_KEY' | 'ZAI_API_KEY' | 'AWS_BEARER_TOKEN_BEDROCK' {
+  if (provider === 'anthropic') return 'ANTHROPIC_API_KEY';
+  if (provider === 'glm') return 'ZAI_API_KEY';
+  if (provider === 'bedrock') return 'AWS_BEARER_TOKEN_BEDROCK';
+  return 'OPENAI_API_KEY';
+}
+
+/** Model id AWS documents for the Bedrock Anthropic Messages API. Override with `AGENT_MODEL` if that model is not enabled on the account. */
+export const DEFAULT_BEDROCK_MODEL = 'us.anthropic.claude-sonnet-5';
+export const DEFAULT_BEDROCK_REGION = 'us-east-1';
+
+/**
+ * Bedrock's Anthropic Messages route. `override` may be a runtime host
+ * (`https://bedrock-runtime.us-east-1.amazonaws.com`), an `/anthropic` base, or the full messages URL.
+ * With no override, the region comes from `BEDROCK_REGION`, then `AWS_REGION`, then us-east-1.
+ * https://docs.aws.amazon.com/bedrock/latest/userguide/inference-messages-api.html
+ */
+export function bedrockMessagesUrl(override?: string): string {
+  const raw = (override ?? process.env.BEDROCK_BASE_URL ?? '').trim().replace(/\/$/, '');
+  if (raw) {
+    if (raw.endsWith('/v1/messages')) return raw;
+    if (raw.endsWith('/anthropic')) return `${raw}/v1/messages`;
+    return `${raw}/anthropic/v1/messages`;
+  }
+  const region = (process.env.BEDROCK_REGION ?? process.env.AWS_REGION ?? DEFAULT_BEDROCK_REGION).trim();
+  return `https://bedrock-runtime.${region}.amazonaws.com/anthropic/v1/messages`;
+}
+
+export function defaultLlmModel(provider: LlmProvider): string | undefined {
+  if (provider === 'anthropic') return DEFAULT_ANTHROPIC_MODEL;
+  if (provider === 'glm') return DEFAULT_GLM_MODEL;
+  if (provider === 'bedrock') return DEFAULT_BEDROCK_MODEL;
+  return undefined;
+}
+
+/** Accepts either the API base or a full `/chat/completions` URL. */
+export function glmChatCompletionsUrl(override?: string): string {
+  const raw = (override ?? process.env.GLM_BASE_URL ?? DEFAULT_GLM_BASE_URL).trim().replace(/\/$/, '');
+  return raw.endsWith('/chat/completions') ? raw : `${raw}/chat/completions`;
+}
 
 const SYSTEM_PROMPT =
   'You are an autonomous purchasing agent. You have two tools: fetch_page(url) for free web pages, ' +
@@ -51,12 +102,20 @@ const TOOLS: ToolSpec[] = [
 ];
 
 /** Throws if `provider` is 'openai' and no `model` was given — we never guess an OpenAI model id. */
-export function resolveLlmModel(opts: { provider: LlmProvider; apiKey: string; model?: string; fetchImpl?: typeof fetch }): LlmModel {
-  const model = opts.model ?? (opts.provider === 'anthropic' ? DEFAULT_ANTHROPIC_MODEL : undefined);
+export function resolveLlmModel(opts: LlmModelOptions): LlmModel {
+  const model = opts.model ?? defaultLlmModel(opts.provider);
   if (!model) {
     throw new Error('AGENT_MODEL is required when AGENT_PROVIDER=openai (no default model id is assumed to be current).');
   }
-  return new LlmModel({ ...opts, model });
+  const chatUrl =
+    opts.provider === 'glm'
+      ? glmChatCompletionsUrl(opts.chatUrl)
+      : opts.provider === 'openai'
+        ? 'https://api.openai.com/v1/chat/completions'
+        : opts.provider === 'bedrock'
+          ? bedrockMessagesUrl(opts.chatUrl)
+          : undefined;
+  return new LlmModel({ ...opts, model, chatUrl });
 }
 
 type AnthropicContentBlock = { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: { url?: string } };
@@ -92,7 +151,7 @@ export class LlmModel implements AgentModel {
   private pendingToolUseId: string | null = null;
   private seeded = false;
 
-  constructor(private readonly opts: { provider: LlmProvider; apiKey: string; model: string; fetchImpl?: typeof fetch }) {
+  constructor(private readonly opts: { provider: LlmProvider; apiKey: string; model: string; chatUrl?: string; fetchImpl?: typeof fetch }) {
     this.name = `llm (${opts.provider}:${opts.model})`;
     this.fetchImpl = opts.fetchImpl ?? fetch;
   }
@@ -109,11 +168,13 @@ export class LlmModel implements AgentModel {
       this.openaiTurns.push({ role: 'tool', tool_call_id: this.pendingToolUseId, content: last.content });
       this.pendingToolUseId = null;
     }
-    return this.opts.provider === 'anthropic' ? this.callAnthropic() : this.callOpenAi();
+    return this.opts.provider === 'openai' || this.opts.provider === 'glm' ? this.callOpenAiCompatible() : this.callAnthropic();
   }
 
   private async callAnthropic(): Promise<AgentAction> {
-    const res = await this.fetchImpl('https://api.anthropic.com/v1/messages', {
+    const bedrock = this.opts.provider === 'bedrock';
+    const url = bedrock ? (this.opts.chatUrl ?? bedrockMessagesUrl()) : 'https://api.anthropic.com/v1/messages';
+    const res = await this.fetchImpl(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': this.opts.apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
@@ -128,7 +189,7 @@ export class LlmModel implements AgentModel {
         })),
       }),
     });
-    if (!res.ok) throw new Error(`Anthropic API error ${res.status}: ${await res.text().catch(() => '<no body>')}`);
+    if (!res.ok) throw new Error(`${bedrock ? 'Bedrock' : 'Anthropic'} API error ${res.status}: ${await res.text().catch(() => '<no body>')}`);
     const data = (await res.json()) as { content: AnthropicContentBlock[] };
     this.anthropicTurns.push({ role: 'assistant', content: data.content });
     const toolUse = data.content.find((b): b is Extract<AnthropicContentBlock, { type: 'tool_use' }> => b.type === 'tool_use');
@@ -140,8 +201,10 @@ export class LlmModel implements AgentModel {
     return { type: 'final', content: text || 'Done.' };
   }
 
-  private async callOpenAi(): Promise<AgentAction> {
-    const res = await this.fetchImpl('https://api.openai.com/v1/chat/completions', {
+  private async callOpenAiCompatible(): Promise<AgentAction> {
+    const glm = this.opts.provider === 'glm';
+    const url = this.opts.chatUrl ?? (glm ? glmChatCompletionsUrl() : 'https://api.openai.com/v1/chat/completions');
+    const res = await this.fetchImpl(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${this.opts.apiKey}` },
       body: JSON.stringify({
@@ -153,7 +216,7 @@ export class LlmModel implements AgentModel {
         })),
       }),
     });
-    if (!res.ok) throw new Error(`OpenAI API error ${res.status}: ${await res.text().catch(() => '<no body>')}`);
+    if (!res.ok) throw new Error(`${glm ? 'GLM' : 'OpenAI'} API error ${res.status}: ${await res.text().catch(() => '<no body>')}`);
     const data = (await res.json()) as { choices: Array<{ message: { content: string | null; tool_calls?: OpenAiToolCall[] } }> };
     const message = data.choices[0]?.message;
     if (!message) throw new Error('OpenAI API returned no choices');

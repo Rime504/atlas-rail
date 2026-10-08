@@ -122,10 +122,35 @@ export class AgentGateService {
 
     const limits = mandate.scope.limits;
     const spend = await store.spend.totals(mandate.id, now, limits.windowSeconds);
-    let revoked = record.revocation ? { revokedAt: record.revocation.revokedAt, reason: record.revocation.reason } : null;
-    if (!revoked && this.deps.onchainRevocationCheck) {
-      revoked = await this.deps.onchainRevocationCheck(record.mandateHash);
-    }
+    const localRevoked = record.revocation ? { revokedAt: record.revocation.revokedAt, reason: record.revocation.reason } : null;
+
+    // Pass 1 uses only the database revocation, so a payment the local rules already deny does not
+    // wait on a cluster simulation. An allowed payment needs both the on-chain revoke read and the
+    // simulation; those two RPCs do not depend on each other, so they run together.
+    const prelim = evaluateGate(mandate, offer, {
+      now,
+      revoked: localRevoked,
+      spend,
+      simulation: null,
+      requireSimulation: false,
+      approval,
+    });
+    const chainCheck =
+      !localRevoked && this.deps.onchainRevocationCheck ? this.deps.onchainRevocationCheck(record.mandateHash) : Promise.resolve(null);
+    const simulationCheck =
+      prelim.decision !== 'DENY' && request.transactionBase64 && this.deps.simulator
+        ? this.deps.simulator.simulate({
+            transactionBase64: request.transactionBase64,
+            offer,
+            payer: mandate.agent.publicKey,
+          })
+        : Promise.resolve(null);
+    const [chainRevoked, speculativeSimulation] = await Promise.all([chainCheck, simulationCheck]);
+    const revoked = localRevoked ?? chainRevoked;
+    // A positive on-chain revocation denies on its own. Drop the speculative simulation so the
+    // recorded decision matches the path that learned about the revocation first.
+    const simulation = revoked ? null : speculativeSimulation;
+
     const baseContext: GateContext = {
       now,
       revoked,
@@ -134,17 +159,6 @@ export class AgentGateService {
       requireSimulation: this.requireSimulation,
       approval,
     };
-
-    // Pass 1: everything that does not need the transaction. Saves an RPC round trip for clear denials.
-    const prelim = evaluateGate(mandate, offer, { ...baseContext, requireSimulation: false });
-    let simulation: GateSimulation | null = null;
-    if (prelim.decision !== 'DENY' && request.transactionBase64 && this.deps.simulator) {
-      simulation = await this.deps.simulator.simulate({
-        transactionBase64: request.transactionBase64,
-        offer,
-        payer: mandate.agent.publicKey,
-      });
-    }
 
     // Pass 2: the recorded decision, including the simulation of the exact transaction.
     const context: GateContext = { ...baseContext, simulation };
