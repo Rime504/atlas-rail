@@ -1,13 +1,10 @@
 import './globals.css';
 import type { Metadata } from 'next';
-import { Inter, Space_Grotesk } from 'next/font/google';
+import localFont from 'next/font/local';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
-const spaceGrotesk = Space_Grotesk({
-  subsets: ['latin'],
-  variable: '--font-space-grotesk',
-  display: 'swap',
-});
+// Latin variable fonts checked in (src/fonts, SIL OFL): the build never fetches from Google Fonts.
+const inter = localFont({ src: '../fonts/inter.woff2', weight: '100 900', variable: '--font-inter', display: 'swap' });
+const spaceGrotesk = localFont({ src: '../fonts/space-grotesk.woff2', weight: '300 700', variable: '--font-space-grotesk', display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'Atlas Rail — Your AI agent can be tricked. Your treasury shouldn’t be.',
