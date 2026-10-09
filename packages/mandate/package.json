@@ -1,7 +1,6 @@
 {
   "name": "@atlas-rail/mandate",
   "version": "0.1.0",
-  "private": true,
   "description": "Agent Mandates: signed delegated spending authority, the policy gate, and decision evidence for x402 agent payments.",
   "license": "Apache-2.0",
   "main": "./dist/index.js",
@@ -21,7 +20,8 @@
     "dist",
     "schema",
     "testing.d.ts",
-    "testing.js"
+    "testing.js",
+    "!dist/**/*.test.*"
   ],
   "scripts": {
     "build": "tsc --build",
@@ -35,7 +35,8 @@
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.8.0",
     "@scure/base": "^1.2.6",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.24.6"
   },
   "devDependencies": {
     "@atlas-rail/typescript-config": "workspace:*",
@@ -43,7 +44,14 @@
     "fast-check": "^4.1.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8",
-    "zod-to-json-schema": "^3.24.6"
+    "vitest": "^2.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rime504/atlas-rail.git",
+    "directory": "packages/mandate"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

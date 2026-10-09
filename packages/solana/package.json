@@ -1,7 +1,7 @@
 {
   "name": "@atlas-rail/solana",
   "version": "0.1.0",
-  "private": true,
+  "license": "Apache-2.0",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -34,7 +34,17 @@
     "vitest": "^2.1.8"
   },
   "files": [
+    "dist",
     "testing.d.ts",
-    "testing.js"
-  ]
+    "testing.js",
+    "!dist/**/*.test.*"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rime504/atlas-rail.git",
+    "directory": "packages/solana"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -1,7 +1,6 @@
 {
   "name": "@atlas-rail/agent",
   "version": "0.1.0",
-  "private": true,
   "description": "Give an AI agent a payment-capable fetch that can only pay what its signed Atlas Rail mandate allows.",
   "license": "Apache-2.0",
   "main": "./dist/index.js",
@@ -12,7 +11,10 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "!dist/**/*.test.*"
+  ],
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --noEmit",
@@ -30,5 +32,13 @@
     "@types/node": "^22.10.1",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rime504/atlas-rail.git",
+    "directory": "packages/agent"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
