@@ -1,11 +1,11 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import localFont from 'next/font/local';
 
-// One font family, one weight subset: next/font/google self-hosts whatever we ask for, and extra
-// weights/families cost real mobile CPU time at hydration (measured with Lighthouse — see
-// docs/PROGRESS.md). Inter alone, at the weights this page actually uses, keeps the budget tight.
-const inter = Inter({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-inter', display: 'swap' });
+// One font family: extra families cost real mobile CPU time at hydration (measured with Lighthouse —
+// see docs/PROGRESS.md). Inter's latin variable font is checked in (src/fonts, SIL OFL) so the build
+// never depends on fetching from Google Fonts, which made CI flaky.
+const inter = localFont({ src: '../fonts/inter.woff2', weight: '100 900', variable: '--font-inter', display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'Atlas Rail Playground',
