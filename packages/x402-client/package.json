@@ -1,7 +1,6 @@
 {
   "name": "@atlas-rail/x402",
   "version": "0.1.0",
-  "private": true,
   "description": "Drop-in fetch for AI agents: catches x402 402 responses, asks the Atlas Rail mandate gate, and only then signs and pays.",
   "license": "Apache-2.0",
   "main": "./dist/index.js",
@@ -19,7 +18,8 @@
   "files": [
     "dist",
     "testkit.js",
-    "testkit.d.ts"
+    "testkit.d.ts",
+    "!dist/**/*.test.*"
   ],
   "scripts": {
     "build": "tsc --build",
@@ -38,5 +38,13 @@
     "@types/node": "^22.10.1",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rime504/atlas-rail.git",
+    "directory": "packages/x402-client"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
