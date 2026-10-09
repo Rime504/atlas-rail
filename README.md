@@ -32,6 +32,12 @@ An open standard for delegated spending authority, a gate any agent or wallet ca
 - **Humans approve the edge cases.** Above a threshold, or for chosen resources, a person must approve that exact payment.
 - **Every payment proves itself on Solana.** Each allowed payment names its own receipt in its on-chain memo. Anyone can paste the transaction into [Verify a payment](https://atlas-rail-playground.vercel.app/verify) and check, from the chain alone, who signed the mandate, the limits, the decision and the on-chain anchor.
 
+## Who it's for
+
+- **Agent builders**, who want their agent to pay for APIs without handing it a wallet it can drain.
+- **Wallets and agent platforms**, which want to offer users safe spending limits for their agents without building the security themselves.
+- **Sellers and API providers**, who want proof that a paying agent was actually allowed to pay.
+
 ## See it in 60 seconds
 
 The [playground](https://atlas-rail-playground.vercel.app) runs the real gate and receipt code, no signup:
@@ -151,6 +157,18 @@ Three layers:
 
 The red team **assumes the agent is fully compromised on every attempt**: it sends any offer, transaction bytes or gate request the attacker wants, replays and tampers freely, and always tries to sign. It is stopped because it never holds the key.
 
+## Business model (planned)
+
+These are plans: nothing below earns money today.
+
+- **The standard and the verifier are free and open.** Anyone can read the mandate format and check any receipt. Adoption comes first.
+- **Hosted gate (paid).** Teams that don't want to run the gate themselves will pay per decision or a monthly plan.
+- **Team features (paid).** Approvals from your phone, audit exports and spending reports for finance and compliance.
+- **Licensing.** Wallets and agent platforms will be able to embed the gate in their own product.
+- **Later: verification and agent risk scores.** Sellers will be able to check an agent's payment history before accepting a payment.
+
+The more sellers ask for proof, the more agents need Atlas Rail, and the more agents carry proof, the more sellers can ask for it.
+
 ## Where the key lives
 
 The guarantee depends on one thing: **the agent's key must live outside the agent's process.** A compromised agent that can read its own key can sign whatever it likes, and no gate can stop that.
@@ -187,6 +205,15 @@ Report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
 | Merkle root | One short hash that commits to a whole batch of receipts; any one receipt can be proven to be in the batch. |
 | Devnet | Solana's public test network. Tokens there have no value. |
 | PDA | A program-derived address: an on-chain account owned by a program, here the mandate's record. |
+| Program | Code deployed on Solana. Atlas Rail's program records mandates and receipt batches. |
+| Decision | The gate's answer to one payment: ALLOW, DENY or ESCALATE (send to a human). |
+| Verifier | The tool that checks a receipt or a payment: [/verify](https://atlas-rail-playground.vercel.app/verify) or `atlas verify`. |
+| MCP | Model Context Protocol: a standard way to give an AI assistant tools, here a `pay` tool. |
+| SPL token | A token on Solana's standard token program. USDC on Solana is one. |
+| Spending allowance | An amount a token account lets another key spend. The token program itself enforces it. |
+| Sub-agent | An agent started by another agent to do part of its job. |
+| Mainnet | Solana's real network, where tokens have real value. Atlas Rail refuses it today. |
+| npm | The public registry JavaScript packages are installed from. |
 
 ## Repo map
 
@@ -221,16 +248,30 @@ Report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
 
 ## Status and roadmap
 
-**Built:** the mandate format and 15-rule gate, three-party signing, human escalation bound to exact transaction bytes, receipts with on-chain Merkle anchoring, unknown payment outcomes resolved from the chain (a lost answer is settled or released by what the chain shows, never by the agent's word), self-proving payments (receipt id in the memo), the public receipt store, `/verify` and `atlas verify --tx`, the on-chain mandate registry, the red team and concurrency proof, the agent signer as a separate service, `wrapFetch` and an MCP `pay` tool, and the playground.
+### Built and tested today
 
-**Next:**
+- The mandate format, signed by the owner, an independent approver and the agent.
+- A 15-rule gate before any signature. The wallet refuses anything the gate did not approve, byte for byte.
+- Human approval bound to one exact payment: it can't be reused for a different amount, payee or payment.
+- Receipts, batched and anchored on Solana (`anchor_root`).
+- Self-proving payments: each allowed payment names its own receipt in its on-chain memo.
+- Verify any payment from its transaction, at [/verify](https://atlas-rail-playground.vercel.app/verify) or with `atlas verify --tx`, backed by a public receipt store that only accepts receipts that pass every check.
+- The on-chain mandate registry: registration and revocation recorded on devnet.
+- Unknown payment outcomes resolved from the chain, never from the agent's word.
+- The agent's key in a separate signer service, reached only over HTTP in `pnpm demo`.
+- The red team (51 attack types, $0.00 moved outside the mandate) and the concurrency proof.
+- `wrapFetch` and an MCP `pay` tool.
+- The playground, running the real gate and receipt code.
 
-- A hard on-chain cap with native SPL token allowances, so the token program itself refuses an overspend.
-- Budgets per job and per sub-agent, not only per agent.
-- Pinning the program version a mandate was registered under.
-- A solo mode where the approver is your own phone.
-- An optional red team driven by a real AI model.
-- Publishing `@atlas-rail/agent` (and the `@atlas-rail/x402` client it wraps) to npm.
+### After the hackathon, in this order
+
+1. **A hard cap enforced by Solana itself.** The agent will spend from a dedicated account through an SPL token spending allowance, so even a bypassed gate can't overspend. The on-chain work will be led by Divyesh.
+2. **Budgets per task and per sub-agent.** Each job, and each helper agent, will get its own budget inside the mandate.
+3. **Pinning the program version.** A mandate will name the exact program version it trusts.
+4. **Solo mode.** The approver will be your own phone.
+5. **Publishing `@atlas-rail/agent` on npm.**
+6. **An external security audit, then mainnet.** Not before.
+7. **First design partners.** We plan to invite agent builders and wallets to test it on devnet.
 
 ## Also in this repository: treasury payouts
 

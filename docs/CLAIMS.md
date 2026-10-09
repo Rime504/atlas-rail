@@ -35,6 +35,11 @@ Status: **Sourced** (backed as written), **Fixed** (wording changed in this audi
 | A blocked attempt has a signed decision as its proof | `/verify`, `/break` | `proveBlockedAttempt`; published record `dec_01M4DCM6QVB8HF8QX6399TAK9K` | Sourced |
 | DENY produces "a receipt" | PRODUCT_SPEC | A denial produces a signed decision record; receipts require settlement | Fixed |
 | Price creep: above tolerance goes to a human, above the hard max is refused | README, playground step 5, THREAT_MODEL | `PRICE_LIMIT` rule; `amounts.test.ts`; red-team C1–C4 | Sourced |
+| Human approval is bound to one exact payment and can't be reused | README (Built), THREAT_MODEL | Approvals are bound to the offer hash and consumed once (`gate-service.ts`, `approvals.consume`); red-team H1–H3, K2 | Sourced |
+| The public receipt store only accepts receipts that pass every check | README (Built) | `publishReceipt` (`apps/playground/src/lib/receipt-store.ts`); `receipt-store.test.ts` (refuses un-anchored and tampered receipts) | Sourced |
+| On-chain mandate registry: registration and revocation recorded on devnet | README (Built), How it works | Program `CnGoTE5B…LcY4k`; [grant tx](https://explorer.solana.com/tx/5uqDSZfxEGgLcDjdsooG8nASoqDexxdqDZf73rDmWzCw1anctHFHbgiqP4LSiHVfspktBtBcASTemzKLXYeVG8zq?cluster=devnet) and [revoke tx](https://explorer.solana.com/tx/4ysaGitd9eJL6kwGpPHtLmUJDYcmzkhvnWnLHDJ4aGErAPmsBNr2sPsoUjLX8QqWn4YxJLgBgpM3Dj8gUehs5PeE?cluster=devnet) in [reports/e2e-2026-10-08.md](../reports/e2e-2026-10-08.md) | Sourced |
+| `wrapFetch` and an MCP `pay` tool | README (Built), INTEGRATE | `packages/agent/src/index.test.ts` (pays within the mandate; `AtlasDenied` and no signature otherwise); `apps/mcp/src/mcp.test.ts` (stdio smoke test) | Sourced |
+| Business model and roadmap | README | Stated as plans ("planned", "will"); no revenue, users or partners are claimed | Not a factual claim |
 | Revocation takes effect on the very next payment | README, playground step 8, site | `MANDATE_NOT_REVOKED`; red-team K1, K2; e2e scene 6 | Sourced (with the 120 s authorization window stated in THREAT_MODEL and README) |
 | Devnet only; the server refuses mainnet RPC endpoints | README, site, THREAT_MODEL | `assertNotMainnet` (`packages/solana`), env validation; ADR 0004 | Sourced |
 | Not audited | README, site, THREAT_MODEL | Statement of fact | Sourced |
