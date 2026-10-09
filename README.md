@@ -1,368 +1,251 @@
 # Atlas Rail
 
-**Spending rules and verifiable receipts for AI agents that pay on Solana.**
-
-### 🎮 [Try the live playground — no signup, nothing to install](https://atlas-rail-playground.vercel.app)
-
-![An 8-step walkthrough of the Atlas Rail playground: signing a mandate on Solana, a normal payment allowed, a prompt-injection attack blocked, a seller price spike escalated to a human, and a verified receipt](docs/assets/playground-demo.gif)
+**The authorization layer for AI agent payments on Solana.**
+An open standard for delegated spending authority, a gate any agent or wallet can plug in, and proof anyone can check.
 
 [![CI](https://github.com/Rime504/atlas-rail/actions/workflows/ci.yml/badge.svg)](https://github.com/Rime504/atlas-rail/actions)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Solana](https://img.shields.io/badge/Solana-Devnet_Only-14F195?logo=solana&logoColor=white)](https://solana.com)
-[![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Node](https://img.shields.io/badge/Node-22_LTS-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![Solana devnet only](https://img.shields.io/badge/Solana-devnet_only-14F195?logo=solana&logoColor=white)](#security)
 
-**What it does, in 30 seconds:** AI agents can now pay for things on their own — with [x402](https://x402.org), an API answers `402 Payment Required` and the agent pays. That's an open wallet: a prompt-injected or buggy agent pays an attacker as readily as a real seller. Atlas Rail puts a **policy gate outside the agent's own reasoning**: a person signs the agent a mandate (budget, allowed recipients and resources, a human-approval threshold), the gate checks every payment against it *before* anything is signed, and every allowed payment leaves a receipt — bound to the mandate and the decision, Merkle-anchored on Solana devnet — that anyone can verify offline with `atlas verify`, without trusting Atlas Rail itself.
+### [▶ Try it](https://atlas-rail-playground.vercel.app) · [🔍 Verify a payment](https://atlas-rail-playground.vercel.app/verify) · [⚡ Integrate](#c-integrate-it)
 
-```mermaid
-graph LR
-    Agent[AI Agent] -->|"402 offer"| Gate[Policy Gate]
-    Gate -->|ALLOW / DENY / ESCALATE| Agent
-    Gate -.->|above threshold| Human[Owner / Approver]
-    Gate -->|signed mandate + revocation| Registry["Mandate Registry (atlas-mandate program)"]
-    Gate -->|bound receipt| Receipts[Receipts]
-    Receipts -->|Merkle root via anchor_root| Registry
-    Registry -->|on-chain| Solana[(Solana Devnet)]
-    Verifier["atlas verify (anyone)"] -->|receipt + chain read| Solana
-```
+- **The standard:** a mandate signed by the owner, an independent approver and the agent, and a proof-of-permission every payment carries ([spec](spec/agent-mandate-v0.1.md)).
+- **The gate:** checks every payment against the mandate before any wallet signs. One line to integrate ([`wrapFetch`](docs/INTEGRATE.md#1-wrap-fetch-atlas-railagent)) or one MCP tool ([`pay`](docs/INTEGRATE.md#2-a-pay-tool-for-ai-assistants-atlas-rail-mcp)).
+- **The proof:** every payment names its own receipt on Solana. Anyone can verify it at [/verify](https://atlas-rail-playground.vercel.app/verify) or with `atlas verify --tx`, without trusting us.
 
-- **Devnet program:** `CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k` — [view on Solana Explorer](https://explorer.solana.com/address/CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k?cluster=devnet)
-- **Run it locally in one command:** `pnpm demo:offline` (no Docker, no devnet needed) — six scripted scenes: Grant → Pay → **Attack** (a prompt injection the gate blocks) → **Escalate** (a human approves from a phone) → Prove → Revoke. Runbook: [`docs/DEMO.md`](docs/DEMO.md).
-- **Team:** Rime and Kamelia (co-founders), Divyesh (on-chain).
-- **Marketing site:** [atlas-rail-site.vercel.app](https://atlas-rail-site.vercel.app/)
+> [**51 attack types · 1,014 attempts · $0.00 moved, assuming a fully compromised agent**](reports/redteam-2026-10-08.md)<br>
+> [**100 simultaneous payments vs a $5 cap → $5.00 (with our lock removed: $10.00)**](reports/redteam-2026-10-08.md#concurrency-100-simultaneous-payments-against-a-5-cap)<br>
+> [**Pay, then verify from the chain on real devnet: PROVEN, 3 of 3**](reports/playground-live-2026-10-08.md)
 
-**Status:** open source (Apache 2.0), Solana devnet only, 285 automated tests. The mandate format is a draft proposal ([`spec/agent-mandate-v0.1.md`](spec/agent-mandate-v0.1.md)), not a standard, and the code has not been audited.
+![The Atlas Rail playground: a mandate signed on Solana, a normal payment allowed, a prompt-injection attack blocked, a seller price spike sent to a human, and a receipt verified](docs/assets/playground-demo.gif)
 
-Underneath, the same engine also governs ordinary treasury payouts: spend limits, multi-person approval, pre-flight simulation, an append-only audit ledger and signed webhooks. See [Treasury payouts](#treasury-payouts).
+## The problem
 
----
+- AI agents can now pay for things on their own: an API answers `402 Payment Required` ([x402](https://x402.org)) and the agent pays.
+- An agent can be tricked (a prompt injection on a web page) or overcharged (a seller quietly raising its price), and it pays anyway.
+- Afterwards, nobody can prove what the agent was actually allowed to do.
 
-## Table of Contents
+## What Atlas Rail does
 
-- [Agent Mandates](#agent-mandates)
-- [Safety Boundary](#-safety-boundary--read-this-first)
-- [Treasury payouts](#treasury-payouts)
-  - [The Problem](#the-problem-a-wallet-is-not-a-treasury)
-  - [What Atlas Rail Is](#what-atlas-rail-is)
-  - [Where It Sits in the Stack](#where-it-sits-in-the-stack)
-  - [How a Payout Actually Moves](#how-a-payout-actually-moves)
-  - [Core Capabilities](#core-capabilities)
-- [Architecture](#architecture)
-- [Repository Layout](#repository-layout)
-- [Quick Start](#quick-start)
-- [Who This Is For](#who-this-is-for)
-- [Roadmap](#roadmap)
-- [Security](#security)
-- [Contributing](#contributing)
-- [License](#license)
+- **A signed mandate.** The owner, an independent approver and the agent itself each sign one document: which sellers, which resources, how much per payment, per hour and in total.
+- **A 15-rule gate before any signature.** Every payment is checked against the mandate before the agent's wallet will sign it. The wallet refuses anything the gate did not approve, byte for byte.
+- **Humans approve the edge cases.** Above a threshold, or for chosen resources, a person must approve that exact payment.
+- **Every payment proves itself on Solana.** Each allowed payment names its own receipt in its on-chain memo. Anyone can paste the transaction into [Verify a payment](https://atlas-rail-playground.vercel.app/verify) and check, from the chain alone, who signed the mandate, the limits, the decision and the on-chain anchor.
 
----
+## See it in 60 seconds
 
-## Agent Mandates
+The [playground](https://atlas-rail-playground.vercel.app) runs the real gate and receipt code, no signup:
 
-x402 lets an agent pay whatever a server's `402 Payment Required` asks. For a human clicking a button that's fine; for an autonomous agent it's an open wallet — a prompt-injected or buggy agent pays an attacker's address as readily as a real one. Agent Mandates is Atlas Rail's answer: a signed, revocable, per-agent spending authority, enforced by a policy gate that sits *outside* the agent's own reasoning, with every decision recorded and every payment provable after the fact. It's a draft proposal — see [`spec/agent-mandate-v0.1.md`](spec/agent-mandate-v0.1.md) for the full data model, canonicalisation, verification algorithm and threat table — implemented end to end here as `packages/mandate`, `packages/receipt`, and `@atlas-rail/x402`.
+1. **Meet the agent:** a research agent with a wallet. Optionally switch on real Solana devnet.
+2. **Give it rules:** owner, approver and agent sign the mandate; it is registered on-chain.
+3. **A normal payment:** $0.01 to an approved seller, allowed.
+4. **An attack:** a web page tells the agent to pay a stranger 500 USDC. Blocked before anything is signed.
+5. **Price spike:** an approved seller raises its price. A small rise goes to a human; a 5x spike is refused.
+6. **You are the human:** approve or reject the escalated payment.
+7. **Proof:** every check on the receipt, and a button to verify the payment from the chain.
+8. **Revoke:** the owner revokes; the very next payment is refused.
 
-**Devnet only. No real funds move. Atlas Rail never takes custody of production keys** — same boundary as the rest of this README, enforced the same way (see [Safety Boundary](#-safety-boundary--read-this-first) above).
+Then [try to break it](https://atlas-rail-playground.vercel.app/break): take over the agent and attack it yourself.
 
-```mermaid
-sequenceDiagram
-    participant Agent
-    participant Gate as Policy Gate (Atlas Rail)
-    participant Human as Owner / Approver
-    participant Seller as x402 seller
+## Quickstart
 
-    Agent->>Seller: GET /resource
-    Seller-->>Agent: 402 Payment Required (offer)
-    Agent->>Gate: evaluate(mandate, offer) — agent-signed request
-    alt within mandate scope & budget
-        Gate-->>Agent: ALLOW + GateAuthorization (bound to tx hash)
-        Agent->>Seller: pay (signed only because the authorization is valid)
-        Seller-->>Agent: 200 OK
-        Gate->>Gate: bound receipt issued, later anchored on devnet
-    else above the human-approval threshold
-        Gate-->>Human: ESCALATE — approval request (console / phone)
-        Human-->>Gate: approve (bound to this exact offer, single-use, expires)
-        Gate-->>Agent: ALLOW + GateAuthorization
-        Agent->>Seller: pay
-    else outside scope, over the hard ceiling, or revoked
-        Gate-->>Agent: DENY (no signature ever produced)
-    end
-```
+### (a) Just look
 
-A mandate names one agent key, an allow-list of recipients and resource URL patterns, a hard per-payment ceiling, a rolling autonomous budget, a lifetime cap, and a threshold above which a human must approve. It is only active once the owner, an independent approver, and the agent itself (proof of possession) have each signed a hash-chained delegation. The gate re-evaluates every rule on every request — network, asset, recipient, resource, three separate budget checks, a pre-flight transaction simulation, and the escalation threshold — and the agent's signer is wrapped so it **physically cannot sign** a transaction without a fresh, hash-bound authorization from the gate. Every decision, allow or deny or escalate, is written to the same append-only audit ledger as everything else in Atlas Rail.
+Open [atlas-rail-playground.vercel.app](https://atlas-rail-playground.vercel.app). To check a real devnet payment, open [/verify](https://atlas-rail-playground.vercel.app/verify) and press any of the three examples.
 
-**60-second quickstart:**
+### (b) Run everything locally
 
-```bash
-pnpm demo            # full stack incl. the console, needs Docker for Postgres/Redis
-pnpm demo:offline     # no Docker, no real devnet: embedded Postgres + in-memory Solana cluster
-```
+You need **Node.js 22 or newer**, **pnpm 9** and **Git**. No Docker and no devnet funds are needed for this path.
 
-Either command seeds two agent mandates and runs six scripted scenes end to end — grant, pay, a simulated prompt-injection/wallet-drain attempt that the gate blocks, a $40 request that escalates to a human (approve it from your phone at `/approvals`), offline receipt verification (`atlas verify`), and revocation — then leaves the console open at `http://localhost:3000/decisions` so you can watch it live. See [`docs/DEMO.md`](docs/DEMO.md) for the full runbook, funding options and troubleshooting.
-
-### On-chain mandate registry (devnet)
-
-A mandate's existence and revocation are also recorded on-chain, so anyone can check them independently of Atlas Rail's own database — and, behind `ATLAS_ONCHAIN=1`, the gate itself checks the on-chain record, not just its own database. See [`programs/atlas-mandate`](programs/atlas-mandate) for the Anchor program (`create_mandate`, `revoke_mandate`, `anchor_root`).
-
-- **Program ID (devnet):** `CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k` — [view on Solana Explorer](https://explorer.solana.com/address/CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k?cluster=devnet)
-- 10 Rust unit tests + 27 TypeScript integration tests (LiteSVM) pass; see the program's own README for details.
-- Wired into the policy gate (`ATLAS_ONCHAIN=1`: on-chain revocation is checked, mandates are registered/revoked on-chain) and into receipt anchoring (`ATLAS_ANCHOR_ROOT=1`, requires `ATLAS_ONCHAIN=1`: receipts are anchored via the registry's per-mandate `anchor_root` instruction instead of an SPL Memo). Both default off; the demo and the playground work identically without them.
-
-## ⚠️ Safety Boundary — Read This First
-
-> **Atlas Rail v1 is a Solana DEVNET-only policy sandbox. It is not connected to mainnet-beta, and it does not custody real funds.**
-
-This isn't a disclaimer buried in the fine print — it's enforced in code, at every layer:
-
-| Layer | Enforcement |
+| OS | Install |
 |---|---|
-| Environment validation | Server refuses to boot if `SOLANA_RPC_URL` contains `mainnet` |
-| Solana RPC client | `assertNotMainnet()` guard rejects any mainnet-beta endpoint at construction time |
-| Signing | `MockDevnetSignerAdapter` generates ephemeral, disposable devnet keypairs — it hard-throws if `NODE_ENV=production` or `ATLAS_ALLOW_MOCK_SIGNER` isn't explicitly `true` |
-| Key custody | Atlas Rail **never** collects, stores, transmits, or logs a private key, in any environment |
-| UI | Every screen carries a persistent "DEVNET ONLY — Simulation environment" banner |
-
-Production key handling is intentionally left to an `ExternalCustodySignerAdapter` interface, documented as a stub — you wire it up to your own KMS, HSM, or MPC custody provider. Shipping this against real funds requires your own security audit, legal review, and a real signer integration. We say that plainly because a treasury tool that hides its limitations is worse than one that has none — see [`docs/security/threat-model.md`](docs/security/threat-model.md) and [`docs/adr/0003-signer-boundary.md`](docs/adr/0003-signer-boundary.md) for the full reasoning.
-
----
-
-## Treasury payouts
-
-The original core of Atlas Rail, which the agent layer is built on.
-
-### The Problem: A Wallet Is Not a Treasury
-
-Solana settles a token transfer in about a second for a fraction of a cent. That's the easy part, and it's been solved for years. The part that's still genuinely hard — the part every fintech and Web3 payroll team rebuilds from scratch — is everything *around* the transfer:
-
-- Who is allowed to initiate a $50,000 vendor payout, and who has to independently sign off on it before it happens?
-- What stops someone from quietly paying an unverified wallet, or blowing through a monthly spend limit?
-- How do you know a transaction will actually succeed — hitting the right program IDs, the right token account — *before* you commit to it on-chain?
-- If a request gets retried by a flaky network client, how do you guarantee the recipient doesn't get paid twice?
-- When the auditor or the board asks "show me everything that happened to this payment," what do you hand them?
-- How does your accounting system find out a payout cleared, without you polling an API in a loop?
-
-A raw wallet — even a well-run multisig — answers none of these questions on its own. Teams either bolt together a policy layer in-house (slowly, and usually without an audit trail worth showing a regulator) or accept the risk. Atlas Rail is that policy layer, already built, open source, and yours to run.
-
-### What Atlas Rail Is
-
-Atlas Rail is a **policy-controlled treasury and stablecoin payout platform for Solana**. It is not a wallet, not a custodian, and not a multisig implementation. It's the orchestration and governance layer that sits in front of whichever signer you already trust — a mock signer for development, and a pluggable adapter interface for your HSM, MPC custody provider, or hardware-backed key management in production.
-
-Every payout that passes through Atlas Rail is:
-
-1. **Evaluated** against a declarative, versioned spend policy (limits, recipient risk, program allowlists).
-2. **Routed** through an explicit approval queue with independent-approver enforcement.
-3. **Simulated** against Solana devnet before anything is signed, with every instruction's program ID checked against an allowlist.
-4. **Executed** through a durable background worker — not inline in an HTTP request — with retries and confirmation polling.
-5. **Recorded** to an append-only ledger and audit trail, and announced to your systems via a signed webhook.
-
-None of this is novel finance theory. It's the same control pattern every serious payment processor and bank enforces internally — implemented in the open, for Solana, so you don't have to build it under deadline pressure.
-
-### Where It Sits in the Stack
-
-Atlas Rail deliberately does **not** compete with your custody or signing infrastructure — it governs it.
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Your ERP / accounting system  (QuickBooks, NetSuite, Xero…) │
-└───────────────────────────▲────────────────────────────────┘
-                             │ HMAC-signed webhooks
-┌────────────────────────────┴───────────────────────────────┐
-│                        ATLAS RAIL                            │
-│   policy engine · approvals · simulation · audit ledger      │
-│         (this repository — self-hosted, open source)         │
-└───────────────────────────┬────────────────────────────────┘
-                             │ SignerAdapter interface
-┌────────────────────────────┴───────────────────────────────┐
-│  Your key custody: Fireblocks / Squads / Turnkey / your HSM  │
-└───────────────────────────▲────────────────────────────────┘
-                             │
-                        Solana network
-```
-
-That's a deliberate design decision, not a missing feature. Every credible piece of financial infrastructure separates "who decides this payment should happen" from "who holds the key that makes it happen" — Atlas Rail owns the first half and stays out of the second entirely (see [Safety Boundary](#-safety-boundary--read-this-first) below). If you already trust a custody provider, Atlas Rail gives you the governance layer they don't provide. If you're evaluating one, Atlas Rail lets you build and test that governance layer today, against devnet, without waiting on a vendor contract.
-
----
-
-### How a Payout Actually Moves
-
-Every payout is an explicit, auditable state machine — not an implicit "pending → done":
-
-```mermaid
-stateDiagram-v2
-    [*] --> DRAFT
-    DRAFT --> PENDING_APPROVAL
-    PENDING_APPROVAL --> APPROVED: N independent approvals reached
-    PENDING_APPROVAL --> BLOCKED: policy engine blocks
-    PENDING_APPROVAL --> REJECTED
-    APPROVED --> QUEUED_FOR_EXECUTION
-    QUEUED_FOR_EXECUTION --> SIMULATING: worker picks up job
-    SIMULATING --> SIMULATION_FAILED: unknown program ID / would fail on-chain
-    SIMULATING --> READY_TO_SIGN
-    READY_TO_SIGN --> SUBMITTED: signed via SignerAdapter
-    SUBMITTED --> CONFIRMED: devnet confirms
-    SUBMITTED --> FAILED
-    CONFIRMED --> [*]
-    REJECTED --> [*]
-    BLOCKED --> [*]
-```
-
-Concretely, that means:
-
-1. **Draft & policy preview** — an operator drafts a payout; the policy engine evaluates it *before* submission so the UI can show "this will need 2 approvals" or "this exceeds your daily limit" up front, not after the fact.
-2. **Independent approval** — approvers with the `payout:approve` permission sign off. A policy can require the creator can't approve their own payout, and can require any number of independent approvers.
-3. **Handoff to the worker** — approval doesn't execute anything inline. The API enqueues a job to a BullMQ queue and returns immediately; a separate worker process claims it.
-4. **Simulation before signing** — the worker builds the actual SPL token transfer instruction (checked transfer, optional ATA creation, optional memo), and runs it through a simulator that inspects every instruction's program ID against an allowlist (`SystemProgram`, `TokenProgram`, `AssociatedTokenProgram`, `ComputeBudget`, `Memo`). Anything unrecognized blocks the payout — it never reaches a signer.
-5. **Sign, submit, confirm** — signing happens exclusively behind the `SignerAdapter` interface. Confirmation is polled asynchronously, with retry and exponential backoff, not a blocking wait.
-6. **Ledger, audit trail, and webhook** — every transition appends an immutable `AuditEvent`, every settled payout writes a `LedgerEntry`, and every lifecycle event (`payout.created`, `payout.approved`, `payout.submitted`, `payout.confirmed`, `payout.failed`, …) fires a webhook signed with `Atlas-Signature: t=<timestamp>,v1=<hmac>` — the same pattern Stripe and GitHub use for webhook verification.
-
-### Core Capabilities
-
-**Declarative, versioned spend policy** — every treasury has an active policy, evaluated deterministically against every payout:
-
-```json
-{
-  "approval": { "requiredApprovals": 2, "preventCreatorApproval": true },
-  "limits": {
-    "maxSinglePayoutBaseUnits": "5000000000",
-    "dailyLimitBaseUnits": "25000000000",
-    "monthlyLimitBaseUnits": "100000000000"
-  },
-  "recipients": { "requireVerifiedRecipient": true },
-  "transaction": { "requireSuccessfulSimulation": true, "blockUnknownProgramIds": true },
-  "risk": { "blockHighRiskRecipients": true, "manualReviewAboveRiskLevel": "HIGH" }
-}
-```
-
-- **Six-role RBAC out of the box** — `OWNER`, `ADMIN`, `OPERATOR`, `APPROVER`, `AUDITOR`, `DEVELOPER`, each mapped to a fine-grained permission set (treasury freeze, policy activation, payout approval, reconciliation export, API key management…) — not a single "admin" bit.
-- **Idempotency by default** — every `POST /v1/payouts` requires an `Idempotency-Key` header; a retried request with the same key and payload replays the original response instead of creating a duplicate payout, and a reused key with a *different* payload is rejected outright.
-- **Append-only financial ledger** — `LedgerEntry` and `AuditEvent` records are never mutated or deleted, and reconciliation exports to CSV on demand.
-- **Signed, retried webhooks** — HMAC-SHA256, timestamped, with exponential backoff on delivery failure and per-attempt tracking, so your ERP integration doesn't have to poll.
-- **Base-unit money math everywhere** — every amount is stored and computed as an integer base-unit string (`5000000` = `5.000000 USDC`), never a float, so rounding errors aren't a category of bug that can exist.
-
-## Architecture
-
-Atlas Rail is a TypeScript monorepo (pnpm workspaces + Turborepo) split into an API, a background worker, a web console, and a set of framework-agnostic domain packages.
-
-| Layer | Technology | Why |
-|---|---|---|
-| API | NestJS on Fastify | Structured, testable modules; Fastify for throughput; OpenAPI/Swagger generated from the same decorators |
-| Worker | BullMQ on Redis | Durable job queues with retry/backoff — execution and confirmation happen out-of-band, never inline in a request |
-| Database | PostgreSQL 16 + Prisma | Strong typing end-to-end, migrations as code, 14 explicit models from `Organization` down to `IdempotencyRecord` |
-| Domain logic | Plain TypeScript (`packages/domain`) | Policy engine, state machine, RBAC, and money math have zero framework dependencies — they're unit-testable in isolation and portable if you ever want them outside Nest |
-| Solana integration | `@solana/web3.js` + `@solana/spl-token` | Devnet-guarded RPC client, checked-transfer instruction builder, simulator, and the signer adapter boundary |
-| Web console | Next.js 15 (App Router) + Tailwind | The treasury operator's dashboard: draft, approve, watch simulation results, export reconciliation |
-
-```mermaid
-graph TD
-    Client[Next.js 15 Web Console / API SDK] -->|REST + OpenAPI| API[NestJS Fastify API]
-    API -->|Auth, RBAC, Tenancy| DB[(PostgreSQL 16 via Prisma)]
-    API -->|Enqueue Job| Redis[(Redis 7 / BullMQ)]
-    API -->|Evaluate| Domain[packages/domain: policy engine, state machine]
-    Worker[BullMQ Worker] -->|Claim Job| Redis
-    Worker -->|Read/Write State| DB
-    Worker -->|Build + Simulate| Solana[packages/solana]
-    Solana -->|RPC Simulation| Devnet[(Solana Devnet)]
-    Solana -->|Sign| Signer[SignerAdapter: Mock or your Custody]
-    Worker -->|HMAC-Signed Webhook| ERP[Your ERP / Webhook Receiver]
-```
-
-## Repository Layout
-
-```
-atlas-rail/
-├── apps/
-│   ├── web/           # Next.js 15 console: treasury + agent mandates (mobile-first)
-│   ├── site/           # One-page marketing site, static, deployable to Vercel on its own
-│   ├── api/            # NestJS Fastify REST API + OpenAPI/Swagger
-│   ├── worker/          # BullMQ queues: execution, confirmation, webhooks, reconciliation, agent anchoring
-│   ├── demo-api/        # Scripted x402 seller (paid endpoints) + local facilitator, for the demo
-│   ├── demo-agent/      # Scripted demo agent + the six-scene `pnpm demo` runner
-│   ├── mock-validator/  # In-memory Solana JSON-RPC cluster, for `pnpm demo:offline`
-│   └── cli/             # `atlas` CLI: offline receipt verification, mandate inspection
-├── packages/
-│   ├── config/         # Env schema validation, safety constants, queue/event definitions
-│   ├── database/       # Prisma schema, migrations, ULIDs, seed data
-│   ├── domain/         # Policy engine, payout state machine, RBAC, money math, webhook signing
-│   ├── solana/         # Devnet RPC client, SPL instruction builder, simulator, signer adapters
-│   ├── mandate/         # Agent Mandates: JCS, delegation chain, the policy gate, decisions
-│   ├── receipt/         # Bound receipts, Merkle batching, devnet anchoring, offline verification
-│   ├── x402-client/     # @atlas-rail/x402: atlas fetch, gated signer, a local seller test kit
-│   ├── api-client/     # TypeScript SDK for the Atlas Rail API
-│   └── ui/             # Shared UI primitives, including the devnet safety banner
-├── spec/                 # Agent Mandate v0.1 proposal + generated conformance test vectors
-├── docs/                # Architecture, ADRs, security threat model, operations runbook, DEMO.md
-├── examples/            # Minimal Node API client and webhook receiver
-├── docker-compose.yml   # Postgres, Redis, Mailpit, API, worker, web — one command up
-└── Makefile
-```
-
-## Quick Start
-
-**Prerequisites:** Node.js 22 LTS · pnpm 9+ · Docker Desktop
+| Windows 10/11 | Node 22 LTS from [nodejs.org](https://nodejs.org), then in PowerShell: `corepack enable` |
+| macOS | `brew install node@22`, then `corepack enable` |
+| Linux | Node 22 via [nvm](https://github.com/nvm-sh/nvm) (`nvm install 22`), then `corepack enable` |
 
 ```bash
 git clone https://github.com/Rime504/atlas-rail.git
 cd atlas-rail
-cp .env.example .env
-
-make install
-make up          # Postgres, Redis, Mailpit, API, worker, web
-make db-migrate
-make db-seed
-make demo
+pnpm install
+pnpm demo:rehearse
 ```
 
-| Service | URL |
-|---|---|
-| Web console | http://localhost:3000 |
-| API | http://localhost:3001 |
-| Swagger / OpenAPI docs | http://localhost:3001/docs |
-| Mailpit (dev email preview) | http://localhost:8025 |
+`demo:rehearse` builds the project, starts an embedded Postgres and an in-memory Solana cluster, and runs six scenes on its own: grant, pay, attack, escalate (approved automatically), prove, revoke. It ends with:
 
-**Seeded demo accounts** (password: `ChangeMe_AtlasRail_DevOnly`) — walk the full lifecycle yourself:
+```
+  Demo complete. Every scene behaved as designed.
+```
 
-| Role | Email | What they can do |
-|---|---|---|
-| Owner | `owner@atlasrail.local` | Full governance: policies, treasuries, API keys |
-| Operator | `operator@atlasrail.local` | Draft payouts, register recipients |
-| Approver | `approver1@atlasrail.local` / `approver2@atlasrail.local` | Independent approvals |
-| Auditor | `auditor@atlasrail.local` | Read-only ledger + reconciliation export |
-| Developer | `developer@atlasrail.local` | API key and webhook management |
+`pnpm demo:offline` is the same but waits for you to approve the escalated payment in the console (`http://localhost:3000/approvals`, works on a phone). `pnpm demo` uses real Solana devnet; see [`docs/DEMO.md`](docs/DEMO.md).
+
+Check any devnet payment from your terminal:
 
 ```bash
-make check   # typecheck + lint + full test suite
-make test-unit
-make build
+pnpm turbo run build --filter=@atlas-rail/cli...
+node apps/cli/dist/main.js verify --tx 4RnVyRNTcssW1kAv9dL8xjbbhF8Ft6ZGomv7Msr1NGrTSgLKjQNafDcuK3B34ZVvmHYjhkfH78xZvG5PE5RiR1rU
 ```
 
-## Who This Is For
+It prints every check and ends with `PROVEN` (exit code 0), or `NO PROOF` for a payment Atlas Rail did not authorise (exit code 1).
 
-- **Fintech and Web3 payroll/payout teams** who need real internal controls — approvals, limits, audit trails — around stablecoin disbursement, and don't want to build that governance layer from a blank file.
-- **Solana-native companies and DAOs** evaluating what enterprise-grade treasury tooling looks like on Solana, before committing to a closed SaaS vendor or building in-house.
-- **Engineers wiring up custody infrastructure** (Fireblocks, Squads, Turnkey, an in-house HSM) who need a governance and orchestration layer in front of it, with a clean `SignerAdapter` seam to plug into.
-- **Anyone auditing or learning** what a production-shaped policy engine, approval workflow, and transaction simulation pipeline actually looks like in TypeScript, end to end, with tests.
+### (c) Integrate it
 
-## Roadmap
+Wrap your agent's `fetch`. On a `402` it asks the gate, gets the wallet to sign only what the gate approved, pays, and returns the receipt; a refusal throws `AtlasDenied` with the rules that refused it.
 
-Atlas Rail ships its governance layer first, deliberately, because that's the part every team gets wrong under time pressure. The path outward:
+```ts
+import { AtlasDenied, wrapFetch } from '@atlas-rail/agent';
 
-- **v0.1** *(current)* — Devnet treasury controls: policy engine, multi-approval, idempotency, simulation, append-only ledgers, HMAC webhooks.
-- **v0.2** — External customer-controlled signer / HSM integration reference implementation.
-- **v0.3** — Controlled mainnet readiness assessment and formal threat modeling (not mainnet activation).
-- **v0.4** — ERP and accounting connectors (QuickBooks, Xero, NetSuite).
-- **v0.5** — Multi-RPC failover and slot-latency monitoring.
-- **v1.0** — Enterprise release, gated on external legal, security, and custody audits.
+const pay = wrapFetch(fetch, {
+  mandateId: 'mnd_...',
+  gate: { url: 'http://localhost:3001', apiKey: process.env.ATLAS_API_KEY! },
+  wallet, // holds the agent key, outside the agent's process
+  trustedInstanceKeys: ['<gate instance key>'],
+});
 
-See [`ROADMAP.md`](ROADMAP.md) for details.
+const res = await pay('http://localhost:4402/research/summary'); // res.atlas.receipt: the proof
+```
+
+Or give an AI assistant one tool, `pay(url)`, over MCP (`apps/mcp`). The config for Claude Desktop and Claude Code, and how to get the gate running locally, are in [`docs/INTEGRATE.md`](docs/INTEGRATE.md). The packages are not published to npm yet; use them from this repository.
+
+## How it works
+
+```mermaid
+graph LR
+    A[AI agent] -->|"1. 402 offer + exact transaction"| G[Policy gate<br/>15 rules]
+    G -->|"2. ALLOW + authorization bound to the transaction bytes"| S[Gated signer<br/>holds the key]
+    G -.->|ESCALATE| H[Human approver]
+    S -->|"3. signed payment, memo = receipt id"| X[x402 seller + facilitator]
+    X -->|"4. TransferChecked + memo"| SOL[(Solana devnet)]
+    G -->|mandate registered / revoked| PDA[Mandate PDA]
+    G -->|receipt Merkle roots| ROOT[anchor_root]
+    PDA --> SOL
+    ROOT --> SOL
+    V["Anyone: /verify or atlas verify --tx"] -->|"memo → receipt → every check"| SOL
+```
+
+Three layers:
+
+1. **The mandate** ([`spec/agent-mandate-v0.1.md`](spec/agent-mandate-v0.1.md), `packages/mandate`): a JSON document, canonicalised and signed by owner, approver and agent, then registered in an on-chain account (program [`CnGoTE5B…LcY4k`](https://explorer.solana.com/address/CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k?cluster=devnet)) so its existence and revocation can be checked without us.
+2. **The gate and the gated signer** (`packages/mandate`, `packages/x402-client`): the gate evaluates every payment against the mandate and simulates the exact transaction; the signer only signs a transaction whose hash the gate authorised, in the last 120 seconds.
+3. **The proof** (`packages/receipt`): each allowed payment gets a receipt binding mandate, offer, decision, settlement and response. Its id is in the payment's memo (unless the seller requires a memo of its own: the payment is then still valid, just not self-proving from the chain alone); receipts are batched into a Merkle tree whose root is written on-chain with `anchor_root`.
+
+## Why Solana
+
+- **Fast enough to sit in the payment path.** Measured on devnet: a gate decision takes p50 351 ms, p95 1,613 ms including a full transaction simulation; payment confirmation p50 1,646 ms ([report](reports/e2e-2026-10-08.md)).
+- **Cheap enough to anchor every batch.** One `anchor_root` costs 10,822 compute units and a 5,000-lamport fee ([report](reports/e2e-2026-10-08.md)).
+- **Money, rules and proof in one place.** The token transfer, the mandate account, the anchored receipt root and the memo pointing at the receipt are all readable from the same chain with one RPC endpoint.
+- **Native primitives do the work.** `TransferChecked`, the Memo program and program-derived accounts. No bridge, no oracle, no extra chain.
+
+## Proof, not promises
+
+| What | Number | Source |
+|---|---|---|
+| Automated tests (CI) | 439 passing | `pnpm test`, [CI](https://github.com/Rime504/atlas-rail/actions) |
+| Red team: fully compromised agent | 51 attack types, 1,014 attempts, **0 signatures obtained, $0.00 moved outside the mandate** | [reports/redteam-2026-10-08.md](reports/redteam-2026-10-08.md) |
+| Red team on real devnet | 16 attack types, $0.00 moved outside the mandate | same report |
+| 100 simultaneous payments vs a $5 cap | $5.00 spent (in-memory and Postgres); $10.00 with the lock removed | same report |
+| Real devnet end-to-end run | all six scenes pass, memos match their receipts | [reports/e2e-2026-10-08.md](reports/e2e-2026-10-08.md) |
+| Gate decision latency (devnet) | p50 351 ms, p95 1,613 ms | same report |
+| `anchor_root` cost | 10,822 CU, 5,000 lamports | same report |
+| Pay, then verify from the chain (live playground, real devnet) | PROVEN, 3 of 3, each re-read from a public RPC | [reports/playground-live-2026-10-08.md](reports/playground-live-2026-10-08.md) |
+| On-chain program tests | 10 Rust unit + 27 LiteSVM integration | [`programs/atlas-mandate`](programs/atlas-mandate) |
+
+The red team **assumes the agent is fully compromised on every attempt**: it sends any offer, transaction bytes or gate request the attacker wants, replays and tampers freely, and always tries to sign. It is stopped because it never holds the key.
+
+## Where the key lives
+
+The guarantee depends on one thing: **the agent's key must live outside the agent's process.** A compromised agent that can read its own key can sign whatever it likes, and no gate can stop that.
+
+The key lives in the **signer service** (`apps/signer`), a separate process the agent reaches only over HTTP. It does exactly three things: tell the agent its address; sign a transaction when handed the gate authorization for those exact bytes (with the signed ALLOW decision and mandate, re-checked); and sign the agent's own gate requests and mandate acceptance, in their exact Atlas Rail form. Nothing else: there is no route that signs arbitrary bytes, because a Solana payment signature is just a signature over the transaction's bytes. It binds to `127.0.0.1` and can require a bearer token.
+
+`pnpm demo` starts the signer as its own process and the scripted agent signs only through it; `wrapFetch` and the MCP `pay` tool take its URL (see [`docs/INTEGRATE.md`](docs/INTEGRATE.md)). Two honest limits: on one machine under one user, the agent process could still read the devnet key file from disk, so real isolation needs a separate OS user, container or machine, or a custody provider running the same check (`GatedSignerAdapter` is the reference); and the red team's in-memory and devnet rigs call the signer in-process, modelling the attacker as controlling everything except the signer and its key.
 
 ## Security
 
-Atlas Rail does not claim banking, money-transmitter, custody, or regulated-payments status. Read [`SECURITY.md`](SECURITY.md) and [`docs/security/threat-model.md`](docs/security/threat-model.md) before considering any production use. Report vulnerabilities privately — do not open a public issue for a security concern.
+**What it stops**, each with a test: payments to unlisted sellers or resources, amounts over any limit, price creep beyond the signed price, wrong asset or network, splitting a payment to dodge a limit, replayed or rejected approvals, replayed, stale, tampered or forged authorizations, payments after revocation or expiry, and concurrent bursts against a cap. See the [red-team report](reports/redteam-2026-10-08.md) and [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
+
+**Honest limits:**
+
+- **Devnet only, unaudited.** The server refuses mainnet RPC endpoints; nothing here has had an external security audit.
+- **Budgets are enforced by the gate, not by a token-program lock.** On-chain records of spend are records, not locks. A hard on-chain cap using native SPL token allowances is the next step, not built.
+- **A window after revocation.** An authorization the gate issued just before a revocation can still be signed for up to 120 seconds.
+- **The public receipt store is ours.** Receipts are served from this project's storage. A receipt JSON can always be verified on its own with `atlas verify <file>`, wherever it came from.
+- **Devnet history is not forever.** Public devnet RPC nodes eventually drop old transactions and rate-limit busy periods; a check can fail for those reasons, not because a proof is wrong.
+
+Thanks to **Divyesh** (on-chain engineer) for `anchor_root` and for finding and fixing: payout limits that ignored rolling spend (#37), an overspend window between reservation and release (#39), an unenforced recipient allowlist (#41), webhook SSRF to private hosts (#43), and a payout double-submit (#45).
+
+Report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
+
+## Glossary
+
+| Word | Meaning |
+|---|---|
+| Agent | A program, often driven by an AI model, that acts and pays on someone's behalf. |
+| x402 | A web standard where a server answers `402 Payment Required` with a price, and the client pays to get the resource. |
+| Mandate | The signed document that says what an agent may pay for, to whom, and how much. |
+| Gate | The service that checks a payment against the mandate before it can be signed. |
+| Receipt | A signed record tying one payment to its mandate, the gate's decision and the settlement. |
+| Merkle root | One short hash that commits to a whole batch of receipts; any one receipt can be proven to be in the batch. |
+| Devnet | Solana's public test network. Tokens there have no value. |
+| PDA | A program-derived address: an on-chain account owned by a program, here the mandate's record. |
+
+## Repo map
+
+| Path | What it is |
+|---|---|
+| `apps/playground` | The public walkthrough, `/verify` and `/break` (Next.js on Vercel) |
+| `apps/cli` | `atlas verify` for receipt files and `--tx` signatures |
+| `apps/mcp` | `atlas-rail-mcp`: an MCP server with one tool, `pay(url)` |
+| `apps/signer` | `atlas-rail-signer`: the agent key in its own process, signing only what the gate authorised |
+| `apps/api` | The gate and console API (NestJS) |
+| `apps/web` | The owner and approver console (Next.js) |
+| `apps/worker` | Background jobs: payouts, webhooks, receipt anchoring |
+| `apps/demo-agent` | The scripted demo agent, the six-scene runner and the red team |
+| `apps/demo-api` | A paid x402 API and facilitator, using the official x402 packages |
+| `apps/mock-validator` | An in-memory Solana JSON-RPC cluster for offline runs |
+| `apps/site` | The marketing site |
+| `packages/mandate` | Mandates, the 15-rule gate, decisions, authorizations |
+| `packages/receipt` | Receipts, Merkle batching, anchoring, verification, proof from a transaction |
+| `packages/agent` | `wrapFetch` and `AtlasDenied`: the integration surface for agents |
+| `packages/x402-client` | `createAtlasFetch` and the gated signer |
+| `packages/solana` | Devnet client, transaction builders, the mandate program client |
+| `packages/database` | Prisma schema and stores |
+| `programs/atlas-mandate` | The Anchor program: `create_mandate`, `revoke_mandate`, `anchor_root` |
+| `spec/` | The Agent Mandate v0.1 draft and its test vectors |
+
+## Troubleshooting
+
+- **`429 Too Many Requests` from devnet.** The public endpoint `api.devnet.solana.com` rate-limits. Wait a few seconds and retry, or set `SOLANA_RPC_URL` to a free devnet endpoint from an RPC provider.
+- **Devnet faucet limits.** `pnpm demo` funds its keys from the public faucet with retries; if that is exhausted, use [faucet.solana.com](https://faucet.solana.com) for SOL and [faucet.circle.com](https://faucet.circle.com) for devnet USDC, or run `pnpm demo:rehearse`, which needs no devnet at all.
+- **Windows.** Use PowerShell or Git Bash. If a previous run left a database process behind, the demo script stops it automatically; if not, end `postgres.exe` in Task Manager.
+- **Ports in use.** The demo uses 3000 (console), 3001 (API), 4402 (paid API), 4022 (facilitator), 8899 (mock validator) and 54329 (embedded Postgres). Free them or stop the other program.
+
+## Status and roadmap
+
+**Built:** the mandate format and 15-rule gate, three-party signing, human escalation bound to exact transaction bytes, receipts with on-chain Merkle anchoring, unknown payment outcomes resolved from the chain (a lost answer is settled or released by what the chain shows, never by the agent's word), self-proving payments (receipt id in the memo), the public receipt store, `/verify` and `atlas verify --tx`, the on-chain mandate registry, the red team and concurrency proof, the agent signer as a separate service, `wrapFetch` and an MCP `pay` tool, and the playground.
+
+**Next:**
+
+- A hard on-chain cap with native SPL token allowances, so the token program itself refuses an overspend.
+- Budgets per job and per sub-agent, not only per agent.
+- Pinning the program version a mandate was registered under.
+- A solo mode where the approver is your own phone.
+- An optional red team driven by a real AI model.
+- Publishing `@atlas-rail/agent` (and the `@atlas-rail/x402` client it wraps) to npm.
+
+## Also in this repository: treasury payouts
+
+Atlas Rail started as a policy layer for ordinary Solana treasury payouts, and the agent gate is built on the same engine: versioned spend policies, multi-person approval, pre-flight simulation, an append-only ledger and audit trail, idempotent APIs and signed webhooks, with a console for owners, approvers and auditors. Run it with Docker Compose (`make install && make up && make db-migrate && make db-seed`; the console is at `http://localhost:3000`) and see [`docs/architecture/`](docs/architecture/), [`docs/adr/`](docs/adr/) and [`docs/security/threat-model.md`](docs/security/threat-model.md).
+
+## Team
+
+- **Rime**, co-founder and lead engineer: designed and built Atlas Rail end to end.
+- **Kamelia**, co-founder: the original idea, product and go-to-market.
+- **Divyesh**, on-chain engineer: `anchor_root` and security review.
 
 ## Contributing
 
-Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow, and [`docs/adr/`](docs/adr/) for the reasoning behind the major architectural decisions before you propose changing them.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the decisions in [`docs/adr/`](docs/adr/).
 
 ## License
 
-[Apache License 2.0](LICENSE) — use it, self-host it, fork it, build a product on top of it.
+[Apache 2.0](LICENSE).
