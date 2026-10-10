@@ -56,6 +56,8 @@ export interface RuleDisplay {
   label: string;
   /** Human-readable detail sentence for "show details" — dollar amounts, never base units. */
   detail: string;
+  /** The rule's recorded values with every amount in dollars (what the expanded row shows). */
+  values: Record<string, unknown>;
   raw: RuleResult;
 }
 

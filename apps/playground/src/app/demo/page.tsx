@@ -7,7 +7,8 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { VerdictBanner } from '@/components/Verdict';
 import { RuleList } from '@/components/RuleList';
 import { Details, ExplorerLink, MonoAddress } from '@/components/Details';
-import { EXPECTED_PRICE, MAX_PER_PAYMENT, MAX_PER_WINDOW, MODERATE_SPIKE_AMOUNT, SEVERE_SPIKE_AMOUNT } from '@/lib/amounts';
+import { EXPECTED_PRICE, MODERATE_SPIKE_AMOUNT, SEVERE_SPIKE_AMOUNT } from '@/lib/amounts';
+import { mandateCardTiles } from '@/lib/mandate-card';
 import { formatUsd } from '@/lib/format';
 import type { ActionType, PaymentOutcome, StepResponse, World } from '@/lib/types';
 import type { ReceiptVerification } from '@atlas-rail/receipt';
@@ -362,10 +363,9 @@ function StepGiveRules({ world, loading, onSign }: { world: World; loading: bool
       <StepHeading title="Give it rules" subtitle="The owner drafts a mandate; an independent approver and the agent itself each sign it. These are the hard limits the gate will enforce on every payment." />
       <Card>
         <dl className="grid grid-cols-2 gap-4 text-sm">
-          <Rule label="Max per payment" value={formatUsd(MAX_PER_PAYMENT)} />
-          <Rule label="Max per hour" value={formatUsd(MAX_PER_WINDOW)} />
-          <Rule label="Allowed sellers" value="2 research sellers" />
-          <Rule label="Research call price" value={`about ${formatUsd(EXPECTED_PRICE)}`} />
+          {mandateCardTiles().map((tile) => (
+            <Rule key={tile.label} label={tile.label} value={tile.value} wide={tile.wide} />
+          ))}
         </dl>
         <Details label="Show the signed mandate">
           <ol className="space-y-2 text-xs text-mutedText">
@@ -397,9 +397,9 @@ function StepGiveRules({ world, loading, onSign }: { world: World; loading: bool
   );
 }
 
-function Rule({ label, value }: { label: string; value: string }) {
+function Rule({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
   return (
-    <div className="rounded-xl bg-background px-4 py-3">
+    <div className={`rounded-xl bg-background px-4 py-3${wide ? ' col-span-2' : ''}`}>
       <dt className="text-xs uppercase tracking-wide text-mutedText">{label}</dt>
       <dd className="mt-1 font-display text-base font-semibold">{value}</dd>
     </div>
