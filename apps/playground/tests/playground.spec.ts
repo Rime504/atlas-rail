@@ -174,3 +174,12 @@ test('no step causes horizontal page overflow at a 360px viewport width', async 
   await page.getByRole('button', { name: /revoke on solana/i }).click();
   await assertNoOverflow();
 });
+
+test('share previews point at the real playground, and the landing page links to the website', async ({ page }) => {
+  await page.goto('/');
+  for (const property of ['og:image', 'og:url']) {
+    const content = await page.locator(`meta[property="${property}"]`).first().getAttribute('content');
+    expect(new URL(content!).origin, property).toBe('https://atlas-rail-playground.vercel.app');
+  }
+  await expect(page.getByRole('link', { name: 'Website' })).toHaveAttribute('href', 'https://atlas-rail-site.vercel.app');
+});

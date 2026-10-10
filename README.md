@@ -7,7 +7,7 @@ An open standard for delegated spending authority, a gate any agent or wallet ca
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Solana devnet only](https://img.shields.io/badge/Solana-devnet_only-14F195?logo=solana&logoColor=white)](#security)
 
-### [▶ Try it](https://atlas-rail-playground.vercel.app) · [🔍 Verify a payment](https://atlas-rail-playground.vercel.app/verify) · [⚡ Integrate](#c-integrate-it)
+### [▶ Try it](https://atlas-rail-playground.vercel.app) · [🔍 Verify a payment](https://atlas-rail-playground.vercel.app/verify) · [⚡ Integrate](#c-integrate-it) · [🌐 Website](https://atlas-rail-site.vercel.app)
 
 - **The standard:** a mandate signed by the owner, an independent approver and the agent, and a proof-of-permission every payment carries ([spec](spec/agent-mandate-v0.1.md)).
 - **The gate:** checks every payment against the mandate before any wallet signs. One line to integrate ([`wrapFetch`](docs/INTEGRATE.md#1-wrap-fetch-atlas-railagent)) or one MCP tool ([`pay`](docs/INTEGRATE.md#2-a-pay-tool-for-ai-assistants-atlas-rail-mcp)).
@@ -229,7 +229,8 @@ Report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
 | `apps/demo-agent` | The scripted demo agent, the six-scene runner and the red team |
 | `apps/demo-api` | A paid x402 API and facilitator, using the official x402 packages |
 | `apps/mock-validator` | An in-memory Solana JSON-RPC cluster for offline runs |
-| `apps/site` | The marketing site |
+| `apps/site` | The company website, [atlas-rail-site.vercel.app](https://atlas-rail-site.vercel.app) (Next.js on Vercel) |
+| `apps/video` | The launch video, made with Remotion from real screenshots of the live playground |
 | `packages/mandate` | Mandates, the 15-rule gate, decisions, authorizations |
 | `packages/receipt` | Receipts, Merkle batching, anchoring, verification, proof from a transaction |
 | `packages/agent` | `wrapFetch` and `AtlasDenied`: the integration surface for agents |

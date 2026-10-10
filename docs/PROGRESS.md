@@ -200,3 +200,9 @@ Verified clean, independently, after all three fixes: both the scene-2 and scene
 - **Used by the demos:** `pnpm demo` starts the signer and the scripted agent signs only through it, including its mandate acceptance. `wrapFetch` takes `signer`, and the MCP server takes `ATLAS_SIGNER_URL`.
 - **Red team:** 51 attack types, 1,014 attempts, 0 signatures, $0.00 outside the mandate; devnet 16/16. Tests: 438 passing.
 - **v0.2.0 contains both holes** (this one and the spend release fixed in #88).
+
+## Website, launch video and playground links, 2026-10-10
+
+- **Website** (`apps/site`, #96): a new company site, live at https://atlas-rail-site.vercel.app. Every claim follows docs/CLAIMS.md; the x402 market statistic is shown with its source. Lighthouse: performance 91–94 on phone and 99 on desktop; 100 for accessibility, best practices and SEO.
+- **Launch video** (`apps/video`, #97): 40 seconds, 1920×1080, made with Remotion from real screenshots of the live playground on devnet. Kept out of the product build.
+- **Playground**: share previews now resolve against https://atlas-rail-playground.vercel.app (they pointed at the dead `playground.atlasrail.dev`) and have an image. The landing page and the end screen link to the website.
