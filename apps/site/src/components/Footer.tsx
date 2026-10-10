@@ -19,7 +19,6 @@ const COLUMNS = [
   },
   {
     title: 'Follow',
-    // X_URL is a placeholder until the account exists (src/content.ts).
     links: [{ label: 'X', href: X_URL }],
   },
 ];

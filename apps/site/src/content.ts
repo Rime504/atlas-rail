@@ -13,9 +13,9 @@ export const LIVE_RUNS_REPORT = `${GITHUB}/blob/master/reports/playground-live-2
 export const THREAT_MODEL = `${GITHUB}/blob/master/docs/THREAT_MODEL.md`;
 export const SECURITY_LIMITS = `${GITHUB}#security`;
 export const INTEGRATE = `${GITHUB}/blob/master/docs/INTEGRATE.md`;
-export const CONTACT = `${GITHUB}/issues`;
-/** PLACEHOLDER: the X (Twitter) account is not set yet. Replace this one value. */
-export const X_URL = '#x-placeholder';
+export const ROADMAP = `${GITHUB}#status-and-roadmap`;
+/** Atlas Rail on X; also the contact route for platform licensing. */
+export const X_URL = 'https://x.com/RimeK05';
 
 export const WHY_NOW_SOURCE =
   'https://solanacompass.com/news/solana-processes-76-of-all-x402-ai-agent-transactions-232-million-in-four-weeks';

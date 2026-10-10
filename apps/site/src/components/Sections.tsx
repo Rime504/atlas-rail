@@ -3,16 +3,17 @@ import type { ReactNode } from 'react';
 import { CodeTabs } from './CodeTabs';
 import {
   CONCURRENCY_REPORT,
-  CONTACT,
   GITHUB,
   INTEGRATE,
   LIVE_RUNS_REPORT,
   PLAYGROUND,
   REDTEAM_REPORT,
+  ROADMAP,
   SECURITY_LIMITS,
   THREAT_MODEL,
   VERIFY,
   WHY_NOW_SOURCE,
+  X_URL,
 } from '@/content';
 
 export function SectionHeader({ eyebrow, title, intro, id }: { eyebrow: string; title: ReactNode; intro?: ReactNode; id?: string }) {
@@ -51,10 +52,11 @@ export function WhyNow() {
         <div className="card p-7 sm:p-9">
           <p className="accent-text text-[56px] font-semibold leading-none tracking-[-0.04em] sm:text-[72px]">23.2M</p>
           <p className="mt-4 text-[17px] leading-relaxed text-white">
-            x402 agent payments on Solana in four weeks, 76% of all x402.
-          </p>
-          <p className="mt-4 text-[13px] text-faint">
-            Source: <External href={WHY_NOW_SOURCE}>Artemis, Sept 2026</External>
+            Solana handled 76% of x402 agent transactions in four weeks: 23.2M (
+            <a href={WHY_NOW_SOURCE} target="_blank" rel="noreferrer" className="link-quiet">
+              Artemis via Solana, Sept 2026
+            </a>
+            )
           </p>
         </div>
       </div>
@@ -259,7 +261,7 @@ const PLANS = [
     name: 'Platforms',
     price: 'Licensing · contact us',
     body: 'For wallets and agent platforms that will embed the gate in their own product.',
-    cta: { label: 'Contact us', href: CONTACT },
+    cta: { label: 'Contact us', href: X_URL },
   },
 ];
 
@@ -284,33 +286,31 @@ export function Pricing() {
   );
 }
 
-/* ---- Roadmap ------------------------------------------------------------------------------------ */
+/* ---- Shipping next ---------------------------------------------------------------------------- */
 
-const ROADMAP = [
-  ['A hard cap enforced by Solana itself.', "The agent will spend from a dedicated account through an SPL token spending allowance, so even a bypassed gate can't overspend. The on-chain work will be led by Divyesh."],
-  ['Budgets per task and per sub-agent.', 'Each job, and each helper agent, will get its own budget inside the mandate.'],
-  ['Pinning the program version.', 'A mandate will name the exact program version it trusts.'],
-  ['Solo mode.', 'The approver will be your own phone.'],
-  ['Publishing @atlas-rail/agent on npm.', ''],
-  ['An external security audit, then mainnet.', 'Not before.'],
-  ['First design partners.', 'We plan to invite agent builders and wallets to test it on devnet.'],
-];
+const SHIPPING_NEXT = ['A spending cap Solana itself enforces', 'External security audit', 'Mainnet, with our first design partners'];
 
-export function Roadmap() {
+export function ShippingNext() {
   return (
-    <section aria-labelledby="roadmap-title" className="section">
-      <SectionHeader id="roadmap-title" eyebrow="Roadmap · planned" title="What comes next, in this order." />
-      <ol className="mt-14 divide-y divide-line border-y border-line">
-        {ROADMAP.map(([title, body], i) => (
-          <li key={title} className="grid grid-cols-[2.5rem_1fr] gap-4 py-6 sm:grid-cols-[4rem_1fr]">
-            <span className="font-mono text-[14px] text-faint">{String(i + 1).padStart(2, '0')}</span>
-            <div>
-              <p className="text-[17px] font-medium text-white">{title}</p>
-              {body && <p className="mt-1 text-[15px] leading-relaxed text-muted">{body}</p>}
-            </div>
-          </li>
-        ))}
-      </ol>
+    <section aria-labelledby="next-title" className="mx-auto max-w-page px-5 py-16 sm:px-8 sm:py-20">
+      <div className="card p-7 sm:p-9">
+        <h2 id="next-title" className="eyebrow">
+          Shipping next · planned
+        </h2>
+        <ul className="mt-6 grid gap-3 md:grid-cols-3">
+          {SHIPPING_NEXT.map((item) => (
+            <li key={item} className="flex items-center gap-3 rounded-xl border border-line bg-raised px-5 py-4 text-[16px] font-medium text-white">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-mint" aria-hidden="true" />
+              {item}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-6 text-[14px]">
+          <a href={ROADMAP} target="_blank" rel="noreferrer" className="link-quiet">
+            Full roadmap →
+          </a>
+        </p>
+      </div>
     </section>
   );
 }
