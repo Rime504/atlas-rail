@@ -193,8 +193,8 @@ export function Proof() {
         intro="Our red team assumes the agent is fully compromised on every attempt: it sends any offer, transaction or request the attacker wants, and always tries to sign."
       />
       <div className="mt-14 grid gap-4 md:grid-cols-3">
-        <Stat value="51" label="attack types" />
-        <Stat value="1,014" label="malicious attempts" />
+        <Stat value="52" label="attack types" />
+        <Stat value="1,017" label="malicious attempts" />
         <Stat value="$0.00" label="moved outside the mandate" accent />
       </div>
       <div className="mt-4 grid gap-4 md:grid-cols-2">

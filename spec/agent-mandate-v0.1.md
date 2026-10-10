@@ -178,7 +178,7 @@ Rules run in a fixed order and each returns `PASS`, `FAIL` (hard), `ESCALATE` (a
 | 4 | `MANDATE_NOT_REVOKED` | DENY |
 | 5 | `NETWORK_ALLOWED` | DENY |
 | 6 | `ASSET_ALLOWED` | DENY |
-| 7 | `RESOURCE_ALLOWED` | ESCALATE if inside `escalation.resources`, otherwise DENY |
+| 7 | `RESOURCE_ALLOWED` | ESCALATE if inside `escalation.resources` (checked first: an always-ask resource needs a human even when `allowedResources` also covers it); PASS if inside `allowedResources`; otherwise DENY |
 | 8 | `PAYTO_ALLOWED` | DENY |
 | 9 | `MAX_PER_PAYMENT` | DENY |
 | 10 | `PRICE_LIMIT` (§3.4) | ESCALATE above tolerance, DENY above the hard maximum; PASS if no entry matches the resource |

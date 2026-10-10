@@ -483,3 +483,30 @@ describe('evaluateGate — PRICE_LIMIT (rule 15)', () => {
     expect(statusOf(crept, 'PRICE_LIMIT')).toBe('ESCALATE');
   });
 });
+
+describe('evaluateGate — "always needs a human" resources (issue #103, reported by Divyesh)', () => {
+  const overlapping = () => signedTestMandate({ allowedResources: [`${TEST_ORIGIN}/*`], escalationResources: [`${TEST_ORIGIN}/inference/*`] });
+
+  it('escalates an always-ask resource even when a broader allowlist pattern also covers it', async () => {
+    const result = await gate({ resourceUrl: `${TEST_ORIGIN}/inference/run`, amount: '10000' }, {}, await overlapping());
+    expect(statusOf(result, 'RESOURCE_ALLOWED')).toBe('ESCALATE');
+    expect(result.decision).toBe('ESCALATE');
+    expect(result.escalationRules).toContain('RESOURCE_ALLOWED');
+  });
+
+  it('pays it once a permitted human approves that exact offer', async () => {
+    const mandate = await overlapping();
+    const offer = testOffer({ resourceUrl: `${TEST_ORIGIN}/inference/run`, amount: '10000' });
+    const result = evaluateGate(mandate, offer, testContext({ approval: testApproval(offer) }));
+    expect(result.decision).toBe('ALLOW');
+    expect(result.kind).toBe('APPROVED');
+    expect(statusOf(result, 'RESOURCE_ALLOWED')).toBe('OVERRIDDEN');
+  });
+
+  it('still allows the rest of the allowlist autonomously', async () => {
+    const result = await gate({ resourceUrl: `${TEST_ORIGIN}/research/summary`, amount: '10000' }, {}, await overlapping());
+    expect(statusOf(result, 'RESOURCE_ALLOWED')).toBe('PASS');
+    expect(result.decision).toBe('ALLOW');
+    expect(result.kind).toBe('AUTONOMOUS');
+  });
+});

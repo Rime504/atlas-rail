@@ -13,8 +13,8 @@ An open standard for delegated spending authority, a gate any agent or wallet ca
 - **The gate:** checks every payment against the mandate before any wallet signs. One line to integrate ([`wrapFetch`](docs/INTEGRATE.md#1-wrap-fetch-atlas-railagent)) or one MCP tool ([`pay`](docs/INTEGRATE.md#2-a-pay-tool-for-ai-assistants-atlas-rail-mcp)).
 - **The proof:** every payment names its own receipt on Solana. Anyone can verify it at [/verify](https://atlas-rail-playground.vercel.app/verify) or with `atlas verify --tx`, without trusting us.
 
-> [**51 attack types · 1,014 attempts · $0.00 moved, assuming a fully compromised agent**](reports/redteam-2026-10-08.md)<br>
-> [**100 simultaneous payments vs a $5 cap → $5.00 (with our lock removed: $10.00)**](reports/redteam-2026-10-08.md#concurrency-100-simultaneous-payments-against-a-5-cap)<br>
+> [**52 attack types · 1,017 attempts · $0.00 moved, assuming a fully compromised agent**](reports/redteam-2026-10-10.md)<br>
+> [**100 simultaneous payments vs a $5 cap → $5.00 (with our lock removed: $10.00)**](reports/redteam-2026-10-10.md#concurrency-100-simultaneous-payments-against-a-5-cap)<br>
 > [**Pay, then verify from the chain on real devnet: PROVEN, 3 of 3**](reports/playground-live-2026-10-08.md)
 
 ![The Atlas Rail playground: a mandate signed on Solana, a normal payment allowed, a prompt-injection attack blocked, a seller price spike sent to a human, and a receipt verified](docs/assets/playground-demo.gif)
@@ -145,9 +145,9 @@ Three layers:
 
 | What | Number | Source |
 |---|---|---|
-| Automated tests (CI) | 439 passing | `pnpm test`, [CI](https://github.com/Rime504/atlas-rail/actions) |
-| Red team: fully compromised agent | 51 attack types, 1,014 attempts, **0 signatures obtained, $0.00 moved outside the mandate** | [reports/redteam-2026-10-08.md](reports/redteam-2026-10-08.md) |
-| Red team on real devnet | 16 attack types, $0.00 moved outside the mandate | same report |
+| Automated tests (CI) | 485 passing | `pnpm test`, [CI](https://github.com/Rime504/atlas-rail/actions) |
+| Red team: fully compromised agent | 52 attack types, 1,017 attempts, **0 signatures obtained, $0.00 moved outside the mandate** | [reports/redteam-2026-10-10.md](reports/redteam-2026-10-10.md) |
+| Red team on real devnet | 17 attack types, $0.00 moved outside the mandate | same report |
 | 100 simultaneous payments vs a $5 cap (full gate service, not the hosted playground) | $5.00 spent (in-memory and Postgres); $10.00 with the lock removed | same report |
 | Real devnet end-to-end run | all six scenes pass, memos match their receipts | [reports/e2e-2026-10-08.md](reports/e2e-2026-10-08.md) |
 | Gate decision latency (devnet) | p50 351 ms, p95 1,613 ms | same report |
@@ -179,7 +179,7 @@ The key lives in the **signer service** (`apps/signer`), a separate process the 
 
 ## Security
 
-**What it stops**, each with a test: payments to unlisted sellers or resources, amounts over any limit, price creep beyond the signed price, wrong asset or network, splitting a payment to dodge a limit, replayed or rejected approvals, replayed, stale, tampered or forged authorizations, payments after revocation or expiry, and concurrent bursts against a cap. See the [red-team report](reports/redteam-2026-10-08.md) and [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
+**What it stops**, each with a test: payments to unlisted sellers or resources, amounts over any limit, price creep beyond the signed price, wrong asset or network, splitting a payment to dodge a limit, replayed or rejected approvals, replayed, stale, tampered or forged authorizations, payments after revocation or expiry, and concurrent bursts against a cap. See the [red-team report](reports/redteam-2026-10-10.md) and [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 
 **Honest limits:**
 
@@ -260,7 +260,7 @@ Report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
 - The on-chain mandate registry: registration and revocation recorded on devnet.
 - Unknown payment outcomes resolved from the chain, never from the agent's word.
 - The agent's key in a separate signer service, reached only over HTTP in `pnpm demo`.
-- The red team (51 attack types, $0.00 moved outside the mandate) and the concurrency proof.
+- The red team (52 attack types, $0.00 moved outside the mandate) and the concurrency proof.
 - `wrapFetch` and an MCP `pay` tool.
 - The hosted playground, running the real gate rules and receipt code with per-session state.
 

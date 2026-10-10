@@ -206,3 +206,9 @@ Verified clean, independently, after all three fixes: both the scene-2 and scene
 - **Website** (`apps/site`, #96): a new company site, live at https://atlas-rail-site.vercel.app. Every claim follows docs/CLAIMS.md; the x402 market statistic is shown with its source. Lighthouse: performance 91–94 on phone and 99 on desktop; 100 for accessibility, best practices and SEO.
 - **Launch video** (`apps/video`, #97): 40 seconds, 1920×1080, made with Remotion from real screenshots of the live playground on devnet. Kept out of the product build.
 - **Playground**: share previews now resolve against https://atlas-rail-playground.vercel.app (they pointed at the dead `playground.atlasrail.dev`) and have an image. The landing page and the end screen link to the website.
+
+## Always-ask resources fixed (issue #103), 2026-10-10
+
+- **Bug, reported by Divyesh (false200):** `RESOURCE_ALLOWED` read the always-ask list only for URLs outside the allowlist, so an always-ask path also covered by a broader allowlist pattern (e.g. `api.example.com/*` with `api.example.com/inference/*` always-ask) was paid without a human. Caps still applied.
+- **Fix:** the always-ask list is checked first. Rule messages and the receipt format are unchanged, so existing receipts still verify. The spec's rule 7 now states the order; two new test vectors.
+- **Red team:** new case R1 (also on devnet). Totals: 52 attack types, 1,017 attempts, 0 signatures, $0.00 outside the mandate; devnet 17/17 ([report](../reports/redteam-2026-10-10.md)). Tests: 485 passing.

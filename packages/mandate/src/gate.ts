@@ -278,15 +278,17 @@ export function evaluateGate(mandateInput: unknown, offerInput: unknown, context
           }),
     );
 
-    // 6. Resource: allowed, approvable with a human, or denied.
-    if (matchesAnyResourcePattern(offer.resourceUrl, scope.allowedResources)) {
-      rules.push(pass('RESOURCE_ALLOWED', 'Resource is inside the mandate scope', { resource: offer.resourceUrl }));
-    } else if (matchesAnyResourcePattern(offer.resourceUrl, escalation.resources)) {
+    // 6. Resource: always-ask (a human every time, even if a broader allowlist pattern also covers it),
+    // allowed, or denied.
+    if (matchesAnyResourcePattern(offer.resourceUrl, escalation.resources)) {
       rules.push(
+        // Message unchanged on purpose: verifyReceipt re-runs the gate and compares with recorded results.
         escalate('RESOURCE_ALLOWED', 'Resource is outside autonomous scope but may be approved by a human', {
           resource: offer.resourceUrl,
         }),
       );
+    } else if (matchesAnyResourcePattern(offer.resourceUrl, scope.allowedResources)) {
+      rules.push(pass('RESOURCE_ALLOWED', 'Resource is inside the mandate scope', { resource: offer.resourceUrl }));
     } else {
       rules.push(
         fail('RESOURCE_ALLOWED', `Resource ${offer.resourceUrl} is not covered by this mandate`, {

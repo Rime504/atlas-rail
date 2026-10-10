@@ -310,8 +310,8 @@ function RedTeam() {
       <Canvas>
         <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ display: 'flex', gap: 40, alignItems: 'flex-start' }}>
-            {item(<Counter to={51} start={8} format={(v) => `${Math.round(v)}`} />, 'attack types', 6)}
-            {item(<Counter to={1014} start={20} format={(v) => Math.round(v).toLocaleString('en-US')} />, 'attempts', 18)}
+            {item(<Counter to={52} start={8} format={(v) => `${Math.round(v)}`} />, 'attack types', 6)}
+            {item(<Counter to={1017} start={20} format={(v) => Math.round(v).toLocaleString('en-US')} />, 'attempts', 18)}
             {item('$0.00', 'moved', 40, true)}
           </div>
           <Reveal at={64} style={{ marginTop: 70, fontSize: 28, color: MUTED }}>
