@@ -1,7 +1,7 @@
 import type { Publication, World } from './types';
 
 export const DEVNET_LIMIT_REASON =
-  "This run reached the playground's devnet limit (5 runs an hour), so nothing was put on-chain and there is no transaction to look up.";
+  "This run reached the playground's devnet limit (15 runs an hour), so nothing was put on-chain and there is no transaction to look up.";
 
 /**
  * Why this run's receipt cannot be published at all, or null if publishing can be attempted.

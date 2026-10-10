@@ -602,7 +602,7 @@ function StepProve({
     <section>
       <StepHeading
         title="Proof"
-        subtitle="Every decision — allowed, escalated or blocked — is signed and recorded. An allowed payment also gets a verifiable receipt anyone can check, with no account and no trust required."
+        subtitle="Every decision — allowed, escalated or blocked — is signed. An allowed payment also gets a verifiable receipt anyone can check, with no account and no trust required."
       />
       {!receipt ? (
         <Card>

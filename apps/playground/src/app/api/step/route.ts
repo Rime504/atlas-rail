@@ -14,6 +14,7 @@ import {
 import { rateLimited, registerMandateOnchain, resolveDevnetCoreKeys, revokeMandateOnchain, settlePaymentOnchain, withTimeout } from '@/lib/devnet';
 import { StepRequest, StepResponse, World } from '@/lib/types';
 import { anchorProveAndPublish, publishStep } from '@/lib/step-proof';
+import { SessionTamperedError, openWorld, sealWorld } from '@/lib/session';
 
 // Node runtime, not Edge: packages/mandate, packages/receipt and packages/solana use Node's
 // `crypto` and `@solana/web3.js`, neither of which runs on the Edge runtime.
@@ -34,7 +35,17 @@ export async function POST(req: NextRequest) {
   const { action } = body;
   // Each step's devnet fallback notice describes THIS step's own on-chain attempt, never a previous
   // one's — without this, a step-3 RPC hiccup would keep showing on top of a fully-passing step 7.
-  const world: World | null = body.world ? { ...body.world, devnetFallbackReason: null } : body.world;
+  // The browser holds the session state between requests; only state this server signed is accepted.
+  let opened: World | null = null;
+  if (body.world) {
+    try {
+      opened = openWorld(body.world);
+    } catch (err) {
+      if (err instanceof SessionTamperedError) return NextResponse.json({ error: err.message }, { status: 400 });
+      throw err;
+    }
+  }
+  const world: World | null = opened ? { ...opened, devnetFallbackReason: null } : null;
 
   try {
     switch (action.type) {
@@ -52,7 +63,7 @@ export async function POST(req: NextRequest) {
         // below (register, two settlements, an anchor, revoke) — so one full walkthrough counts as
         // one run against the hourly limit, not five.
         if (rateLimited(clientIp(req))) {
-          return respond({ ...initWorld('devnet', core, false).world, devnetFallbackReason: 'Devnet rate limit reached (5 runs/hour) — continuing without real on-chain actions.' });
+          return respond({ ...initWorld('devnet', core, false).world, devnetFallbackReason: 'Devnet rate limit reached (15 runs/hour) — continuing without real on-chain actions.' });
         }
         return respond(initWorld('devnet', core).world);
       }
@@ -65,7 +76,7 @@ export async function POST(req: NextRequest) {
           if (!core) {
             next = { ...next, devnetFallbackReason: 'Devnet mode is not configured on this deployment.' };
           } else if (!next.devnetAllowed) {
-            next = { ...next, devnetFallbackReason: 'Devnet rate limit reached (5 runs/hour) — showing the signed mandate without an on-chain registration.' };
+            next = { ...next, devnetFallbackReason: 'Devnet rate limit reached (15 runs/hour) — showing the signed mandate without an on-chain registration.' };
           } else {
             try {
               const onchain = await withTimeout(registerMandateOnchain(next.mandate, core));
@@ -134,7 +145,7 @@ export async function POST(req: NextRequest) {
           if (!core) {
             next = { ...next, devnetFallbackReason: 'Devnet mode is not configured on this deployment.' };
           } else if (!next.devnetAllowed) {
-            next = { ...next, devnetFallbackReason: 'Devnet rate limit reached (5 runs/hour) — the mandate is revoked locally but not on-chain.' };
+            next = { ...next, devnetFallbackReason: 'Devnet rate limit reached (15 runs/hour) — the mandate is revoked locally but not on-chain.' };
           } else {
             try {
               const onchain = await withTimeout(revokeMandateOnchain(next.mandate, core));
@@ -186,6 +197,6 @@ function respond(
   verification?: StepResponse['verification'],
   publication?: StepResponse['publication'],
 ): NextResponse {
-  const response: StepResponse = { world, payment, verification, publication };
+  const response: StepResponse = { world: sealWorld(world), payment, verification, publication };
   return NextResponse.json(response);
 }

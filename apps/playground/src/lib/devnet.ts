@@ -12,9 +12,8 @@
  * before it pays for `anchor_root`. `PLAYGROUND_DEVNET_AGENT_SECRET_KEY` must ALSO be set and funded
  * with a small amount of real devnet USDC (https://faucet.circle.com) for settlement to succeed —
  * without it, payments fall back to a synthetic settlement with a visible reason, same as any other
- * devnet failure. Approver and instance keys are derived from the owner key if their own env vars
- * aren't set (identical on every server instance), since they only need to sign, never
- * to pay (the instance key's SOL is minted on demand from the owner key, see `anchorRootOnchain`).
+ * devnet failure. Approver and instance keys need their own env vars too when deployed (they only
+ * sign, never pay); only local development derives missing ones from the owner key (the instance key's SOL is minted on demand from the owner key, see `anchorRootOnchain`).
  * Devnet mode is simply unavailable (silently falls back to instant mode) if the owner key isn't
  * configured.
  */
@@ -32,13 +31,14 @@ import {
   findMandatePda,
 } from '@atlas-rail/solana';
 import { createHash } from 'node:crypto';
+import { DEVNET_KEY_VARS, assertProductionConfig, deploymentOf } from './devnet-env';
 import { DevnetCoreKeys, OnchainAnchor } from './scenario';
 import { KeyInfo, OnchainAction } from './types';
 
 const PROGRAM_ID = process.env.MANDATE_PROGRAM_ID ?? 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k';
 const RPC_URL = process.env.PLAYGROUND_SOLANA_RPC_URL ?? 'https://api.devnet.solana.com';
 const DEVNET_TIMEOUT_MS = 20_000;
-const RATE_LIMIT_PER_HOUR = 5;
+const RATE_LIMIT_PER_HOUR = 15;
 
 function explorerTx(signature: string): string {
   return `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
@@ -55,11 +55,10 @@ function keyFromSecretEnv(label: string, envVar: string): KeyInfo | null {
 }
 
 /**
- * Approver, agent and instance keys don't need funding, so they need no env vars of their own. They
- * are derived from the owner key (sha256 of a fixed label and the owner seed: one-way, and the same
- * on every server instance). They used to be random per instance, so step 2 (register, gate
- * authority = this instance's key) and step 7 (anchor, signed by whichever instance answered) could
- * disagree, and the program refused the anchor with UnauthorizedAnchor.
+ * Local development only: a missing approver, agent or instance key is derived from the owner key
+ * (sha256 of a fixed label and the owner seed: one-way, the same in every process). Deployed
+ * playgrounds use their own independent keys, so the approver is a genuinely separate key; in
+ * production a missing key stops the server at startup (see devnet-env.ts).
  */
 function derivedKeyInfo(label: string, ownerSeedHex: string): KeyInfo {
   const seed = createHash('sha256').update(`atlas-rail-playground/v1/${label}/`).update(fromHex(ownerSeedHex)).digest();
@@ -75,11 +74,22 @@ export function devnetChain(): Web3ChainClient {
 }
 
 export function resolveDevnetCoreKeys(): DevnetCoreKeys | null {
-  const owner = keyFromSecretEnv('owner', 'PLAYGROUND_DEVNET_OWNER_SECRET_KEY');
-  if (!owner) return null;
-  const approver = keyFromSecretEnv('approver', 'PLAYGROUND_DEVNET_APPROVER_SECRET_KEY') ?? derivedKeyInfo('approver', owner.seedHex!);
-  const agent = keyFromSecretEnv('agent', 'PLAYGROUND_DEVNET_AGENT_SECRET_KEY') ?? derivedKeyInfo('agent', owner.seedHex!);
-  const instance = keyFromSecretEnv('instance', 'PLAYGROUND_DEVNET_INSTANCE_SECRET_KEY') ?? derivedKeyInfo('instance', owner.seedHex!);
+  const owner = keyFromSecretEnv('owner', DEVNET_KEY_VARS.owner);
+  if (!owner) {
+    assertProductionConfig();
+    return null;
+  }
+  const local = deploymentOf() === 'local';
+  const pick = (label: 'approver' | 'agent' | 'instance') =>
+    keyFromSecretEnv(label, DEVNET_KEY_VARS[label]) ?? (local ? derivedKeyInfo(label, owner.seedHex!) : null);
+  const approver = pick('approver');
+  const agent = pick('agent');
+  const instance = pick('instance');
+  if (!approver || !agent || !instance) {
+    // Production refuses to start without them (instrumentation.ts); a preview just has no devnet mode.
+    assertProductionConfig();
+    return null;
+  }
   return { owner, approver, agent, instance };
 }
 

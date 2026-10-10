@@ -199,7 +199,7 @@ export function Proof() {
       </div>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <div className="card p-7">
-          <p className="text-[15px] text-muted">100 simultaneous payments against a $5 budget</p>
+          <p className="text-[15px] text-muted">100 simultaneous payments against a $5 budget, on the full gate service</p>
           <p className="mt-3 text-[32px] font-semibold tracking-[-0.03em] text-white">
             $5.00 <span className="text-[17px] font-normal text-faint">spent. With our lock removed: $10.00.</span>
           </p>
@@ -349,7 +349,8 @@ export function ClosingCta() {
         <h2 id="cta-title" className="mx-auto max-w-xl text-[30px] font-semibold leading-tight tracking-[-0.03em] text-white sm:text-[40px]">
           See a payment prove itself.
         </h2>
-        <p className="mx-auto mt-4 max-w-md text-[17px] text-muted">The real gate and receipt code, running in your browser.</p>
+        <p className="mx-auto mt-4 max-w-xl text-[17px] text-muted">The real gate rules and receipt code, live on Solana devnet.</p>
+        <p className="mx-auto mt-3 max-w-xl text-[13px] leading-relaxed text-faint">The hosted playground runs the real gate rules with per-session state. The full gate service (Postgres ledger, reservations, per-mandate lock, separate signer) runs with pnpm demo; that&rsquo;s where the concurrency proof comes from.</p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a href={PLAYGROUND} target="_blank" rel="noreferrer" className="btn-primary w-full sm:w-auto">
             Try it live

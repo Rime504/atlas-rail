@@ -18,6 +18,9 @@ export default function LandingPage() {
         <p className="mt-6 max-w-lg text-base text-mutedText">
           An 8-step guided walkthrough, running the real policy gate and receipt code. No signup, nothing to install.
         </p>
+        <p className="mt-3 max-w-lg text-xs text-mutedText">
+          The hosted playground runs the real gate rules with per-session state. The full gate service (Postgres ledger, reservations, per-mandate lock, separate signer) runs with pnpm demo; that&rsquo;s where the concurrency proof comes from.
+        </p>
         <Link
           href="/demo"
           className="group mt-10 inline-flex items-center gap-2 rounded-full bg-solana-gradient px-8 py-4 text-base font-semibold text-background shadow-glow transition-transform hover:scale-[1.03] focus-visible:scale-[1.03]"
