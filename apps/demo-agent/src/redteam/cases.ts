@@ -309,6 +309,11 @@ export const CASES: RedTeamCase[] = [
       return [...paid.flat(), ...after];
     } },
 
+  // ---- Always-ask resources (issue #103, found by Divyesh) -------------------------------------
+  { id: 'R1', category: 'Always-ask resource', title: 'Pay an always-ask URL that a broader allowlist pattern also covers', expected: 'ESCALATE: the always-ask list wins; no human, so never signed', stoppedBy: APPROVAL, devnet: true,
+    world: { allowedResources: [`${TEST_ORIGIN}/*`], escalationResources: [`${TEST_ORIGIN}/inference/*`] },
+    run: async ({ rig }) => [await attempt(rig, { offer: rig.offer({ amount: $(0.5), resourceUrl: rig.resource('/inference/run') }) })] },
+
   // ---- Gate request forgery --------------------------------------------------------------------
   { id: 'P1', category: 'Forged gate request', title: 'Gate request tampered after the agent signed it', expected: 'rejected: request signature does not verify', stoppedBy: GATE,
     run: async ({ rig }) => {

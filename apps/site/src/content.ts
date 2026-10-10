@@ -7,7 +7,7 @@ export const PLAYGROUND = 'https://atlas-rail-playground.vercel.app';
 export const VERIFY = `${PLAYGROUND}/verify`;
 export const SPEC = `${GITHUB}/blob/master/spec/agent-mandate-v0.1.md`;
 export const PROGRAM = 'https://explorer.solana.com/address/CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k?cluster=devnet';
-export const REDTEAM_REPORT = `${GITHUB}/blob/master/reports/redteam-2026-10-08.md`;
+export const REDTEAM_REPORT = `${GITHUB}/blob/master/reports/redteam-2026-10-10.md`;
 export const CONCURRENCY_REPORT = `${REDTEAM_REPORT}#concurrency-100-simultaneous-payments-against-a-5-cap`;
 export const LIVE_RUNS_REPORT = `${GITHUB}/blob/master/reports/playground-live-2026-10-08.md`;
 export const THREAT_MODEL = `${GITHUB}/blob/master/docs/THREAT_MODEL.md`;

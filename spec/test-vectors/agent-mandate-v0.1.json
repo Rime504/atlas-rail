@@ -257,6 +257,80 @@
       ]
     }
   },
+  "overlapMandate": {
+    "signed": {
+      "type": "atlasrail.agent-mandate",
+      "version": "0.1",
+      "id": "mnd_TESTMANDATE0000000001",
+      "issuer": {
+        "organizationId": "org_test",
+        "name": "Atlas Demo Imports"
+      },
+      "agent": {
+        "publicKey": "BshxiGx4dCBP2sookthKTKfqpbZNqphFJ7PYjiYGBpE7",
+        "label": "Research Agent"
+      },
+      "delegation": {
+        "requiredApprovals": 1,
+        "preventIssuerApproval": true
+      },
+      "scope": {
+        "allowedNetworks": [
+          "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"
+        ],
+        "allowedAssets": [
+          "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        ],
+        "allowedPayTo": [
+          "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG"
+        ],
+        "allowedResources": [
+          "http://localhost:4402/*"
+        ],
+        "limits": {
+          "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+          "maxPerPayment": "50000000",
+          "maxPerWindow": "5000000",
+          "windowSeconds": 86400,
+          "maxTotal": "100000000"
+        },
+        "priceLimits": []
+      },
+      "escalation": {
+        "thresholdBaseUnits": "1000000",
+        "approverRoles": [
+          "OWNER",
+          "ADMIN",
+          "APPROVER"
+        ],
+        "resources": [
+          "http://localhost:4402/inference/*"
+        ],
+        "approvalTtlSeconds": 900
+      },
+      "notBefore": 1799996400,
+      "expiresAt": 1800259200,
+      "nonce": "00112233445566778899aabbccddeeff",
+      "revocable": true,
+      "delegationChain": [
+        {
+          "role": "OWNER",
+          "publicKey": "FseuYDfayH186rL2ALfk3ej5c7uoj3JcDfCQxupobqFt",
+          "signature": "4AY8gLuM7RUjh6U3JZSZABg5Quxqdgxjj1oYEg7EHTdK6D5wrrumYqd6TVjiBReBSwasmYjDtqJvABMwh7qLTfE5"
+        },
+        {
+          "role": "APPROVER",
+          "publicKey": "EXQWapH4ukNXMBUZTFa9nNsjZjFgJaM74STTG9ZRBmBJ",
+          "signature": "2CftYXmqAp4Bgh1Puy6N8JKd4dKtZngxo1fupvGpp6wL57ysPdqEjHeD4xXDcyS7nkbsmXCaKJcRtyYzAQm61KVW"
+        },
+        {
+          "role": "AGENT",
+          "publicKey": "BshxiGx4dCBP2sookthKTKfqpbZNqphFJ7PYjiYGBpE7",
+          "signature": "3bZJz4CAKbNUByMz4F5qec9KmXSCnXf61eyv7fQbWdYehNh3gHRAC4iVtPJzimrQ8NKqoJSc66qh7Kk9oHriimdU"
+        }
+      ]
+    }
+  },
   "resources": [
     {
       "url": "http://localhost:4402/research/summary",
@@ -826,6 +900,132 @@
           "MAX_TOTAL:PASS",
           "TRANSACTION_SIMULATION:PASS",
           "ESCALATION_THRESHOLD:ESCALATE"
+        ]
+      }
+    },
+    {
+      "name": "escalate: an always-ask resource needs a human even when a broader allowlist pattern also covers it",
+      "offer": {
+        "x402Version": 2,
+        "scheme": "exact",
+        "network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+        "asset": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
+        "amount": "10000",
+        "resourceUrl": "http://localhost:4402/inference/run",
+        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
+        "memo": null
+      },
+      "offerHash": "581d91c62c19f7acb59d8284f73963df81def292f62c85f10b34c7f4f45436f8",
+      "context": {
+        "now": 1800000000,
+        "revoked": null,
+        "spend": {
+          "windowAutonomousBaseUnits": "0",
+          "totalBaseUnits": "0"
+        },
+        "simulation": {
+          "success": true,
+          "error": null,
+          "programIds": [
+            "ComputeBudget111111111111111111111111111111",
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+          ],
+          "unknownProgramIds": [],
+          "transferCount": 1,
+          "matchesOffer": true,
+          "mismatch": null,
+          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "unitsConsumed": 18000
+        },
+        "requireSimulation": true,
+        "approval": null
+      },
+      "expected": {
+        "decision": "ESCALATE",
+        "kind": null,
+        "failedRule": "RESOURCE_ALLOWED",
+        "escalationRules": [
+          "RESOURCE_ALLOWED"
+        ],
+        "rules": [
+          "OFFER_WELL_FORMED:PASS",
+          "MANDATE_SIGNATURES:PASS",
+          "MANDATE_VALIDITY:PASS",
+          "MANDATE_NOT_REVOKED:PASS",
+          "NETWORK_ALLOWED:PASS",
+          "ASSET_ALLOWED:PASS",
+          "RESOURCE_ALLOWED:ESCALATE",
+          "PAYTO_ALLOWED:PASS",
+          "MAX_PER_PAYMENT:PASS",
+          "PRICE_LIMIT:PASS",
+          "WINDOW_BUDGET:PASS",
+          "MAX_TOTAL:PASS",
+          "TRANSACTION_SIMULATION:PASS",
+          "ESCALATION_THRESHOLD:PASS"
+        ]
+      }
+    },
+    {
+      "name": "allow: the rest of that allowlist stays autonomous",
+      "offer": {
+        "x402Version": 2,
+        "scheme": "exact",
+        "network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+        "asset": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
+        "amount": "10000",
+        "resourceUrl": "http://localhost:4402/research/summary",
+        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
+        "memo": null
+      },
+      "offerHash": "a9571e4d78a494a0e01819f18613849aa85595306227184fd105a6acaba862f0",
+      "context": {
+        "now": 1800000000,
+        "revoked": null,
+        "spend": {
+          "windowAutonomousBaseUnits": "0",
+          "totalBaseUnits": "0"
+        },
+        "simulation": {
+          "success": true,
+          "error": null,
+          "programIds": [
+            "ComputeBudget111111111111111111111111111111",
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+          ],
+          "unknownProgramIds": [],
+          "transferCount": 1,
+          "matchesOffer": true,
+          "mismatch": null,
+          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "unitsConsumed": 18000
+        },
+        "requireSimulation": true,
+        "approval": null
+      },
+      "expected": {
+        "decision": "ALLOW",
+        "kind": "AUTONOMOUS",
+        "failedRule": null,
+        "escalationRules": [],
+        "rules": [
+          "OFFER_WELL_FORMED:PASS",
+          "MANDATE_SIGNATURES:PASS",
+          "MANDATE_VALIDITY:PASS",
+          "MANDATE_NOT_REVOKED:PASS",
+          "NETWORK_ALLOWED:PASS",
+          "ASSET_ALLOWED:PASS",
+          "RESOURCE_ALLOWED:PASS",
+          "PAYTO_ALLOWED:PASS",
+          "MAX_PER_PAYMENT:PASS",
+          "PRICE_LIMIT:PASS",
+          "WINDOW_BUDGET:PASS",
+          "MAX_TOTAL:PASS",
+          "TRANSACTION_SIMULATION:PASS",
+          "ESCALATION_THRESHOLD:PASS"
         ]
       }
     },

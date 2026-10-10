@@ -5,10 +5,10 @@ formal threat table) and [`spec/agent-mandate-v0.1.md §9`](../spec/agent-mandat
 (the normative version). This page is the short version: each attack, what stops it, and where to see
 it tested, then where the guarantees end.
 
-**How it is tested.** The red team ([`reports/redteam-2026-10-08.md`](../reports/redteam-2026-10-08.md),
+**How it is tested.** The red team ([`reports/redteam-2026-10-10.md`](../reports/redteam-2026-10-10.md),
 `pnpm redteam`, run in CI) **assumes the agent is fully compromised on every attempt**: it sends any
 offer, transaction bytes or gate request the attacker wants, replays and tampers freely, and always
-tries to sign. 51 attack types, 1,014 attempts on the in-memory cluster, 16 attack types on real devnet:
+tries to sign. 52 attack types, 1,017 attempts on the in-memory cluster, 17 attack types on real devnet:
 0 signatures obtained by an attack, $0.00 moved outside the mandate. Money moved is read from token
 balances, never from what the gate reports.
 
@@ -28,6 +28,7 @@ Signer checks are in [`packages/x402-client/src/gated-signer.ts`](../packages/x4
 | **Split one payment into many small ones** | `WINDOW_BUDGET` (rolling budget: further slices go to a human) and `MAX_TOTAL` | cases G1–G3; `/break` |
 | **Seller price inflation and price creep** on an allowed resource | `PRICE_LIMIT`: the reference price is fixed in the signed mandate; above tolerance goes to a human, above the hard maximum is refused (rule 15, credit to Felix for the gap) | cases C1–C4; playground step 5 |
 | **Wrong asset or network** (another mint, mainnet, testnet, an EVM chain) | `ASSET_ALLOWED`, `NETWORK_ALLOWED` | cases D1, D3, E1–E3 |
+| **Always-ask resource** also covered by a broader allowlist pattern | `RESOURCE_ALLOWED` checks `escalation.resources` first: a matching resource always needs a human | case R1, also on real devnet; `gate.test.ts`; spec vectors |
 | **Unlisted resource**, including `/research/../admin`, `/research-evil/` and query-string tricks | `RESOURCE_ALLOWED` on the canonicalised URL | cases F1–F5 |
 | **Escalated payment with no human** | `ESCALATE` produces no authorization, so the signer has nothing to sign with | cases B2, C4, G2 |
 | **Replayed approval**: reuse a human's sign-off for a different amount, payee or after rejection | Approvals are bound to one exact offer hash, single-use and short-lived; `ESCALATION_APPROVAL` fails closed | cases H1–H3 |
@@ -41,19 +42,20 @@ Signer checks are in [`packages/x402-client/src/gated-signer.ts`](../packages/x4
 | **Revoked or expired mandate** | `MANDATE_NOT_REVOKED` (checked on every evaluation; behind `ATLAS_ONCHAIN=1` also against the on-chain record), `MANDATE_VALIDITY` | cases K1, K2, L1, L2; playground step 8 |
 | **False failure claim**: the agent says a payment that settled "didn't go through" to get its budget back | The gate never frees a spend hold on the caller's word. It looks for the exact authorised message on-chain: landed means SETTLED and still counted; budget is freed only if it landed with an error, or its blockhash expired (checked at finalized commitment) and it never landed | case Q1, also on real devnet; `fetch.test.ts`, `payment-outcome.test.ts` |
 | **Lost answer** (timeout, dropped connection after signing) | Same check: the client asks the gate, which reports SETTLED, RELEASED or PENDING from the chain; the budget stays reserved while the outcome is unknown | `fetch.test.ts` |
-| **Concurrent burst** against a cap (check-then-record race) | Decision and reservation happen under one per-mandate lock: a Postgres advisory lock, queued in-process | 100 simultaneous $0.10 payments vs a $5 cap: $5.00 spent (in-memory and Postgres); $10.00 with the lock removed ([report](../reports/redteam-2026-10-08.md)) |
+| **Concurrent burst** against a cap (check-then-record race) | Decision and reservation happen under one per-mandate lock: a Postgres advisory lock, queued in-process | 100 simultaneous $0.10 payments vs a $5 cap: $5.00 spent (in-memory and Postgres); $10.00 with the lock removed ([report](../reports/redteam-2026-10-10.md)) |
 | **Tampered receipt** | The receipt hash binds mandate, offer, decision, settlement and response; the instance signature covers it; verification recomputes everything and re-runs the gate on the recorded inputs | `receipt.test.ts` "detects tampering with each bound field"; `proof.test.ts` |
 | **Borrowed proof**: a payment whose memo copies another payment's receipt id | The receipt must name this exact transaction back, or the verdict is NO PROOF | `proof.test.ts`; `/verify` |
 | **Prompt injection** | Not a rule by itself: the composition of everything above. The agent's reasoning can be fully compromised; the worst it can do is ask for something outside the mandate, which is refused | playground step 4; `/break`; the whole red team |
 
 ## Found and fixed by our own red team
 
-Both were in v0.2.0 and are fixed in v0.2.1. Neither moved money outside a test; each now has a red-team case that runs in CI and on real devnet.
+Q1 and N2 were in v0.2.0 and are fixed in v0.2.1; R1 was reported by Divyesh (false200) after v0.2.1 and fixed in #104. None moved money outside a test; each now has a red-team case that runs in CI and on real devnet.
 
 | Case | What was wrong | Fix |
 |---|---|---|
 | **Q1**: budget release on the agent's word | The gate freed a payment's reserved budget whenever the agent said the payment had failed. A compromised agent could pay, claim failure, and pay again past every cap. | `resolveSpend` ([#88](https://github.com/Rime504/atlas-rail/pull/88)): the gate looks for the exact authorised transaction on-chain and frees budget only if it landed with an error, or its blockhash has expired and a fresh lookup still does not find it. A failed or incomplete lookup keeps the budget reserved. |
 | **N2**: message signing accepting transaction bytes | The gated signer's "sign message" signed any bytes. A Solana payment signature is a signature over the transaction's message bytes, so an agent could get any payment signed with no gate decision (shown on the in-memory test cluster against the old code: a $60 payment over the $50 cap settled). | [#89](https://github.com/Rime504/atlas-rail/pull/89): the signer signs messages only in the exact Atlas Rail agent-request and mandate-acceptance forms, which no Solana message can match; the agent key moved to a separate signer service with no other signing route. |
+| **R1**: always-ask resources paid without a human (found by Divyesh, [false200](https://github.com/false200), [#103](https://github.com/Rime504/atlas-rail/issues/103)) | `RESOURCE_ALLOWED` checked the allowlist first and read the always-ask list (`escalation.resources`) only for URLs outside it. With an allowlist of `api.example.com/*` and an always-ask path of `api.example.com/inference/*`, an inference call inside the caps was paid autonomously; the human checkpoint was skipped (caps still applied). Shown on the in-memory test cluster against the old code: the payment was signed and settled. | [#104](https://github.com/Rime504/atlas-rail/pull/104): the always-ask list is checked first, so a matching resource always needs a human; the rest of the allowlist is unchanged. The spec's rule 7 now states the order, with two new test vectors. |
 
 ## Issues found and fixed by Divyesh
 
@@ -69,6 +71,7 @@ Divyesh also built `anchor_root`, the instruction that writes receipt Merkle roo
 
 ## Honest limits
 
+- **The hosted playground keeps per-session state, not a ledger.** A visitor can return to an earlier server-signed state within their own session (like the Back button), because there is no server-side ledger; edited state is refused. The full gate service (Postgres ledger, reservations, per-mandate lock) does not have this limit.
 - **The key must live outside the agent's process.** The red team's guarantee assumes the attacker
   controls everything except the gated signer and its key. An agent that can read its own key can sign
   anything. `pnpm demo` runs the signer as a separate process (`apps/signer`) that the agent reaches only

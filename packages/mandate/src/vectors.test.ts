@@ -84,6 +84,26 @@ async function build() {
     };
   };
 
+  // Always-ask resources win over a broader allowlist pattern (issue #103): the allowlist covers the
+  // whole origin, the escalation list a narrower path that must reach a human every time.
+  const overlapMandate = await signedTestMandate({ allowedResources: [`${TEST_ORIGIN}/*`], escalationResources: [`${TEST_ORIGIN}/inference/*`] });
+  const overlapGateCase = (name: string, offer: X402Offer, context: GateContext) => {
+    const result = evaluateGate(overlapMandate, offer, context);
+    return {
+      name,
+      offer,
+      offerHash: hashOffer(offer),
+      context,
+      expected: {
+        decision: result.decision,
+        kind: result.kind,
+        failedRule: result.failedRule,
+        escalationRules: result.escalationRules,
+        rules: result.rulesEvaluated.map((r) => `${r.id}:${r.status}`),
+      },
+    };
+  };
+
   const resourceCases: Array<[string, string[], string]> = [
     ['http://localhost:4402/research/summary', ['http://localhost:4402/research/*'], 'trailing /* is a prefix match on a segment boundary'],
     ['http://localhost:4402/research/a/b', ['http://localhost:4402/research/*'], 'deeper paths under the prefix match'],
@@ -110,6 +130,7 @@ async function build() {
       verification: verifyMandateChain(signed),
     },
     pricedMandate: { priceLimits, signed: pricedMandate },
+    overlapMandate: { signed: overlapMandate },
     resources: resourceCases.map(([url, patterns, why]) => ({ url, patterns, why, matches: matchesAnyResourcePattern(url, patterns) })),
     gate: [
       gateCase('autonomous allow', testOffer(), testContext()),
@@ -120,6 +141,12 @@ async function build() {
       gateCase('deny: hard per-payment ceiling', testOffer({ amount: '60000000' }), testContext()),
       gateCase('deny: revoked', testOffer(), testContext({ revoked: { revokedAt: NOW - 10, reason: 'compromised' } })),
       gateCase('escalate: inference endpoint always needs a human', heavy, testContext()),
+      overlapGateCase(
+        'escalate: an always-ask resource needs a human even when a broader allowlist pattern also covers it',
+        testOffer({ resourceUrl: `${TEST_ORIGIN}/inference/run`, amount: '10000' }),
+        testContext(),
+      ),
+      overlapGateCase('allow: the rest of that allowlist stays autonomous', testOffer({ resourceUrl: `${TEST_ORIGIN}/research/summary`, amount: '10000' }), testContext()),
       pricedGateCase('price limit: at the expected price allows', testOffer({ amount: '1000000' }), testContext()),
       pricedGateCase('price limit: within the 10% tolerance still allows', testOffer({ amount: '1050000' }), testContext()),
       pricedGateCase('price limit: above tolerance escalates to a human', testOffer({ amount: '1500000' }), testContext()),
@@ -161,6 +188,8 @@ describe('spec/agent-mandate-v0.1 test vectors', () => {
       'DENY',
       'DENY',
       'ESCALATE',
+      'ESCALATE', // always-ask resource also covered by the allowlist (issue #103)
+      'ALLOW', // the rest of that allowlist
       'ALLOW',
       'ALLOW',
       'ESCALATE',
