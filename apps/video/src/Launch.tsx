@@ -121,7 +121,7 @@ function Stat() {
             of x402
           </Reveal>
           <Reveal at={30} style={{ marginTop: 34, fontSize: 24, color: MUTED, letterSpacing: '0.02em' }}>
-            Source: Artemis, Sept 2026
+            Source: Artemis via Solana, Sept 2026
           </Reveal>
         </AbsoluteFill>
       </Canvas>
