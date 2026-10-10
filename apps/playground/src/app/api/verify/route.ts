@@ -3,6 +3,7 @@ import { proveBlockedAttempt, provePayment } from '@atlas-rail/receipt';
 import { Web3ChainClient, fetchMandateAccount, findMandatePda } from '@atlas-rail/solana';
 import { clientIp, createLimiter } from '@/lib/rate-limit';
 import { loadPublished } from '@/lib/receipt-store';
+import { isFinal } from '@/lib/verify-cache';
 
 export const runtime = 'nodejs';
 
@@ -16,7 +17,9 @@ const limited = createLimiter(20, 60_000);
 // answers are cached at the edge and repeat checks of the same payment cost no RPC calls at all.
 const FINAL = { headers: { 'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=604800' } };
 
-const isRateLimit = (err: unknown) => /429|Too Many Requests/i.test(err instanceof Error ? err.message : String(err));
+const NO_STORE = { headers: { 'Cache-Control': 'no-store' } };
+
+const isRateLimit =(err: unknown) => /429|Too Many Requests/i.test(err instanceof Error ? err.message : String(err));
 
 async function withOneRetry<T>(fn: () => Promise<T>): Promise<T> {
   try {
@@ -45,17 +48,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Paste a Solana devnet transaction signature (base58, about 88 characters).' }, { status: 400 });
     }
     const chain = Web3ChainClient.fromUrl(RPC_URL);
+    let receiptMissing = false;
     const proof = await withOneRetry(() => provePayment(tx, {
       chain,
-      loadReceipt: (id) => loadPublished('receipt', id),
+      loadReceipt: async (id) => {
+        const record = await loadPublished('receipt', id);
+        receiptMissing = record === null;
+        return record;
+      },
       loadMandateState: async (hashHex) => {
         const account = await fetchMandateAccount(RPC_URL, findMandatePda(PROGRAM_ID, Buffer.from(hashHex, 'hex')).address).catch(() => null);
         return account ? { revoked: account.revoked, revokedAt: Number(account.revokedAt) } : null;
       },
       programId: PROGRAM_ID,
     }));
-    // NOT_FOUND may just be an RPC node that hasn't seen a very fresh transaction yet: don't pin it.
-    return NextResponse.json({ kind: 'payment', ...proof }, proof.verdict === 'NOT_FOUND' ? undefined : FINAL);
+    return NextResponse.json({ kind: 'payment', ...proof }, isFinal(proof.verdict, receiptMissing) ? FINAL : NO_STORE);
   } catch (err) {
     const message = isRateLimit(err)
       ? 'Solana devnet’s public RPC is rate-limiting requests right now. Wait a few seconds and try again.'
