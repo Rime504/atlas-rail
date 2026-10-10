@@ -1,0 +1,25 @@
+{
+  "name": "@atlas-rail/video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Atlas Rail launch video (Remotion). Not part of the product build: no build/typecheck/lint scripts, so turbo and CI skip it.",
+  "license": "Apache-2.0",
+  "scripts": {
+    "capture": "node scripts/capture.mjs",
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts Launch out/atlas-rail-launch.mp4",
+    "still": "remotion still src/index.ts Launch out/still.png --frame"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.534",
+    "@remotion/fonts": "4.0.534",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "4.0.534"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/react": "^18.3.12",
+    "typescript": "^5.7.2"
+  }
+}
