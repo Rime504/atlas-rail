@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, Github, FileText, Loader2, RotateCcw, Search, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Github, FileText, Globe, Loader2, RotateCcw, Search, ShieldCheck } from 'lucide-react';
+import { WEBSITE_URL } from '@/lib/links';
 import { ProgressBar } from '@/components/ProgressBar';
 import { VerdictBanner } from '@/components/Verdict';
 import { RuleList } from '@/components/RuleList';
@@ -690,6 +691,9 @@ function StepRevoke({
           <Link href="/verify" className="inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow">
             <Search className="h-4 w-4" aria-hidden="true" /> Verify a payment
           </Link>
+          <a href={WEBSITE_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-mutedText hover:text-white">
+            <Globe className="h-4 w-4" aria-hidden="true" /> Website
+          </a>
           <a href="https://github.com/Rime504/atlas-rail" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-mutedText hover:text-white">
             <Github className="h-4 w-4" aria-hidden="true" /> View the code
           </a>

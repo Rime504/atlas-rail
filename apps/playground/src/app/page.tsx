@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { ArrowRight, FileText, Github, Search, ShieldX } from 'lucide-react';
+import { ArrowRight, FileText, Github, Globe, Search, ShieldX } from 'lucide-react';
+import { WEBSITE_URL } from '@/lib/links';
 
 export default function LandingPage() {
   return (
@@ -33,6 +34,9 @@ export default function LandingPage() {
           </Link>
         </div>
         <div className="mt-12 flex items-center gap-6 text-sm text-mutedText">
+          <a href={WEBSITE_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-white">
+            <Globe className="h-4 w-4" aria-hidden="true" /> Website
+          </a>
           <a href="https://github.com/Rime504/atlas-rail" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-white">
             <Github className="h-4 w-4" aria-hidden="true" /> GitHub
           </a>
