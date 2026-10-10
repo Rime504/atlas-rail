@@ -65,6 +65,11 @@ function generatedCoreKeys(): { approver: KeyInfo; agent: KeyInfo; instance: Key
 
 /** Null if devnet mode isn't configured on this deployment (no funded owner key) — callers should
  * fall back to instant mode and say so. */
+/** A client for the playground's devnet RPC; stateless, so cheap to create per request. */
+export function devnetChain(): Web3ChainClient {
+  return Web3ChainClient.fromUrl(RPC_URL);
+}
+
 export function resolveDevnetCoreKeys(): DevnetCoreKeys | null {
   const owner = keyFromSecretEnv('owner', 'PLAYGROUND_DEVNET_OWNER_SECRET_KEY');
   if (!owner) return null;
