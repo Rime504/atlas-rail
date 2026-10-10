@@ -11,7 +11,8 @@ import { Details, ExplorerLink, MonoAddress } from '@/components/Details';
 import { EXPECTED_PRICE, MODERATE_SPIKE_AMOUNT, SEVERE_SPIKE_AMOUNT } from '@/lib/amounts';
 import { mandateCardTiles } from '@/lib/mandate-card';
 import { formatUsd } from '@/lib/format';
-import type { ActionType, PaymentOutcome, StepResponse, World } from '@/lib/types';
+import type { ActionType, PaymentOutcome, Publication, StepResponse, World } from '@/lib/types';
+import { publishWithRetry } from '@/lib/publication';
 import type { ReceiptVerification } from '@atlas-rail/receipt';
 
 const TOTAL_STEPS = 8;
@@ -103,6 +104,18 @@ export default function DemoPage() {
 
   const goTo = (step: number) => push({ ...state, step });
 
+  // Step 7 retries publishing in place (no history entry), always against the latest world: a retry
+  // that has to anchor again returns an updated one.
+  const worldRef = useRef(state.world);
+  worldRef.current = state.world;
+  const publishAgain = async (): Promise<Publication> => {
+    const data = await callApi(worldRef.current, { type: 'publish' });
+    const publication = data.publication ?? { stored: false, retryable: true, reason: 'No answer from the receipt store.', txSignature: null };
+    worldRef.current = data.world;
+    setState((s) => ({ ...s, world: data.world, publication }));
+    return publication;
+  };
+
   const restart = () => {
     setHistory([]);
     setState(INITIAL_STATE);
@@ -115,7 +128,7 @@ export default function DemoPage() {
   return (
     <main className="mx-auto min-h-screen max-w-2xl px-6 py-12 sm:py-16">
       <ProgressBar step={Math.min(state.step, TOTAL_STEPS)} total={TOTAL_STEPS} />
-      {state.world && <ModeBadge mode={state.world.mode} />}
+      {state.world && <ModeBadge world={state.world} />}
 
       {error && (
         <div role="alert" className="mb-6 rounded-xl border border-deny/40 bg-deny/10 px-4 py-3 text-sm text-deny">
@@ -186,6 +199,7 @@ export default function DemoPage() {
               verification={state.verification}
               publication={state.publication}
               loading={loading}
+              publishAgain={publishAgain}
               onVerify={() =>
                 run({ type: 'prove' }, (d) => ({ ...state, world: d.world, verification: d.verification ?? null, publication: d.publication ?? null }))
               }
@@ -258,12 +272,15 @@ function canAdvance(state: DemoState): boolean {
 
 /** Shown on every step so the mode is never ambiguous mid-walkthrough — the toggle itself only
  * appears on step 1. */
-function ModeBadge({ mode }: { mode: World['mode'] }) {
-  const isDevnet = mode === 'devnet';
+function ModeBadge({ world }: { world: World }) {
+  // A devnet run over the hourly limit continues without on-chain actions; say so on every step.
+  const mode = world.mode !== 'devnet' ? 'instant' : world.devnetAllowed ? 'devnet' : 'limited';
+  const label = { devnet: 'Real Solana devnet', limited: 'Devnet limit reached · not on-chain this run', instant: 'Instant mode (no chain)' }[mode];
+  const dot = { devnet: 'bg-solana-green', limited: 'bg-escalate', instant: 'bg-mutedText' }[mode];
   return (
-    <div className="mb-6 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-mutedText">
-      <span className={`h-1.5 w-1.5 rounded-full ${isDevnet ? 'bg-solana-green' : 'bg-mutedText'}`} aria-hidden="true" />
-      {isDevnet ? 'Real Solana devnet' : 'Instant mode (no chain)'}
+    <div className="mb-6 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-mutedText" data-testid="mode-badge" data-mode={mode}>
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-hidden="true" />
+      {label}
     </div>
   );
 }
@@ -571,12 +588,14 @@ function StepProve({
   publication,
   loading,
   onVerify,
+  publishAgain,
 }: {
   world: World;
   verification: ReceiptVerification | null;
   publication: StepResponse['publication'] | null;
   loading: boolean;
   onVerify: () => void;
+  publishAgain: () => Promise<Publication>;
 }) {
   const receipt = world.receipts[world.receipts.length - 1];
   return (
@@ -628,18 +647,48 @@ function StepProve({
               </ul>
             )}
           </div>
-          {verification && <VerifyFromChain world={world} publication={publication} />}
+          {verification && <PublishPanel world={world} publication={publication} publishAgain={publishAgain} />}
         </>
       )}
     </section>
   );
 }
 
-/** The payoff of the proof step: hand the real payment to /verify, which knows nothing about this session. */
-function VerifyFromChain({ world, publication }: { world: World; publication: StepResponse['publication'] | null }) {
+/**
+ * The payoff of the proof step: hand the real payment to /verify, which knows nothing about this
+ * session. Publishing never fails silently: it is retried automatically, then offered as a button,
+ * and anything that retrying cannot fix is explained.
+ */
+function PublishPanel({
+  world,
+  publication,
+  publishAgain,
+}: {
+  world: World;
+  publication: StepResponse['publication'] | null;
+  publishAgain: () => Promise<Publication>;
+}) {
+  const [attempt, setAttempt] = useState<{ n: number; total: number } | null>(null);
+  const autoStarted = useRef(false);
+  const isDevnet = world.mode === 'devnet';
+  const needsRetry = isDevnet && !publication?.stored && (publication?.retryable ?? true);
+
+  const retry = useCallback(async () => {
+    setAttempt({ n: 1, total: 3 });
+    await publishWithRetry(publishAgain, { onAttempt: (n, total) => setAttempt({ n, total }) });
+    setAttempt(null);
+  }, [publishAgain]);
+
+  useEffect(() => {
+    if (needsRetry && !autoStarted.current) {
+      autoStarted.current = true;
+      void retry();
+    }
+  }, [needsRetry, retry]);
+
   if (publication?.stored) {
     return (
-      <div className="mt-6 rounded-2xl border border-allow/30 bg-allow/5 p-5">
+      <div className="mt-6 rounded-2xl border border-allow/30 bg-allow/5 p-5" data-testid="publish-panel" data-state="published">
         <p className="text-sm text-white/90">This payment is on Solana devnet and its receipt is public. Check it the way a stranger would, from the transaction alone.</p>
         <Link href={`/verify?tx=${publication.txSignature}`} className="mt-4 inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow">
           <Search className="h-4 w-4" aria-hidden="true" /> Verify this payment from the chain
@@ -647,11 +696,36 @@ function VerifyFromChain({ world, publication }: { world: World; publication: St
       </div>
     );
   }
+
+  if (isDevnet && (attempt || (needsRetry && !autoStarted.current))) {
+    return (
+      <div role="status" className="mt-6 flex items-center gap-3 rounded-2xl border border-border bg-surface p-5 text-sm text-white/90" data-testid="publish-panel" data-state="publishing">
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+        Publishing receipt…{attempt ? ` (attempt ${attempt.n} of ${attempt.total})` : ''}
+      </div>
+    );
+  }
+
+  if (isDevnet && publication?.retryable !== false) {
+    return (
+      <div role="alert" className="mt-6 rounded-2xl border border-escalate/40 bg-escalate/10 p-5" data-testid="publish-panel" data-state="failed">
+        <p className="text-sm text-white/90">The receipt could not be published yet{publication ? `: ${publication.reason}` : '.'}</p>
+        <button
+          type="button"
+          onClick={() => void retry()}
+          className="mt-4 inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow"
+        >
+          <RotateCcw className="h-4 w-4" aria-hidden="true" /> Try again
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="mt-6 rounded-2xl border border-border bg-surface p-5">
+    <div className="mt-6 rounded-2xl border border-border bg-surface p-5" data-testid="publish-panel" data-state="unavailable">
       <p className="text-sm text-mutedText">
-        {world.mode === 'devnet'
-          ? `This run's receipt wasn't published${publication ? ` (${publication.reason})` : ''}, so it can't be looked up from the chain.`
+        {isDevnet && publication
+          ? `${publication.reason} Its receipt cannot be looked up from the chain.`
           : 'In Instant mode this payment is simulated, so there is nothing on-chain to look up. Turn on real devnet at step 1 to make one you can check, or check a real one now.'}
       </p>
       <Link href="/verify" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-solana-green hover:underline">

@@ -42,6 +42,8 @@ export interface World {
    * before every individual on-chain action instead of re-consuming the rate limit per action, so
    * one full 8-step run counts as one "run" against the limit, not five. */
   devnetAllowed: boolean;
+  /** Set once this run's receipt has been anchored on Solana devnet, so publishing can be retried without anchoring again. */
+  anchorOnchain?: OnchainAction | null;
 }
 
 export type Verdict = 'ALLOW' | 'ESCALATE' | 'DENY';
@@ -83,6 +85,7 @@ export type ActionType =
   | 'price-spike-severe'
   | 'human-decision'
   | 'prove'
+  | 'publish'
   | 'revoke'
   | 'pay-after-revoke';
 
@@ -91,11 +94,19 @@ export interface StepRequest {
   action: { type: ActionType; approve?: boolean };
 }
 
+/** Where this run's receipt stands in the public store. `retryable: false` means trying again cannot help (rate limit, not configured). */
+export interface Publication {
+  stored: boolean;
+  reason: string;
+  txSignature: string | null;
+  retryable: boolean;
+}
+
 export interface StepResponse {
   world: World;
   payment?: PaymentOutcome;
   verification?: ReceiptVerification;
   /** Devnet mode only: whether this receipt made it into the public store, so /verify can find it. */
-  publication?: { stored: boolean; reason: string; txSignature: string };
+  publication?: Publication;
   error?: string;
 }

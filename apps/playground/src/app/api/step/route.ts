@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  OnchainAnchor,
   SettleFn,
   attack,
   humanDecision,
@@ -9,14 +8,12 @@ import {
   payNormal,
   priceSpikeModerate,
   priceSpikeSevere,
-  proveReceipt,
   revokeMandate,
   signMandateStep,
 } from '@/lib/scenario';
-import { anchorRootOnchain, rateLimited, registerMandateOnchain, resolveDevnetCoreKeys, revokeMandateOnchain, settlePaymentOnchain, withTimeout } from '@/lib/devnet';
+import { rateLimited, registerMandateOnchain, resolveDevnetCoreKeys, revokeMandateOnchain, settlePaymentOnchain, withTimeout } from '@/lib/devnet';
 import { StepRequest, StepResponse, World } from '@/lib/types';
-import { merkleRoot } from '@atlas-rail/receipt';
-import { publishReceipt, storeConfigured } from '@/lib/receipt-store';
+import { anchorProveAndPublish, publishStep } from '@/lib/step-proof';
 
 // Node runtime, not Edge: packages/mandate, packages/receipt and packages/solana use Node's
 // `crypto` and `@solana/web3.js`, neither of which runs on the Edge runtime.
@@ -116,35 +113,16 @@ export async function POST(req: NextRequest) {
         requireWorld(world);
         const receiptId = world.receipts[world.receipts.length - 1]?.id;
         if (!receiptId) return NextResponse.json({ error: 'No receipt to prove yet' }, { status: 400 });
-        let next = world;
-        let onchainAnchor: OnchainAnchor | null = null;
-        if (world.mode === 'devnet' && world.devnetAllowed && world.mandate && world.mandateOnchain) {
-          const core = resolveDevnetCoreKeys();
-          if (core) {
-            try {
-              const receipt = world.receipts.find((r) => r.id === receiptId);
-              if (!receipt) throw new Error('Receipt not found');
-              // Must be the actual Merkle root over the leaf (merkleRoot([receiptHash])), not the raw
-              // receipt hash itself — proveReceipt computes the same root independently below, and the
-              // two have to match exactly for ANCHOR_ONCHAIN to verify against what's really on-chain.
-              const root = merkleRoot([receipt.receiptHash]);
-              onchainAnchor = await withTimeout(anchorRootOnchain(world.mandate, root, 1, core));
-            } catch (err) {
-              next = { ...next, devnetFallbackReason: `Devnet anchoring failed (${messageOf(err)}) — this receipt is shown with a synthetic anchor instead.` };
-            }
-          }
-        }
-        const { receipt, verification } = await proveReceipt(world, receiptId, onchainAnchor);
-        next = { ...next, receipts: next.receipts.map((r) => (r.id === receipt.id ? receipt : r)) };
-        let publication: StepResponse['publication'];
-        if (onchainAnchor && verification.pass && storeConfigured()) {
-          try {
-            const result = await withTimeout(publishReceipt(receipt, { chain: onchainAnchor.chain }));
-            publication = { ...result, txSignature: receipt.settlement.txSignature };
-          } catch (err) {
-            publication = { stored: false, reason: `Publishing failed (${messageOf(err)})`, txSignature: receipt.settlement.txSignature };
-          }
-        }
+        const { world: next, verification, publication } = await anchorProveAndPublish(world, receiptId);
+        return respond(next, undefined, verification, publication);
+      }
+
+      case 'publish': {
+        // Retry publishing this run's receipt. Anchors again only if the earlier anchor never landed.
+        requireWorld(world);
+        const receipt = world.receipts[world.receipts.length - 1];
+        if (!receipt) return NextResponse.json({ error: 'No receipt to publish yet' }, { status: 400 });
+        const { world: next, verification, publication } = await publishStep(world, receipt.id);
         return respond(next, undefined, verification, publication);
       }
 
