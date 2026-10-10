@@ -1,4 +1,4 @@
-import { get, put } from '@vercel/blob';
+import { BlobNotFoundError, head, put } from '@vercel/blob';
 import { proveBlockedAttempt, verifyReceipt } from '@atlas-rail/receipt';
 import type { ChainClient } from '@atlas-rail/solana';
 
@@ -23,10 +23,23 @@ export interface BlobBackend {
 }
 
 export const vercelBlob: BlobBackend = {
+  /**
+   * Existence comes from the store's API (`head`), never from the public URL: a URL read of a
+   * not-yet-written record can be cached as "not found", and publishing reads before it writes, so
+   * a fresh receipt could look unpublished for a while. The content is then fetched at a URL tagged
+   * with its upload time; records are never overwritten, so that tagged copy is always current.
+   */
   async read(pathname) {
-    const result = await get(pathname, { access: 'public' });
-    if (!result || result.statusCode !== 200) return null;
-    return new Response(result.stream).text();
+    let meta: Awaited<ReturnType<typeof head>>;
+    try {
+      meta = await head(pathname);
+    } catch (err) {
+      if (err instanceof BlobNotFoundError) return null;
+      throw err;
+    }
+    const res = await fetch(`${meta.url}?v=${meta.uploadedAt.getTime()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Receipt store read failed (HTTP ${res.status})`);
+    return res.text();
   },
   async create(pathname, body) {
     await put(pathname, body, {
