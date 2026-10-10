@@ -1,4 +1,4 @@
-# Atlas Rail
+# Atlas Rail - Proof of permission for every AI agent payment.
 
 **The authorization layer for AI agent payments on Solana.**
 An open standard for delegated spending authority, a gate any agent or wallet can plug in, and proof anyone can check.

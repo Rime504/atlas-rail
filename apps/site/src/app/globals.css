@@ -6,47 +6,229 @@
   color-scheme: dark;
 }
 
-* {
-  border-color: #1c2038;
-}
-
-html,
-body {
-  height: 100%;
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
 }
 
 body {
-  background-color: #050611;
-  background-image:
-    radial-gradient(1200px 600px at 15% -10%, rgba(153, 69, 255, 0.18), transparent 60%),
-    radial-gradient(900px 500px at 90% 0%, rgba(20, 241, 149, 0.1), transparent 55%);
-  background-attachment: fixed;
-  color: #f1f2f9;
-  margin: 0;
-  padding: 0;
+  background: #07070b;
+  color: #ffffff;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overflow-x: hidden;
 }
 
 ::selection {
-  background: rgba(153, 69, 255, 0.35);
+  background: rgba(139, 92, 246, 0.4);
   color: #ffffff;
 }
 
+:focus-visible {
+  outline: 2px solid #2ef2b8;
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
 @layer components {
-  .gradient-text {
-    @apply bg-solana-gradient bg-clip-text text-transparent;
+  .accent-text {
+    @apply bg-accent bg-clip-text text-transparent;
   }
 
-  .glass-card {
-    @apply relative rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl;
+  .eyebrow {
+    @apply text-[13px] font-medium uppercase tracking-[0.14em] text-faint;
   }
 
-  .btn-gradient {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-solana-gradient px-5 py-3 text-sm font-semibold text-[#05060f] shadow-glow transition-all duration-200 hover:brightness-110 hover:shadow-[0_0_50px_-8px_rgba(153,69,255,0.6)] active:scale-[0.98];
+  .section {
+    @apply mx-auto max-w-page px-5 py-20 sm:px-8 sm:py-28;
   }
 
-  .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-5 py-3 text-sm font-medium text-slate-300 transition-all duration-200 hover:border-white/20 hover:bg-white/[0.06] hover:text-white;
+  .card {
+    @apply rounded-2xl border border-line bg-panel;
+  }
+
+  .btn-primary {
+    @apply inline-flex h-11 items-center justify-center gap-2 rounded-full bg-white px-5 text-[15px] font-medium text-ink transition-colors hover:bg-white/85;
+  }
+
+  .btn-secondary {
+    @apply inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/15 px-5 text-[15px] font-medium text-white transition-colors hover:border-white/30 hover:bg-white/[0.04];
+  }
+
+  .link-quiet {
+    @apply text-muted underline decoration-white/20 underline-offset-4 transition-colors hover:text-white hover:decoration-white/60;
+  }
+}
+
+/* A faint engineering grid behind the hero, fading out at the edges. */
+.hero-grid {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%);
+}
+
+/* Entrance: content rises gently once. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.rise-2 {
+  animation-delay: 0.08s;
+}
+.rise-3 {
+  animation-delay: 0.16s;
+}
+.rise-4 {
+  animation-delay: 0.24s;
+}
+
+/* Hero flow: a payment travels mandate → gate → proof; an attack stops at the gate. 8 s loop. */
+@keyframes travel-allowed {
+  0%,
+  6% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  40%,
+  48% {
+    transform: translateX(260px);
+    opacity: 1;
+  }
+  78% {
+    transform: translateX(520px);
+    opacity: 1;
+  }
+  86%,
+  100% {
+    transform: translateX(520px);
+    opacity: 0;
+  }
+}
+@keyframes travel-blocked {
+  0%,
+  46% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  74% {
+    transform: translateX(236px);
+    opacity: 1;
+  }
+  88%,
+  100% {
+    transform: translateX(236px);
+    opacity: 0;
+  }
+}
+@keyframes gate-allow {
+  0%,
+  38% {
+    opacity: 0;
+  }
+  42%,
+  56% {
+    opacity: 1;
+  }
+  60%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes gate-deny {
+  0%,
+  72% {
+    opacity: 0;
+  }
+  75%,
+  90% {
+    opacity: 1;
+  }
+  94%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes proof-glow {
+  0%,
+  74% {
+    opacity: 0.25;
+  }
+  80%,
+  92% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.25;
+  }
+}
+@keyframes rail-flow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+.flow-allowed {
+  animation: travel-allowed 8s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+.flow-blocked {
+  animation: travel-blocked 8s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+.flow-gate-allow {
+  animation: gate-allow 8s linear infinite;
+}
+.flow-gate-deny {
+  animation: gate-deny 8s linear infinite;
+}
+.flow-proof {
+  animation: proof-glow 8s linear infinite;
+}
+.flow-rail {
+  animation: rail-flow 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .rise,
+  .flow-rail {
+    animation: none;
+  }
+  /* A still frame that tells the whole story: the payment arrived, the attack was stopped. */
+  .flow-allowed {
+    animation: none;
+    transform: translateX(520px);
+    opacity: 1;
+  }
+  .flow-blocked {
+    animation: none;
+    transform: translateX(236px);
+    opacity: 1;
+  }
+  .flow-gate-allow {
+    animation: none;
+    opacity: 0;
+  }
+  .flow-gate-deny,
+  .flow-proof {
+    animation: none;
+    opacity: 1;
   }
 }
