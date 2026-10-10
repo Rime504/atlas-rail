@@ -54,9 +54,9 @@ function RuleRow({ rule }: { rule: RuleDisplay }) {
           <p className="mb-1 break-words">
             <span className="font-mono text-[11px] uppercase tracking-wide">{rule.id}</span> — {rule.detail}
           </p>
-          {Object.keys(rule.raw.details).length > 0 && (
+          {Object.keys(rule.values).length > 0 && (
             <pre className="mt-2 overflow-x-auto rounded-lg bg-background p-3 font-mono text-[11px] text-mutedText">
-              {JSON.stringify(rule.raw.details, null, 2)}
+              {JSON.stringify(rule.values, null, 2)}
             </pre>
           )}
         </div>

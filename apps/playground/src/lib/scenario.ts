@@ -49,7 +49,7 @@ import {
   PRICE_TOLERANCE_PCT,
   SEVERE_SPIKE_AMOUNT,
 } from './amounts';
-import { DEMO_MINT_DECIMALS, formatUsd } from './format';
+import { DEMO_MINT_DECIMALS, detailsInDollars, formatUsd } from './format';
 import { KeyInfo, OnchainAction, PaymentOutcome, RuleDisplay, World } from './types';
 
 export const DEMO_MINT = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
@@ -221,9 +221,19 @@ function friendlyRuleLabel(rule: { id: RuleId; status: string; message: string }
     PRICE_LIMIT: {
       PASS: 'Price matches what the owner signed off on',
       ESCALATE: 'Price is higher than expected — within the range a human can still approve',
+      OVERRIDDEN: 'Price was higher than expected — a human approved it',
       FAIL: 'Price is above the hard maximum the owner signed off on',
     },
-    WINDOW_BUDGET: { PASS: 'Fits the rolling spending budget', ESCALATE: 'Would exceed the autonomous spending budget' },
+    WINDOW_BUDGET: {
+      PASS: 'Fits the rolling spending budget',
+      ESCALATE: 'Would exceed the autonomous spending budget',
+      OVERRIDDEN: 'Over the autonomous spending budget — a human approved it',
+    },
+    ESCALATION_THRESHOLD: {
+      PASS: 'Amount is at or below the human-approval threshold',
+      ESCALATE: 'Amount is above the human-approval threshold — needs a human',
+      OVERRIDDEN: 'Amount is above the human-approval threshold — a human approved it',
+    },
     MAX_TOTAL: { PASS: 'Within the lifetime cap', FAIL: 'Would exceed the lifetime cap' },
     MANDATE_NOT_REVOKED: { PASS: 'Mandate has not been revoked', FAIL: 'Mandate was revoked' },
     MANDATE_VALIDITY: { PASS: 'Mandate is currently valid', FAIL: 'Mandate is not valid right now' },
@@ -238,6 +248,12 @@ function usdField(details: Record<string, unknown>, key: string): string | null 
   const value = details[key];
   if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
   return formatUsd(value);
+}
+
+/** Epoch seconds as a readable UTC time ("2026-10-10 14:05 UTC"), or null if absent. */
+function utcTime(value: unknown): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return `${new Date(value * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 }
 
 /** The human-readable sentence shown in "show details" — dollar amounts, never base units. Falls
@@ -260,14 +276,19 @@ function friendlyRuleDetail(rule: RuleResult): string {
       if (amount && expected && ceiling && hardMax) {
         if (rule.status === 'PASS') return `${amount} is within tolerance of the expected price ${expected}`;
         if (rule.status === 'ESCALATE') return `${amount} is above the tolerated ${ceiling} but at or below the hard maximum ${hardMax} — a human can approve it`;
-        return `${amount} is above the hard maximum ${hardMax} the owner signed off on — no human can override this`;
+        if (rule.status === 'OVERRIDDEN') return `${amount} is above the tolerated ${ceiling} but at or below the hard maximum ${hardMax} — a human approved it`;
+        if (rule.status === 'FAIL') return `${amount} is above the hard maximum ${hardMax} the owner signed off on — no human can override this`;
       }
       break;
     }
     case 'WINDOW_BUDGET': {
       const projected = usdField(d, 'projected');
       const max = usdField(d, 'maxPerWindow');
-      if (projected && max) return rule.status === 'PASS' ? `Spending would reach ${projected} of the ${max} hourly budget` : `Spending would reach ${projected}, above the ${max} hourly budget — needs a human`;
+      if (projected && max) {
+        if (rule.status === 'PASS') return `Spending would reach ${projected} of the ${max} hourly budget`;
+        if (rule.status === 'OVERRIDDEN') return `Spending would reach ${projected}, above the ${max} hourly budget — a human approved it`;
+        return `Spending would reach ${projected}, above the ${max} hourly budget — needs a human`;
+      }
       break;
     }
     case 'MAX_TOTAL': {
@@ -276,10 +297,28 @@ function friendlyRuleDetail(rule: RuleResult): string {
       if (projected && max) return rule.status === 'PASS' ? `Lifetime spend would reach ${projected} of the ${max} cap` : `Lifetime spend would reach ${projected}, above the ${max} cap`;
       break;
     }
+    case 'MANDATE_NOT_REVOKED': {
+      const at = utcTime(d.revokedAt);
+      if (rule.status === 'FAIL' && at) return `The owner revoked this mandate at ${at}`;
+      break;
+    }
+    case 'MANDATE_VALIDITY': {
+      if (rule.status !== 'FAIL') break;
+      const now = typeof d.now === 'number' ? d.now : null;
+      const notBefore = utcTime(d.notBefore);
+      const expiresAt = utcTime(d.expiresAt);
+      if (now !== null && typeof d.notBefore === 'number' && now < d.notBefore && notBefore) return `Mandate is not valid until ${notBefore}`;
+      if (expiresAt) return `Mandate expired at ${expiresAt}`;
+      break;
+    }
     case 'ESCALATION_THRESHOLD': {
       const amount = usdField(d, 'amount');
       const threshold = usdField(d, 'threshold');
-      if (amount && threshold) return rule.status === 'PASS' ? `${amount} is at or below the ${threshold} approval threshold` : `${amount} is above the ${threshold} approval threshold`;
+      if (amount && threshold) {
+        if (rule.status === 'PASS') return `${amount} is at or below the ${threshold} approval threshold`;
+        if (rule.status === 'OVERRIDDEN') return `${amount} is above the ${threshold} approval threshold — a human approved it`;
+        return `${amount} is above the ${threshold} approval threshold`;
+      }
       break;
     }
   }
@@ -304,6 +343,7 @@ function displayRules(gate: GateResult): RuleDisplay[] {
                 : 'skipped',
       label: friendlyRuleLabel(r),
       detail: friendlyRuleDetail(r),
+      values: detailsInDollars(r.details as Record<string, unknown>),
       raw: r,
     }));
 }
