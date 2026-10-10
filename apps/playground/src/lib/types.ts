@@ -44,6 +44,8 @@ export interface World {
   devnetAllowed: boolean;
   /** Set once this run's receipt has been anchored on Solana devnet, so publishing can be retried without anchoring again. */
   anchorOnchain?: OnchainAction | null;
+  /** The server's signature over everything else in this object (see session.ts). */
+  sessionMac?: string;
 }
 
 export type Verdict = 'ALLOW' | 'ESCALATE' | 'DENY';
