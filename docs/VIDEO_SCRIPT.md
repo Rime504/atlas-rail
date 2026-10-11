@@ -1,5 +1,7 @@
 # Demo video script (~3 minutes)
 
+> **Superseded.** This is the original script for the six-scene CLI demo. The current script, matching the final playground and numbers, is [`DEMO_VIDEO.md`](DEMO_VIDEO.md).
+
 A narration to read aloud while screen-recording the six-scene Agent Mandates demo. Timestamps assume you start recording right as you hit Enter on `pnpm demo`, and that funding/build/seed have already completed once before (see **Recording setup**) so the actual scenes start promptly.
 
 ## Recording setup

@@ -72,6 +72,7 @@ Divyesh also built `anchor_root`, the instruction that writes receipt Merkle roo
 ## Honest limits
 
 - **The hosted playground keeps per-session state, not a ledger.** A visitor can return to an earlier server-signed state within their own session (like the Back button), because there is no server-side ledger; edited state is refused. The full gate service (Postgres ledger, reservations, per-mandate lock) does not have this limit.
+- **The hosted playground does not simulate the transaction.** On the hosted playground, rule 13 (transaction simulation) is checked against a fixed "simulation passed" input rather than a real simulation of the payment transaction; the full gate service (`pnpm demo`) simulates the exact transaction on devnet.
 - **The key must live outside the agent's process.** The red team's guarantee assumes the attacker
   controls everything except the gated signer and its key. An agent that can read its own key can sign
   anything. `pnpm demo` runs the signer as a separate process (`apps/signer`) that the agent reaches only
