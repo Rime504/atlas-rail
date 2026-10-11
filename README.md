@@ -184,6 +184,7 @@ The key lives in the **signer service** (`apps/signer`), a separate process the 
 **Honest limits:**
 
 - **Devnet only, unaudited.** The server refuses mainnet RPC endpoints; nothing here has had an external security audit.
+- **The hosted playground does not simulate the transaction.** On the hosted playground, rule 13 (transaction simulation) is checked against a fixed "simulation passed" input rather than a real simulation of the payment transaction; the full gate service (`pnpm demo`) simulates the exact transaction on devnet.
 - **Budgets are enforced by the gate, not by a token-program lock.** On-chain records of spend are records, not locks. A hard on-chain cap using native SPL token allowances is the next step, not built.
 - **A window after revocation.** An authorization the gate issued just before a revocation can still be signed for up to 120 seconds.
 - **The public receipt store is ours.** Receipts are served from this project's storage. A receipt JSON can always be verified on its own with `atlas verify <file>`, wherever it came from.
