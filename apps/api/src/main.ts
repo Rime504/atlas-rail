@@ -20,7 +20,9 @@ async function bootstrap() {
     new FastifyAdapter({ logger: env.LOG_LEVEL === 'debug' }),
   );
 
-  app.enableCors({ origin: '*' });
+  // Any origin in development. In production only the comma-separated CORS_ORIGINS, or none.
+  const corsOrigins = (process.env.CORS_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean);
+  app.enableCors({ origin: corsOrigins.length > 0 ? corsOrigins : env.NODE_ENV === 'production' ? false : '*' });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   // Configure OpenAPI / Swagger Documentation

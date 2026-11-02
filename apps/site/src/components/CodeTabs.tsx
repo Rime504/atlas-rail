@@ -3,37 +3,34 @@
 import { useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 
-// Copied verbatim from docs/INTEGRATE.md (sections 1 and 2). The same wrapFetch + HttpSignerClient
-// pattern was run against devnet from the packed packages before the npm prep was merged (#94).
-const WRAP_FETCH = `import { AtlasDenied, HttpSignerClient, wrapFetch } from '@atlas-rail/agent';
+const AGENT = `import { createAtlasRail, keypairWallet } from 'atlasrails';
 
-const pay = wrapFetch(fetch, {
-  mandateId: 'mnd_...',
-  gate: { url: 'http://localhost:3001', apiKey: process.env.ATLAS_API_KEY! },
-  // The agent key lives in the signer service, another process; this agent only has its URL.
-  signer: await HttpSignerClient.connect({ url: 'http://127.0.0.1:3012', token: process.env.ATLAS_SIGNER_TOKEN }),
-  rpcUrl: 'http://127.0.0.1:8899', // the Solana RPC from the table above
+const atlas = createAtlasRail({
+  apiUrl: process.env.ATLAS_API_URL, // the gate
+  apiToken: process.env.ATLAS_VOUCHER_TOKEN,
+  connection, // Solana devnet
+  wallet: keypairWallet({ path: './payer.json' }),
+  gate, // the key that signs receipts
+  execution: 'autoExecute',
 });
 
-try {
-  const res = await pay('http://localhost:4402/research/summary');
-  console.log(await res.json(), res.atlas?.receipt?.id);
-} catch (error) {
-  if (error instanceof AtlasDenied) console.log('refused by', error.reasons); // nothing was signed
-}`;
+const result = await atlas.pay({ mandate, channel, recipient, mint, amount: 1000n, resourceUrl, network, expiresAt, mandateAddress });
 
-const MCP = `claude mcp add atlas-rail \\
-  -e ATLAS_GATE_URL=http://localhost:3001 -e ATLAS_API_KEY=<api key> -e ATLAS_MANDATE_ID=mnd_... \\
-  -e ATLAS_SIGNER_URL=http://127.0.0.1:3012 -e ATLAS_SIGNER_TOKEN=<the signer service token> \\
-  -e SOLANA_RPC_URL=http://127.0.0.1:8899 \\
-  -- node /path/to/atlas-rail/apps/mcp/dist/main.js`;
+if (result.status === 'paid') console.log('paid, receipt', result.receipt.id);
+else console.log('not allowed:', result.reason);`;
+
+const BUILD = `git clone https://github.com/Rime504/atlas-rail.git
+cd atlas-rail
+pnpm install
+pnpm --filter atlasrails build
+node scripts/launch-voucher-services.mjs both # the gate and the signer`;
 
 const TABS = [
-  { id: 'fetch', label: 'agent.ts', note: 'wrapFetch', code: WRAP_FETCH, lang: 'ts' },
-  { id: 'mcp', label: 'MCP · pay(url)', note: 'Claude Code', code: MCP, lang: 'sh' },
+  { id: 'agent', label: 'your agent', note: 'pay()', code: AGENT, lang: 'ts' },
+  { id: 'build', label: 'build from the repo', note: 'today', code: BUILD, lang: 'sh' },
 ] as const;
 
-const KEYWORDS = /\b(import|from|const|await|try|catch|if|instanceof|new|return)\b/;
+const KEYWORDS = /\b(import|from|const|await|try|catch|if|else|instanceof|new|return)\b/;
 
 /** Just enough highlighting for two fixed snippets: comments, strings, keywords. */
 function highlight(code: string, lang: 'ts' | 'sh') {
@@ -60,7 +57,7 @@ function highlight(code: string, lang: 'ts' | 'sh') {
 }
 
 export function CodeTabs() {
-  const [active, setActive] = useState<(typeof TABS)[number]['id']>('fetch');
+  const [active, setActive] = useState<(typeof TABS)[number]['id']>('agent');
   const [copied, setCopied] = useState(false);
   const tab = TABS.find((t) => t.id === active)!;
 
@@ -104,7 +101,7 @@ export function CodeTabs() {
         </pre>
       </div>
       <p className="border-t border-line px-5 py-3 text-[12px] text-faint sm:px-6">
-        From <span className="font-mono">docs/INTEGRATE.md</span>. Install from the repository; npm is coming.
+        Devnet only. Build from the repository today; the npm package is coming soon. Setup steps: <span className="font-mono">packages/atlasrails/MANUAL.md</span>.
       </p>
     </div>
   );

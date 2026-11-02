@@ -4,6 +4,7 @@ import { Web3ChainClient, fetchMandateAccount, findMandatePda } from '@atlas-rai
 import { clientIp, createLimiter } from '@/lib/rate-limit';
 import { loadPublished } from '@/lib/receipt-store';
 import { isFinal } from '@/lib/verify-cache';
+import { trustedVerifyKeys } from '@/lib/verify-keys';
 
 export const runtime = 'nodejs';
 
@@ -61,6 +62,7 @@ export async function GET(req: NextRequest) {
         return account ? { revoked: account.revoked, revokedAt: Number(account.revokedAt) } : null;
       },
       programId: PROGRAM_ID,
+      trustedInstanceKeys: trustedVerifyKeys(),
     }));
     return NextResponse.json({ kind: 'payment', ...proof }, isFinal(proof.verdict, receiptMissing) ? FINAL : NO_STORE);
   } catch (err) {

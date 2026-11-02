@@ -16,6 +16,7 @@ import { assertNotMainnet } from './guards';
 
 const MANDATE_SEED = Buffer.from('mandate');
 const ROOT_SEED = Buffer.from('root');
+export const DEFAULT_MANDATE_PROGRAM_ID = 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k';
 
 function discriminator(namespace: 'global' | 'account', name: string): Buffer {
   return createHash('sha256').update(`${namespace}:${name}`).digest().subarray(0, 8);
@@ -181,19 +182,28 @@ export interface RootAccountOnChain {
   merkleRoot: string;
   leafCount: number;
   anchoredAt: bigint;
+  /** SHA-256 of the canonical batch header. Null on roots written before this field existed. */
+  batchHeader: string | null;
+  /** SHA-256 of the canonical batch file. Null on roots written before this field existed. */
+  batchFileHash: string | null;
   bump: number;
 }
 
 const ROOT_ACCOUNT_DISCRIMINATOR = discriminator('account', 'Root');
-// mandate(32) + seq(8) + merkle_root(32) + leaf_count(4) + anchored_at(8) + bump(1)
-const ROOT_ACCOUNT_BODY_LEN = 32 + 8 + 32 + 4 + 8 + 1;
+/** Written by `anchor_root_v2`: always carries the batch header and file hash. */
+const ROOT_V2_ACCOUNT_DISCRIMINATOR = discriminator('account', 'RootV2');
+const ROOT_PREFIX_LEN = 32 + 8 + 32 + 4 + 8;
+const ROOT_OLD_BODY_LEN = ROOT_PREFIX_LEN + 1;
+const ROOT_NEW_BODY_LEN = ROOT_PREFIX_LEN + 32 + 32 + 1;
 
-/** Decodes a raw `Root` account's data (as returned by `getAccountInfo`). */
+/** Decodes a raw `Root` or `RootV2` account. `Root` accounts (deprecated `anchor_root`) omit the batch header and file hash. */
 export function decodeRootAccount(data: Buffer): RootAccountOnChain {
-  if (data.length < 8 + ROOT_ACCOUNT_BODY_LEN) throw new Error('Root account data is too short');
-  if (!data.subarray(0, 8).equals(ROOT_ACCOUNT_DISCRIMINATOR)) {
+  if (data.length < 8 + ROOT_OLD_BODY_LEN) throw new Error('Root account data is too short');
+  const v2 = data.subarray(0, 8).equals(ROOT_V2_ACCOUNT_DISCRIMINATOR);
+  if (!v2 && !data.subarray(0, 8).equals(ROOT_ACCOUNT_DISCRIMINATOR)) {
     throw new Error('Account discriminator does not match Root — wrong program ID or account type');
   }
+  if (v2 && data.length < 8 + ROOT_NEW_BODY_LEN) throw new Error('RootV2 account data is too short');
   let o = 8;
   const mandate = new PublicKey(data.subarray(o, o + 32)).toBase58();
   o += 32;
@@ -205,27 +215,45 @@ export function decodeRootAccount(data: Buffer): RootAccountOnChain {
   o += 4;
   const anchoredAt = data.readBigInt64LE(o);
   o += 8;
+  let batchHeader: string | null = null;
+  let batchFileHash: string | null = null;
+  if (data.length >= 8 + ROOT_NEW_BODY_LEN) {
+    batchHeader = data.subarray(o, o + 32).toString('hex');
+    o += 32;
+    batchFileHash = data.subarray(o, o + 32).toString('hex');
+    o += 32;
+  }
   const bump = data.readUInt8(o);
-  return { mandate, seq, merkleRoot, leafCount, anchoredAt, bump };
+  return { mandate, seq, merkleRoot, leafCount, anchoredAt, batchHeader, batchFileHash, bump };
+}
+
+export function pubkeyBytes(address: string): Uint8Array {
+  return new PublicKey(address).toBytes();
 }
 
 export interface AnchorRootOnChainArgs {
   seq: bigint;
   merkleRoot: Uint8Array;
   leafCount: number;
+  batchHeader: Uint8Array;
+  batchFileHash: Uint8Array;
 }
 
-function encodeAnchorRootArgs(args: AnchorRootOnChainArgs): Buffer {
+function encodeAnchorRootArgs(args: AnchorRootOnChainArgs, legacyInstruction = false): Buffer {
   if (args.merkleRoot.length !== 32) throw new Error('merkleRoot must be 32 bytes');
+  if (args.batchHeader.length !== 32) throw new Error('batchHeader must be 32 bytes');
+  if (args.batchFileHash.length !== 32) throw new Error('batchFileHash must be 32 bytes');
   if (!Number.isInteger(args.leafCount) || args.leafCount < 0 || args.leafCount > 0xffff_ffff) {
     throw new Error('leafCount must be a u32');
   }
-  const body = Buffer.alloc(8 + 32 + 4);
+  const body = Buffer.alloc(8 + 32 + 4 + 32 + 32);
   let o = 0;
   body.writeBigUInt64LE(args.seq, o); o += 8;
   Buffer.from(args.merkleRoot).copy(body, o); o += 32;
-  body.writeUInt32LE(args.leafCount, o);
-  return Buffer.concat([discriminator('global', 'anchor_root'), body]);
+  body.writeUInt32LE(args.leafCount, o); o += 4;
+  Buffer.from(args.batchHeader).copy(body, o); o += 32;
+  Buffer.from(args.batchFileHash).copy(body, o);
+  return Buffer.concat([discriminator('global', legacyInstruction ? 'anchor_root' : 'anchor_root_v2'), body]);
 }
 
 export interface BuildCreateMandateTransactionParams extends CreateMandateOnChainArgs {
@@ -291,9 +319,17 @@ export interface BuildAnchorRootTransactionParams extends AnchorRootOnChainArgs 
   mandatePda: string;
   gateAuthority: string;
   recentBlockhash: string;
+  /**
+   * Until the Devnet program has anchor_root_v2: send the same bytes under the deprecated
+   * anchor_root, which stores the root and leaf count and ignores the two hashes. They stay in the
+   * instruction data, where `atlas verify` reads them.
+   */
+  legacyInstruction?: boolean;
 }
 
-/** Builds the unsigned v0 transaction for `anchor_root`. Only the gate authority may sign. */
+/** Builds the unsigned v0 transaction for `anchor_root_v2`. Only the gate authority may sign.
+ * One instruction: seq, Merkle root, leaf count, batch header hash, and batch file hash.
+ * No memo is attached. A memo would publish payment identifiers. */
 export function buildAnchorRootTransaction(params: BuildAnchorRootTransactionParams): string {
   const gateAuthority = new PublicKey(params.gateAuthority);
   const { address: rootPda } = findRootPda(params.programId, params.mandatePda, params.seq);
@@ -305,7 +341,7 @@ export function buildAnchorRootTransaction(params: BuildAnchorRootTransactionPar
       { pubkey: gateAuthority, isSigner: true, isWritable: true },
       { pubkey: new PublicKey(ALLOWED_SOLANA_PROGRAM_IDS.SYSTEM_PROGRAM), isSigner: false, isWritable: false },
     ],
-    data: encodeAnchorRootArgs(params),
+    data: encodeAnchorRootArgs(params, params.legacyInstruction),
   });
   const message = new TransactionMessage({
     payerKey: gateAuthority,
@@ -315,16 +351,101 @@ export function buildAnchorRootTransaction(params: BuildAnchorRootTransactionPar
   return Buffer.from(new VersionedTransaction(message).serialize()).toString('base64');
 }
 
-/**
- * Reads a mandate's on-chain state directly (not via {@link ChainClient}, which has no raw account
- * read today). Returns `null` if the account does not exist (mandate never registered on-chain, or a
- * devnet reset). Constructs its own short-lived connection — this is called rarely (gate evaluation,
- * mandate presentation), not on a hot path.
- */
+/** Loads a mandate account. Returns null when the account does not exist. */
 export async function fetchMandateAccount(rpcUrl: string, mandatePda: string): Promise<MandateAccountOnChain | null> {
   assertNotMainnet(rpcUrl);
   const connection = new Connection(rpcUrl, 'confirmed');
   const info = await connection.getAccountInfo(new PublicKey(mandatePda), 'confirmed');
   if (!info) return null;
+  if (!info.owner.equals(new PublicKey(DEFAULT_MANDATE_PROGRAM_ID))) {
+    throw new Error('Account owner is not the Atlas Mandate program');
+  }
   return decodeMandateAccount(info.data);
+}
+
+/** Loads a mandate PDA and fails closed if missing, wrong owner, or undecodable. */
+export async function loadMandateAccount(
+  connection: Connection,
+  mandatePda: string,
+  programId: string = DEFAULT_MANDATE_PROGRAM_ID,
+): Promise<MandateAccountOnChain> {
+  const info = await connection.getAccountInfo(new PublicKey(mandatePda), 'confirmed');
+  if (!info) throw new Error('Mandate account is missing');
+  if (!info.owner.equals(new PublicKey(programId))) {
+    throw new Error('Account owner is not the Atlas Mandate program');
+  }
+  return decodeMandateAccount(info.data);
+}
+
+/** True when the account is not revoked and the clock is inside [notBefore, expiresAt). */
+export function isMandateAccountActive(account: MandateAccountOnChain, nowSeconds = Math.floor(Date.now() / 1000)): boolean {
+  return !account.revoked && nowSeconds >= Number(account.notBefore) && nowSeconds < Number(account.expiresAt);
+}
+
+export interface OnChainMandateExport {
+  schema_version: 'atlasrail.onchain-mandate/1';
+  network: 'devnet';
+  program_id: string;
+  mandate_address: string;
+  mandate_hash: string;
+  owner: string;
+  approver: string;
+  agent: string;
+  gate_authority: string;
+  token_mint: string;
+  max_payment: string;
+  max_per_window: string;
+  window_seconds: string;
+  total_budget: string;
+  escalation_threshold: string;
+  not_before: string;
+  expires_at: string;
+  created_at: string;
+  revoked: boolean;
+  revoked_at: string;
+  next_root_seq: string;
+  /** Off-chain-only fields the program does not store. Optional portable snapshot. */
+  off_chain?: {
+    label?: string;
+    allowed_recipients?: string[];
+    allowed_resources?: string[];
+    note?: string;
+  };
+  tx_signature?: string;
+}
+
+export function exportMandateAccountJson(
+  mandatePda: string,
+  account: MandateAccountOnChain,
+  options: {
+    programId?: string;
+    offChain?: OnChainMandateExport['off_chain'];
+    txSignature?: string;
+  } = {},
+): OnChainMandateExport {
+  return {
+    schema_version: 'atlasrail.onchain-mandate/1',
+    network: 'devnet',
+    program_id: options.programId ?? DEFAULT_MANDATE_PROGRAM_ID,
+    mandate_address: mandatePda,
+    mandate_hash: account.mandateHash,
+    owner: account.owner,
+    approver: account.approver,
+    agent: account.agent,
+    gate_authority: account.gateAuthority,
+    token_mint: account.mint,
+    max_payment: account.maxPerPayment.toString(),
+    max_per_window: account.maxPerWindow.toString(),
+    window_seconds: account.windowSeconds.toString(),
+    total_budget: account.maxTotal.toString(),
+    escalation_threshold: account.escalationThreshold.toString(),
+    not_before: account.notBefore.toString(),
+    expires_at: account.expiresAt.toString(),
+    created_at: account.createdAt.toString(),
+    revoked: account.revoked,
+    revoked_at: account.revokedAt.toString(),
+    next_root_seq: account.nextRootSeq.toString(),
+    off_chain: options.offChain,
+    tx_signature: options.txSignature,
+  };
 }

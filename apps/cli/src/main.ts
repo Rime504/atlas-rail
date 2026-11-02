@@ -1,5 +1,7 @@
 #!/usr/bin/env node
+import { runApprove } from './approve';
 import { runProveTx } from './prove';
+import { runTopUp } from './top-up';
 import { runVerify, runVerifyMandate } from './verify';
 
 const USAGE = `atlas — verify Atlas Rail agent-payment evidence
@@ -9,11 +11,18 @@ Usage:
   atlas verify --tx <signature> [options]   Prove a devnet payment from its transaction alone:
                                             memo -> published receipt -> every check
   atlas mandate <mandate.json>              Verify a mandate's delegation chain
+  atlas top-up --channel <address> --amount <base units> --keypair <owner.json> [--yes]
+                                            Owner only: add funds to a channel that paused with needs_top_up.
+                                            Without --yes it shows the plan and sends nothing.
+  atlas approve <approval id> --keypair <owner.json> [--api <url>] [--yes]
+                                            Owner or approver: sign one over-limit payment with your key.
+                                            Without --yes it shows the exact text and signs nothing.
 
 Options for verify:
   --rpc <url>            Solana devnet RPC (default: $SOLANA_RPC_URL or https://api.devnet.solana.com)
   --offline              Do not contact any RPC; on-chain checks are reported as SKIP
-  --trusted-key <pubkey> Pin the Atlas Rail instance key (repeatable). Strongly recommended.
+  --trusted-key <pubkey> Pin an Atlas Rail instance key (repeatable). Required unless --untrusted.
+  --untrusted            Check the signature against the key in the receipt and label the result untrusted.
   --check-settlement     Also read the settlement transaction and confirm it matches the offer
   --require-anchor       Fail (instead of skip) if the receipt is not yet anchored
   --store <url>          Receipt store for --tx (default: $ATLAS_RECEIPT_STORE or https://atlas-rail-playground.vercel.app)
@@ -36,9 +45,16 @@ async function main(argv: string[]): Promise<number> {
   let rpc: string | null = null;
   let tx: string | null = null;
   let store: string | null = null;
+  let channel: string | null = null;
+  let amount: string | null = null;
+  let keypair: string | null = null;
+  let genesis: string | null = null;
+  let api: string | null = null;
+  let yes = false;
   let offline = false;
   let checkSettlement = false;
   let requireAnchor = false;
+  let untrusted = false;
   let json = false;
   let color = process.stdout.isTTY === true && !process.env.NO_COLOR;
 
@@ -47,10 +63,17 @@ async function main(argv: string[]): Promise<number> {
     if (arg === '--rpc') rpc = rest[++i] ?? null;
     else if (arg === '--tx') tx = rest[++i] ?? null;
     else if (arg === '--store') store = rest[++i] ?? null;
+    else if (arg === '--channel') channel = rest[++i] ?? null;
+    else if (arg === '--amount') amount = rest[++i] ?? null;
+    else if (arg === '--keypair') keypair = rest[++i] ?? null;
+    else if (arg === '--genesis') genesis = rest[++i] ?? null;
+    else if (arg === '--api') api = rest[++i] ?? null;
+    else if (arg === '--yes') yes = true;
     else if (arg === '--trusted-key') {
       const key = rest[++i];
       if (key) trustedKeys.push(key);
-    } else if (arg === '--offline') offline = true;
+    } else if (arg === '--untrusted') untrusted = true;
+    else if (arg === '--offline') offline = true;
     else if (arg === '--check-settlement') checkSettlement = true;
     else if (arg === '--require-anchor') requireAnchor = true;
     else if (arg === '--json') json = true;
@@ -60,6 +83,22 @@ async function main(argv: string[]): Promise<number> {
       console.error(`Unknown option ${arg}\n\n${USAGE}`);
       return 2;
     } else positional.push(arg);
+  }
+
+  if (command === 'top-up') {
+    if (!channel || !amount || !keypair) {
+      console.error(`top-up needs --channel, --amount and --keypair\n\n${USAGE}`);
+      return 2;
+    }
+    return runTopUp({ channel, amount, keypair, rpc, genesis, yes });
+  }
+
+  if (command === 'approve') {
+    if (!positional[0] || !keypair) {
+      console.error(`approve needs an approval id and --keypair\n\n${USAGE}`);
+      return 2;
+    }
+    return runApprove({ id: positional[0], keypair, api, yes });
   }
 
   if (command === 'verify' && tx) {
@@ -73,7 +112,7 @@ async function main(argv: string[]): Promise<number> {
   }
 
   if (command === 'verify') {
-    return runVerify({ file, rpc, offline, trustedKeys, checkSettlement, requireAnchor, json, color });
+    return runVerify({ file, rpc, offline, trustedKeys, untrusted, checkSettlement, requireAnchor, json, color });
   }
   if (command === 'mandate') {
     return runVerifyMandate(file, color);

@@ -1,57 +1,59 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { WORLD_ORG, createWorld } from '@atlas-rail/receipt/testing';
-import { LocalGateClient, reservePort, startFakeSeller } from '@atlas-rail/x402/testkit';
-import { AtlasDenied, wrapFetch } from './index';
+import { describe, expect, it, vi } from 'vitest';
+import { SOLANA_DEVNET_CAIP2 } from '@atlas-rail/mandate';
+import { NOW, TEST_MINT, TEST_ORIGIN, signedTestMandate, signers } from '@atlas-rail/mandate/testing';
+import { DevnetKeypairSigner } from '@atlas-rail/solana';
+import { GatedSignerAdapter, MandateDeniedError, VoucherAuthorizer, VoucherRequest } from '@atlas-rail/x402';
+import { AtlasDenied } from './index';
 
-const closers: Array<() => Promise<void>> = [];
-afterEach(async () => {
-  while (closers.length) await closers.pop()!();
-});
-
-async function setup() {
-  const port = await reservePort();
-  const origin = `http://127.0.0.1:${port}`;
-  const world = await createWorld({ mandate: { allowedResources: [`${origin}/research/*`] } });
-  const seller = await startFakeSeller({
-    chain: world.chain,
-    facilitator: world.keys.facilitator,
-    payTo: world.keys.merchant.publicKey,
-    mint: world.mandate.scope.limits.mint,
-    port,
-    routes: {
-      '/research/summary': { amount: '10000', body: { ok: true } },
-      '/research/drain': { amount: '10000', payTo: world.keys.attacker.publicKey, body: {} },
-    },
-  });
-  closers.push(seller.close);
-  const signCalls: string[] = [];
-  const wallet = world.keys.agent;
-  const sign = wallet.signTransaction.bind(wallet);
-  wallet.signTransaction = async (tx: string) => (signCalls.push(tx), sign(tx));
-  const pay = wrapFetch(fetch, {
-    mandateId: world.mandate.id,
-    gate: new LocalGateClient({ organizationId: WORLD_ORG, gate: world.gate, store: world.store, receiptService: world.receiptService }),
-    wallet,
-    trustedInstanceKeys: [world.keys.instance.publicKey],
-    chain: world.chain,
-    clock: () => world.clock.now,
-  });
-  return { origin, pay, signCalls };
+function seed(label: string): Uint8Array {
+  const out = new Uint8Array(32);
+  new TextEncoder().encode(label).forEach((b, i) => (out[i] = b));
+  return out;
 }
 
-describe('wrapFetch', () => {
+function request(overrides: Partial<VoucherRequest> = {}): VoucherRequest {
+  return {
+    channelId: signers.facilitator.publicKey,
+    cumulativeAmount: '10000',
+    expiresAt: NOW + 600,
+    recipient: signers.merchant.publicKey,
+    resourceUrl: `${TEST_ORIGIN}/research/summary`,
+    asset: TEST_MINT,
+    network: SOLANA_DEVNET_CAIP2,
+    ...overrides,
+  };
+}
+
+async function setup() {
+  process.env.ATLAS_ALLOW_MOCK_SIGNER = 'true';
+  const mandate = await signedTestMandate();
+  const signer = new GatedSignerAdapter({
+    inner: new DevnetKeypairSigner(seed('agent')),
+    trustedInstanceKeys: [signers.instance.publicKey],
+    clock: () => NOW,
+  });
+  const authorizer = new VoucherAuthorizer({ mandate, instance: signers.instance, signer, organizationId: 'org_test', clock: () => NOW });
+  const sign = vi.spyOn(signer, 'signVoucherWithAuthorization');
+  return { authorizer, sign };
+}
+
+describe('voucher ask', () => {
   it('pays what the mandate allows and returns the receipt', async () => {
-    const { origin, pay } = await setup();
-    const res = await pay(`${origin}/research/summary`);
-    expect(res.status).toBe(200);
-    expect(res.atlas?.receipt?.id).toMatch(/^rcp_/);
+    const { authorizer, sign } = await setup();
+    const allowed = await authorizer.requestVoucher(request());
+    const receipt = await authorizer.recordAllowedReceipt(allowed, { txSignature: 'A'.repeat(64), slot: 1 });
+    expect(sign).toHaveBeenCalledTimes(1);
+    expect(receipt.id).toMatch(/^rcp_/);
+    expect(receipt.response.contentType).toBe('application/vnd.payment-channels.voucher');
   });
 
   it('throws AtlasDenied with the refusing rules, and the wallet never signs', async () => {
-    const { origin, pay, signCalls } = await setup();
-    const error = await pay(`${origin}/research/drain`).catch((e) => e);
-    expect(error).toBeInstanceOf(AtlasDenied);
-    expect((error as AtlasDenied).reasons).toContain('PAYTO_ALLOWED');
-    expect(signCalls).toHaveLength(0);
+    const { authorizer, sign } = await setup();
+    const error = await authorizer.requestVoucher(request({ recipient: signers.attacker.publicKey, resourceUrl: `${TEST_ORIGIN}/research/drain` })).catch((e) => e);
+    expect(error).toBeInstanceOf(MandateDeniedError);
+    const denied = new AtlasDenied((error as MandateDeniedError).decision);
+    expect(denied).toBeInstanceOf(AtlasDenied);
+    expect(denied.reasons).toContain('PAYTO_ALLOWED');
+    expect(sign).not.toHaveBeenCalled();
   });
 });

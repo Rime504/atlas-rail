@@ -15,13 +15,33 @@ import {
 } from './decision';
 import { evaluateGate } from './gate';
 import { hashMandate } from './mandate';
-import { hashOffer } from './offer';
+import { X402Offer, hashOffer } from './offer';
 import { NOW, signedTestMandate, signers, testContext, testOffer } from './testing';
+
+/** Channel watermark. The gate scores the increment, not the cumulative voucher amount. */
+const SETTLED = '250000';
+
+/** Offer evaluateGate scores on the voucher path: amount = cumulative − settled. */
+function voucherOffer(scored: string, overrides: Partial<X402Offer> = {}, settled = SETTLED): X402Offer {
+  const delta = BigInt(scored);
+  const cumulative = delta + BigInt(settled);
+  return testOffer({
+    feePayer: null,
+    memo: 'channel:test-channel',
+    ...overrides,
+    amount: (cumulative - BigInt(settled)).toString(),
+  });
+}
+
+function voucherContext(overrides: Parameters<typeof testContext>[0] = {}) {
+  return testContext({ simulation: null, requireSimulation: false, ...overrides });
+}
 
 async function makeSignedDecision(offerOverrides: Parameters<typeof testOffer>[0] = {}) {
   const mandate = await signedTestMandate();
-  const offer = testOffer(offerOverrides);
-  const context = testContext();
+  const { amount, ...rest } = offerOverrides;
+  const offer = voucherOffer(amount ?? '10000', rest);
+  const context = voucherContext();
   const result = evaluateGate(mandate, offer, context);
   const record = buildDecisionRecord({
     id: 'dec_TEST',

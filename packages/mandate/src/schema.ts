@@ -47,6 +47,8 @@ export const delegationLinkSchema = z
     role: delegationRoleSchema,
     publicKey: addressSchema,
     signature: signatureSchema,
+    /** Signature scheme. Missing means `ed25519`; any other value is rejected. Not part of the signed hash. */
+    scheme: z.literal('ed25519').optional(),
   })
   .strict();
 export type DelegationLink = z.infer<typeof delegationLinkSchema>;
@@ -68,9 +70,8 @@ export const mandateLimitsSchema = z
   .strict();
 
 /**
- * A per-resource price ceiling (rule 15), fixed at mandate-signing time by the owner. Credit to
- * Felix for identifying the underlying issue: binding a payment only to the mandate's own limits
- * still lets an otherwise-allowed seller quietly raise its price on every call. `expectedPriceBaseUnits`
+ * A per-resource price ceiling (rule 15), fixed at mandate-signing time by the owner. It closes a
+ * gap: binding a payment only to the mandate's own limits still lets an otherwise-allowed seller quietly raise its price on every call. `expectedPriceBaseUnits`
  * MUST NOT be updated from what a seller has charged in the past — doing so would let a seller creep
  * the price up by a little each payment, each individually within tolerance of the last.
  */

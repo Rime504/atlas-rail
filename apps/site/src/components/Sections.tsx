@@ -1,4 +1,4 @@
-import { ArrowUpRight, BadgeCheck, Building2, Code2, FileSignature, ShieldCheck, Store, UserCheck, Wallet } from 'lucide-react';
+import { ArrowUpRight, BadgeCheck, Building2, Code2, FileSignature, Globe, KeyRound, Plug, Repeat, ShieldCheck, Store, TrendingUp, UserCheck, Wallet } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { CodeTabs } from './CodeTabs';
 import {
@@ -83,7 +83,7 @@ const STEPS = [
     n: '03',
     icon: BadgeCheck,
     title: 'Proof',
-    body: 'Each allowed payment names its own receipt in its on-chain memo. Anyone can check, from the chain alone, who signed the mandate, the limits, the decision and the on-chain anchor.',
+    body: 'Every decision gets a receipt, and receipts are anchored on Solana. Anyone can check, from the chain alone, who signed the mandate, the limits, the decision and the anchor.',
   },
 ];
 
@@ -120,11 +120,40 @@ export function HowItWorks() {
   );
 }
 
+/* ---- Use cases ---------------------------------------------------------------------------------- */
+
+const USE_CASES = [
+  { icon: Globe, title: 'Paying for APIs and data', body: 'Your agent pays x402 APIs. Each payment is checked before it is signed.', status: 'Works today' },
+  { icon: Repeat, title: 'Pay per call with payment channels', body: 'A deposit sits in a Solana payment channel. Each allowed call settles from it.', status: 'Works today' },
+  { icon: Plug, title: "Spending authority for Solana's pay tool", body: 'pay asks Atlas Rail before it pays. Only an allowed payment goes through.', status: 'Works today · hook in review' },
+  { icon: UserCheck, title: 'Over-limit or unusual payments', body: 'The payment waits for the owner, who approves that one payment, once.', status: 'Works today' },
+  { icon: KeyRound, title: "If the agent's app is hacked", body: "The agent's key lives in a separate signer. It only signs what the rules allow.", status: 'Works today' },
+  { icon: TrendingUp, title: 'Trading agents', body: 'Rules for trades: maximum trade size, allowed tokens, allowed exchanges.', status: 'Coming next · not built yet', next: true },
+];
+
+export function UseCases() {
+  return (
+    <section id="use-cases" aria-labelledby="use-cases-title" className="section">
+      <SectionHeader id="use-cases-title" eyebrow="Use cases" title="What it does for your agent." />
+      <ul className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {USE_CASES.map(({ icon: Icon, title, body, status, next }) => (
+          <li key={title} className="card flex flex-col p-7">
+            <Icon className={`h-5 w-5 ${next ? 'text-violet' : 'text-mint'}`} aria-hidden="true" />
+            <h3 className="mt-6 text-[19px] font-semibold text-white">{title}</h3>
+            <p className="mt-2 flex-1 text-[15px] leading-relaxed text-muted">{body}</p>
+            <p className={`mt-5 text-[13px] font-medium ${next ? 'text-violet-text' : 'text-mint'}`}>{status}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /* ---- Who it's for ------------------------------------------------------------------------------- */
 
 const AUDIENCES = [
   { icon: Code2, title: 'Agent builders', body: 'who want their agent to pay for APIs without handing it a wallet it can drain.' },
-  { icon: Wallet, title: 'Wallets and agent platforms', body: 'which want to offer users safe spending limits for their agents without building the security themselves.' },
+  { icon: Wallet, title: 'Wallets and agent platforms', body: 'which want to offer users safe spending limits for their agents without building the permissions themselves.' },
   { icon: Store, title: 'Sellers and API providers', body: 'who want proof that a paying agent was actually allowed to pay.' },
 ];
 
@@ -155,13 +184,19 @@ export function Developers() {
           <SectionHeader
             id="dev-title"
             eyebrow="Developers"
-            title="One line around fetch."
-            intro="Wrap your agent's fetch: x402 payments go through the gate first, and a refused payment is never signed. Or give an AI assistant one MCP tool, pay(url)."
+            title="One call to pay, with proof."
+            intro="createAtlasRail() connects your agent to the gate. pay() checks the payment against the mandate, pays only if it is allowed, and returns the receipt."
           />
           <dl className="mt-10 space-y-5 text-[15px]">
             <div>
               <dt className="text-white">Install</dt>
-              <dd className="mt-1 text-muted">From the repository today. The npm package is coming.</dd>
+              <dd className="mt-1 text-muted">Build it from the repository today. The npm package is coming soon.</dd>
+            </div>
+            <div>
+              <dt className="text-white">Try it first</dt>
+              <dd className="mt-1 text-muted">
+                <span className="font-mono text-[14px] text-white/85">pnpm demo</span> and <span className="font-mono text-[14px] text-white/85">pnpm demo:pay</span> run the whole story on a local Solana validator.
+              </dd>
             </div>
             <div>
               <dt className="text-white">The key stays out of the agent</dt>
@@ -319,8 +354,7 @@ export function ShippingNext() {
 
 const TEAM = [
   { name: 'Rime Khatib', role: 'Co-founder, lead engineer' },
-  { name: 'Kamelia', role: 'Co-founder: original idea, product and go-to-market' },
-  { name: 'Divyesh', role: 'On-chain engineer' },
+  { name: 'Divyesh Shan', role: 'On-chain engineer' },
 ];
 
 export function Team() {

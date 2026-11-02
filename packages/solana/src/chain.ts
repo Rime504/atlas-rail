@@ -139,6 +139,9 @@ export interface SettlementCheck {
   slot: number | null;
   blockTime: number | null;
   payer: string | null;
+  /** Payment-channels settle only: the voucher bytes the precompile verified (hex), and the channel settled. */
+  voucherMessageHex?: string;
+  channel?: string;
 }
 
 /** Confirms a settled transaction moved exactly the expected amount of the expected mint to payTo (exactly one transfer). */
@@ -174,6 +177,66 @@ export function checkSettlement(
   return { ...base, ok: true, reason: 'exactly one matching TransferChecked succeeded on-chain', payer: matching[0].authority };
 }
 
+const ED25519_PROGRAM_ID = 'Ed25519SigVerify111111111111111111111111111';
+const CHANNEL_PROGRAM_ID = 'CHNLxYvVA28MJP9PrFuDXccuoGXAx7jBacfLEkahyGsX';
+
+/** Pubkey embedded in a single-signature Ed25519 precompile instruction (offsets start at byte 2). */
+function ed25519PrecompilePubkey(data: Buffer): string | null {
+  if (data.length < 16 || data[0] !== 1) return null;
+  const pubkeyOffset = data.readUInt16LE(6);
+  if (pubkeyOffset + 32 > data.length) return null;
+  return new PublicKey(data.subarray(pubkeyOffset, pubkeyOffset + 32)).toBase58();
+}
+
+/** Message bytes of a single-signature Ed25519 precompile instruction, when they sit in the same instruction. */
+function ed25519PrecompileMessage(data: Buffer): Buffer | null {
+  if (data.length < 16 || data[0] !== 1) return null;
+  const offset = data.readUInt16LE(10);
+  const length = data.readUInt16LE(12);
+  if (offset + length > data.length) return null;
+  return data.subarray(offset, offset + length);
+}
+
+/**
+ * A payment-channels settle is the Ed25519 precompile plus the program's settle instruction.
+ * It does not move tokens. The payer is the voucher key inside the precompile, not an SPL authority.
+ */
+export function checkChannelSettlement(summary: ChainTransactionSummary | null): SettlementCheck {
+  if (!summary) return { ok: false, reason: 'transaction not found on the cluster', slot: null, blockTime: null, payer: null };
+  const base = { slot: summary.slot, blockTime: summary.blockTime };
+  if (summary.err !== null) {
+    return { ...base, ok: false, reason: `transaction failed on-chain: ${JSON.stringify(summary.err)}`, payer: null };
+  }
+  const ed25519 = summary.instructions.filter((ix) => ix.programId === ED25519_PROGRAM_ID);
+  const settle = summary.instructions.filter((ix) => {
+    if (ix.programId !== CHANNEL_PROGRAM_ID) return false;
+    const data = Buffer.from(ix.dataBase64, 'base64');
+    return data.length > 0 && data[0] === 2;
+  });
+  const onlyThosePrograms = summary.programIds.every((id) => id === ED25519_PROGRAM_ID || id === CHANNEL_PROGRAM_ID);
+  if (ed25519.length !== 1 || settle.length !== 1 || summary.instructions.length !== 2 || summary.tokenTransfers.length !== 0 || !onlyThosePrograms) {
+    return {
+      ...base,
+      ok: false,
+      reason: 'settlement is not an Ed25519 precompile plus payment-channels settle',
+      payer: null,
+    };
+  }
+  const payer = ed25519PrecompilePubkey(Buffer.from(ed25519[0].dataBase64, 'base64'));
+  if (!payer) {
+    return { ...base, ok: false, reason: 'Ed25519 precompile does not carry a voucher public key', payer: null };
+  }
+  const message = ed25519PrecompileMessage(Buffer.from(ed25519[0].dataBase64, 'base64'));
+  return {
+    ...base,
+    ok: true,
+    reason: 'Ed25519 precompile and payment-channels settle succeeded with no token transfer',
+    payer,
+    voucherMessageHex: message ? message.toString('hex') : undefined,
+    channel: settle[0].accounts[0],
+  };
+}
+
 export interface AnchorCheck {
   ok: boolean;
   reason: string;
@@ -181,37 +244,28 @@ export interface AnchorCheck {
   blockTime: number | null;
 }
 
-/** Confirms a transaction succeeded, was signed by `signer`, and carries exactly the expected memo. */
-export function checkMemoAnchor(
-  summary: ChainTransactionSummary | null,
-  expected: { memo: string; signer: string },
-): AnchorCheck {
-  if (!summary) return { ok: false, reason: 'anchor transaction not found on the cluster', slot: null, blockTime: null };
-  const base = { slot: summary.slot, blockTime: summary.blockTime };
-  if (summary.err !== null) return { ...base, ok: false, reason: `anchor transaction failed: ${JSON.stringify(summary.err)}` };
-  if (!summary.signers.includes(expected.signer)) {
-    return { ...base, ok: false, reason: 'anchor transaction was not signed by the expected instance key' };
-  }
-  if (!summary.memos.includes(expected.memo)) {
-    return { ...base, ok: false, reason: 'anchor transaction does not carry the expected Merkle root memo' };
-  }
-  return { ...base, ok: true, reason: 'Merkle root memo is on-chain in a transaction signed by the instance key' };
-}
-
 const ANCHOR_ROOT_DISCRIMINATOR = createHash('sha256').update('global:anchor_root').digest().subarray(0, 8);
-// seq (u64 LE, 8 bytes) + merkle_root (32 bytes) + leaf_count (u32 LE, 4 bytes), after the 8-byte
-// discriminator. Field order/widths mirror `encodeAnchorRootArgs` in mandate-registry.ts exactly.
-const ANCHOR_ROOT_ARGS_LEN = 8 + 32 + 4;
+const ANCHOR_ROOT_V2_DISCRIMINATOR = createHash('sha256').update('global:anchor_root_v2').digest().subarray(0, 8);
+const ANCHOR_ROOT_OLD_LEN = 8 + 8 + 32 + 4;
+const ANCHOR_ROOT_NEW_LEN = ANCHOR_ROOT_OLD_LEN + 32 + 32;
 
 /**
- * Confirms a transaction succeeded, was signed by `signer`, and invoked the mandate registry's
- * `anchor_root` instruction for `mandatePda` with exactly the expected seq, Merkle root and leaf
- * count. The alternative to {@link checkMemoAnchor} once a receipt batch is anchored via the
- * program's per-mandate Root PDA instead of an SPL Memo.
+ * Confirms a transaction succeeded, was signed by `signer`, and invoked `anchor_root`
+ * for this mandate. A memo instruction fails the check. New roots also carry the batch
+ * header hash and the batch file hash.
  */
 export function checkRootAnchor(
   summary: ChainTransactionSummary | null,
-  expected: { programId: string; mandatePda: string; signer: string; seq: bigint; merkleRoot: string; leafCount: number },
+  expected: {
+    programId: string;
+    mandatePda: string;
+    signer: string;
+    seq: bigint;
+    merkleRoot: string;
+    leafCount: number;
+    batchHeader?: string;
+    batchFileHash?: string;
+  },
 ): AnchorCheck {
   if (!summary) return { ok: false, reason: 'anchor transaction not found on the cluster', slot: null, blockTime: null };
   const base = { slot: summary.slot, blockTime: summary.blockTime };
@@ -219,12 +273,19 @@ export function checkRootAnchor(
   if (!summary.signers.includes(expected.signer)) {
     return { ...base, ok: false, reason: 'anchor transaction was not signed by the expected gate authority key' };
   }
+  if (summary.programIds.includes(MEMO_ID) || summary.memos.length > 0) {
+    return { ...base, ok: false, reason: 'anchor transaction must not include a memo' };
+  }
   const ix = summary.instructions.find((i) => i.programId === expected.programId && i.accounts[0] === expected.mandatePda);
   if (!ix) {
     return { ...base, ok: false, reason: 'anchor transaction does not invoke the mandate registry for this mandate' };
   }
   const data = Buffer.from(ix.dataBase64, 'base64');
-  if (data.length !== 8 + ANCHOR_ROOT_ARGS_LEN || !data.subarray(0, 8).equals(ANCHOR_ROOT_DISCRIMINATOR)) {
+  // anchor_root_v2 always carries both hashes. The deprecated anchor_root is still accepted for
+  // receipts anchored before v2, with or without the two hashes in its instruction data.
+  const v1 = data.subarray(0, 8).equals(ANCHOR_ROOT_DISCRIMINATOR) && (data.length === ANCHOR_ROOT_OLD_LEN || data.length === ANCHOR_ROOT_NEW_LEN);
+  const v2 = data.subarray(0, 8).equals(ANCHOR_ROOT_V2_DISCRIMINATOR) && data.length === ANCHOR_ROOT_NEW_LEN;
+  if (!v1 && !v2) {
     return { ...base, ok: false, reason: 'instruction is not an anchor_root call' };
   }
   const seq = data.readBigUInt64LE(8);
@@ -232,6 +293,19 @@ export function checkRootAnchor(
   const leafCount = data.readUInt32LE(48);
   if (seq !== expected.seq || merkleRoot !== expected.merkleRoot || leafCount !== expected.leafCount) {
     return { ...base, ok: false, reason: 'anchor_root instruction does not carry the expected seq, Merkle root or leaf count' };
+  }
+  if (expected.batchHeader || expected.batchFileHash) {
+    if (data.length !== ANCHOR_ROOT_NEW_LEN) {
+      return { ...base, ok: false, reason: 'anchor_root is missing the batch header and batch file hash' };
+    }
+    const batchHeader = data.subarray(52, 84).toString('hex');
+    const batchFileHash = data.subarray(84, 116).toString('hex');
+    if (expected.batchHeader && batchHeader !== expected.batchHeader) {
+      return { ...base, ok: false, reason: 'anchor_root batch header does not match the receipt' };
+    }
+    if (expected.batchFileHash && batchFileHash !== expected.batchFileHash) {
+      return { ...base, ok: false, reason: 'anchor_root batch file hash does not match the receipt' };
+    }
   }
   return { ...base, ok: true, reason: `anchor_root recorded this Merkle root on-chain for mandate ${expected.mandatePda} at seq ${seq}` };
 }

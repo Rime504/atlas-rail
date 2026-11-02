@@ -10,10 +10,28 @@ import { describe, expect, it } from 'vitest';
 import { canonicalize } from './jcs';
 import { GateContext, evaluateGate } from './gate';
 import { hashMandate, linkHash, verifyMandateChain } from './mandate';
-import { hashOffer } from './offer';
+import { X402Offer, hashOffer } from './offer';
 import { matchesAnyResourcePattern } from './resource';
 import { signers, signedTestMandate, testApproval, testContext, testOffer, unsignedTestMandate, NOW, TEST_ORIGIN } from './testing';
-import { X402Offer } from './offer';
+
+/** Channel watermark. The gate scores the increment, not the cumulative voucher amount. */
+const SETTLED = '250000';
+
+/** Offer evaluateGate scores on the voucher path: amount = cumulative − settled. */
+function voucherOffer(scored: string, overrides: Partial<X402Offer> = {}, settled = SETTLED): X402Offer {
+  const delta = BigInt(scored);
+  const cumulative = delta + BigInt(settled);
+  return testOffer({
+    feePayer: null,
+    memo: 'channel:test-channel',
+    ...overrides,
+    amount: (cumulative - BigInt(settled)).toString(),
+  });
+}
+
+function voucherContext(overrides: Parameters<typeof testContext>[0] = {}) {
+  return testContext({ simulation: null, requireSimulation: false, ...overrides });
+}
 
 const FILE = path.resolve(__dirname, '../../../spec/test-vectors/agent-mandate-v0.1.json');
 
@@ -55,8 +73,8 @@ async function build() {
     };
   };
 
-  const heavy = testOffer({ resourceUrl: `${TEST_ORIGIN}/inference/heavy`, amount: '40000000' });
-  const mid = testOffer({ amount: '2000000' });
+  const heavy = voucherOffer('40000000', { resourceUrl: `${TEST_ORIGIN}/inference/heavy` });
+  const mid = voucherOffer('2000000');
 
   // Rule 15 (price limits): expected 1,000,000 · 10% tolerance -> ceiling 1,100,000 · hard max 2,000,000.
   // expectedPriceBaseUnits is fixed at signing time and never updated from past payments -- see the
@@ -133,33 +151,33 @@ async function build() {
     overlapMandate: { signed: overlapMandate },
     resources: resourceCases.map(([url, patterns, why]) => ({ url, patterns, why, matches: matchesAnyResourcePattern(url, patterns) })),
     gate: [
-      gateCase('autonomous allow', testOffer(), testContext()),
-      gateCase('escalate above threshold', mid, testContext()),
-      gateCase('escalate then human approval releases it', mid, testContext({ approval: testApproval(mid) })),
-      gateCase('deny: resource outside scope', testOffer({ resourceUrl: 'http://127.0.0.1:59725/invoice', amount: '500000000' }), testContext()),
-      gateCase('deny: recipient not allowed', testOffer({ payTo: signers.attacker.publicKey }), testContext()),
-      gateCase('deny: hard per-payment ceiling', testOffer({ amount: '60000000' }), testContext()),
-      gateCase('deny: revoked', testOffer(), testContext({ revoked: { revokedAt: NOW - 10, reason: 'compromised' } })),
-      gateCase('escalate: inference endpoint always needs a human', heavy, testContext()),
+      gateCase('autonomous allow', voucherOffer('10000'), voucherContext()),
+      gateCase('escalate above threshold', mid, voucherContext()),
+      gateCase('escalate then human approval releases it', mid, voucherContext({ approval: testApproval(mid) })),
+      gateCase('deny: resource outside scope', voucherOffer('500000000', { resourceUrl: 'http://127.0.0.1:59725/invoice' }), voucherContext()),
+      gateCase('deny: recipient not allowed', voucherOffer('10000', { payTo: signers.attacker.publicKey }), voucherContext()),
+      gateCase('deny: hard per-payment ceiling', voucherOffer('60000000'), voucherContext()),
+      gateCase('deny: revoked', voucherOffer('10000'), voucherContext({ revoked: { revokedAt: NOW - 10, reason: 'compromised' } })),
+      gateCase('escalate: inference endpoint always needs a human', heavy, voucherContext()),
       overlapGateCase(
         'escalate: an always-ask resource needs a human even when a broader allowlist pattern also covers it',
-        testOffer({ resourceUrl: `${TEST_ORIGIN}/inference/run`, amount: '10000' }),
-        testContext(),
+        voucherOffer('10000', { resourceUrl: `${TEST_ORIGIN}/inference/run` }),
+        voucherContext(),
       ),
-      overlapGateCase('allow: the rest of that allowlist stays autonomous', testOffer({ resourceUrl: `${TEST_ORIGIN}/research/summary`, amount: '10000' }), testContext()),
-      pricedGateCase('price limit: at the expected price allows', testOffer({ amount: '1000000' }), testContext()),
-      pricedGateCase('price limit: within the 10% tolerance still allows', testOffer({ amount: '1050000' }), testContext()),
-      pricedGateCase('price limit: above tolerance escalates to a human', testOffer({ amount: '1500000' }), testContext()),
+      overlapGateCase('allow: the rest of that allowlist stays autonomous', voucherOffer('10000', { resourceUrl: `${TEST_ORIGIN}/research/summary` }), voucherContext()),
+      pricedGateCase('price limit: at the expected price allows', voucherOffer('1000000'), voucherContext()),
+      pricedGateCase('price limit: within the 10% tolerance still allows', voucherOffer('1050000'), voucherContext()),
+      pricedGateCase('price limit: above tolerance escalates to a human', voucherOffer('1500000'), voucherContext()),
       pricedGateCase(
         'price limit: above tolerance, human approval releases it',
-        testOffer({ amount: '1500000' }),
-        testContext({ approval: testApproval(testOffer({ amount: '1500000' })) }),
+        voucherOffer('1500000'),
+        voucherContext({ approval: testApproval(voucherOffer('1500000')) }),
       ),
-      pricedGateCase('price limit: above the hard max denies, no approval can release it', testOffer({ amount: '2500000' }), testContext()),
+      pricedGateCase('price limit: above the hard max denies, no approval can release it', voucherOffer('2500000'), voucherContext()),
       pricedGateCase(
         'price creep attack: five rising-but-individually-small payments are each checked against the one fixed expected price, not the last payment',
-        testOffer({ amount: '1095000' }),
-        testContext(),
+        voucherOffer('1095000'),
+        voucherContext(),
       ),
     ],
   };

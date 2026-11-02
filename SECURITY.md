@@ -12,7 +12,7 @@
 
 ## Disclosure Contact
 
-To report security concerns or vulnerabilities, please contact: `security@atlasrail.local` (or file a confidential security report via GitHub).
+To report security concerns or vulnerabilities, email `atlasrails@gmail.com` or open a private report on [GitHub security advisories](https://github.com/Rime504/atlas-rail/security/advisories/new).
 
 ## Core Security Architecture
 

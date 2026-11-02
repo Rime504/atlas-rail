@@ -1,6 +1,8 @@
 import {
   MessageSigner,
   SIGNATURE_DOMAIN,
+  SIGNATURE_SCHEME,
+  SignatureScheme,
   hashCanonical,
   isSha256Hex,
   signDomainHash,
@@ -14,6 +16,7 @@ import {
   GateDecision,
   GateResult,
   GateSimulation,
+  OwnerReview,
   RuleId,
   RuleResult,
   evaluateGate,
@@ -77,6 +80,10 @@ export interface DecisionContextSnapshot {
   simulation: GateSimulation | null;
   requireSimulation: boolean;
   approval: GateApproval | null;
+  /** Present only when the voucher ask compared a fee payer to the channel account. */
+  channelPayer?: string;
+  /** Present only when the owner was asked: why, and who approved. */
+  review?: OwnerReview;
 }
 
 export interface DecisionRecord {
@@ -102,7 +109,8 @@ export interface DecisionRecord {
 export interface SignedDecision {
   record: DecisionRecord;
   decisionHash: string;
-  instance: { publicKey: string; signature: string };
+  /** `scheme` missing means `ed25519`. Not part of `decisionHash`. */
+  instance: { publicKey: string; signature: string; scheme?: SignatureScheme };
 }
 
 export function contextToSnapshot(context: GateContext): DecisionContextSnapshot {
@@ -113,6 +121,8 @@ export function contextToSnapshot(context: GateContext): DecisionContextSnapshot
     simulation: context.simulation,
     requireSimulation: context.requireSimulation,
     approval: context.approval,
+    ...(context.channelPayer ? { channelPayer: context.channelPayer } : {}),
+    ...(context.review ? { review: context.review } : {}),
   };
 }
 
@@ -124,6 +134,7 @@ export function snapshotToContext(snapshot: DecisionContextSnapshot): GateContex
     simulation: snapshot.simulation,
     requireSimulation: snapshot.requireSimulation,
     approval: snapshot.approval,
+    ...(snapshot.channelPayer ? { channelPayer: snapshot.channelPayer } : {}),
   };
 }
 
@@ -167,13 +178,16 @@ export function hashDecisionRecord(record: DecisionRecord): string {
 export async function signDecision(record: DecisionRecord, instanceSigner: MessageSigner): Promise<SignedDecision> {
   const decisionHash = hashDecisionRecord(record);
   const signature = await signDomainHash(instanceSigner, SIGNATURE_DOMAIN.decision, decisionHash);
-  return { record, decisionHash, instance: { publicKey: instanceSigner.publicKey, signature } };
+  return { record, decisionHash, instance: { publicKey: instanceSigner.publicKey, signature, scheme: SIGNATURE_SCHEME } };
 }
 
 export function verifyDecisionSignature(signed: SignedDecision): VerificationCheck {
   const recomputed = hashDecisionRecord(signed.record);
   if (recomputed !== signed.decisionHash) {
     return { id: 'DECISION_HASH', ok: false, message: 'Decision record does not match its recorded hash' };
+  }
+  if ((signed.instance.scheme ?? SIGNATURE_SCHEME) !== SIGNATURE_SCHEME) {
+    return { id: 'DECISION_SIGNATURE', ok: false, message: `Decision signature scheme ${String(signed.instance.scheme)} is not supported` };
   }
   const ok = verifyDomainHash(
     signed.instance.publicKey,
@@ -238,7 +252,7 @@ export interface GateAuthorizationBody {
 }
 
 export interface GateAuthorization extends GateAuthorizationBody {
-  instance: { publicKey: string; signature: string };
+  instance: { publicKey: string; signature: string; scheme?: SignatureScheme };
 }
 
 export function hashGateAuthorization(body: GateAuthorizationBody): string {
@@ -250,7 +264,7 @@ export async function createGateAuthorization(
   instanceSigner: MessageSigner,
 ): Promise<GateAuthorization> {
   const signature = await signDomainHash(instanceSigner, SIGNATURE_DOMAIN.gateAuthorization, hashGateAuthorization(body));
-  return { ...body, instance: { publicKey: instanceSigner.publicKey, signature } };
+  return { ...body, instance: { publicKey: instanceSigner.publicKey, signature, scheme: SIGNATURE_SCHEME } };
 }
 
 export interface GateAuthorizationCheck {

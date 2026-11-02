@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, generateUlid } from '@atlas-rail/database';
 import { evaluatePolicy, PolicyRules } from '@atlas-rail/domain';
+import { rollingSpendForTreasury } from '../payouts/rolling-spend';
 
 @Injectable()
 export class PolicyService {
@@ -85,6 +86,8 @@ export class PolicyService {
     });
     if (!recipient) throw new NotFoundException('Recipient not found.');
 
+    const rollingSpend = await rollingSpendForTreasury(treasury.id);
+
     return evaluatePolicy({
       policy: {
         version: activePolicy.version,
@@ -105,10 +108,7 @@ export class PolicyService {
         memo: payload.memo,
         createdByUserId: payload.userId || 'usr_demo',
       },
-      rollingSpend: {
-        dailyTotalBaseUnits: '0',
-        monthlyTotalBaseUnits: '0',
-      },
+      rollingSpend,
       simulation: payload.simulation,
     });
   }

@@ -75,11 +75,11 @@ async function createOnce(backend: BlobBackend, pathname: string, body: string, 
   return { stored: true, reason: 'Published.' };
 }
 
-export async function publishReceipt(receipt: unknown, deps: { chain: ChainClient; backend?: BlobBackend }): Promise<StoreResult> {
+export async function publishReceipt(receipt: unknown, deps: { chain: ChainClient; backend?: BlobBackend; trustedInstanceKeys?: readonly string[] }): Promise<StoreResult> {
   const backend = deps.backend ?? vercelBlob;
   const body = JSON.stringify(receipt);
   if (body.length > MAX_RECORD_BYTES) return { stored: false, reason: `Record exceeds ${MAX_RECORD_BYTES} bytes.` };
-  const verification = await verifyReceipt(receipt, { chain: deps.chain, requireAnchor: true });
+  const verification = await verifyReceipt(receipt, { chain: deps.chain, requireAnchor: true, trustedInstanceKeys: deps.trustedInstanceKeys });
   const notPassed = verification.checks.filter((c) => c.status !== 'PASS');
   if (notPassed.length > 0) return { stored: false, reason: `Not every check passed: ${notPassed.map((c) => `${c.id} ${c.status}`).join(', ')}` };
   const r = receipt as { id: string; receiptHash: string };

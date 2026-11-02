@@ -7,13 +7,11 @@
  *
  * Runs entirely server-side (Node runtime route handler): no persistence, no outbound network
  * calls unless devnet mode is on. Keys are generated fresh per visitor session (instant mode) or
- * read from server-held env vars (devnet mode) — see devnet.ts. In instant mode (the default),
- * payment settlement and receipt anchoring are always synthetic — nothing a visitor does can touch
- * real funds. In devnet mode, the two payments that are actually ALLOWed (step 3, step 6) settle for
- * real on Solana devnet (a real SPL token transfer, devnet-only, amounts of a cent or two), and the
- * step 7 receipt is anchored for real via the registry's `anchor_root` instruction — see the
- * `settle`/`onchainAnchor` parameters below. Every real on-chain call falls back to the synthetic
- * path with a visible reason if it fails or devnet mode isn't available for this visitor.
+ * read from server-held env vars (devnet mode) — see devnet.ts. Payment settlement in this
+ * walkthrough is synthetic. In devnet mode the step 7 receipt can be anchored for real via the
+ * registry's `anchor_root` instruction. A real devnet payment is the voucher demo. Every real
+ * on-chain call falls back to the synthetic path with a visible reason if it fails or devnet mode
+ * isn't available for this visitor.
  */
 import {
   AgentMandate,
@@ -30,14 +28,16 @@ import {
   createMandate,
   evaluateGate,
   fromHex,
+  hashMandate,
   hashOffer,
   sha256Bytes,
   signDecision,
   signMandate,
   toHex,
 } from '@atlas-rail/mandate';
-import type { ChainClient } from '@atlas-rail/solana';
-import { BoundReceipt, ReceiptVerification, buildReceipt, merkleProof, merkleRoot, verifyReceipt } from '@atlas-rail/receipt';
+import { BoundReceipt, ReceiptVerification, buildReceipt, buildSaltedBatch, merkleProof, verifyReceipt } from '@atlas-rail/receipt';
+import { findMandatePda, type ChainClient } from '@atlas-rail/solana';
+import { PublicKey } from '@solana/web3.js';
 import {
   ATTACK_AMOUNT,
   EXPECTED_PRICE,
@@ -60,14 +60,6 @@ export const RESEARCH_RESOURCE = `${SELLER_A_ORIGIN}/summary/weekly`;
 
 const WINDOW_SECONDS = 3600; // 1 hour
 const ESCALATION_THRESHOLD = MAX_PER_PAYMENT; // schema requires threshold <= maxPerPayment
-
-/** A step 3/6 payment settling for real on Solana devnet (devnet mode only). Returns the on-chain
- * transaction so it can be bound into the receipt; throwing falls back to a synthetic settlement
- * with a visible reason (see evaluateAndMaybeReceipt). */
-/** `receiptId` is the id this payment's receipt WILL have (decided before settlement, same as the
- * main demo's `createAtlasFetch`) — implementations that settle for real embed it in the
- * transaction's memo (`formatReceiptMemo`) so the payment is self-proving, same as N1. */
-export type SettleFn = (offer: X402Offer, receiptId: string) => Promise<OnchainAction>;
 
 function randomBytes(length: number): Uint8Array {
   const bytes = new Uint8Array(length);
@@ -368,29 +360,16 @@ async function evaluateAndMaybeReceipt(
   offer: X402Offer,
   context: GateContext,
   display: DisplayContext,
-  settle?: SettleFn,
 ): Promise<{ world: World; outcome: PaymentOutcome }> {
   const mandate = world.mandate;
   if (!mandate) throw new Error('Mandate is not signed yet');
   const gate = evaluateGate(mandate, offer, context);
   let receipt: BoundReceipt | null = null;
   let nextWorld = world;
-  let onchain: OnchainAction | null = null;
 
   if (gate.decision === 'ALLOW') {
-    // Decided before settlement, same as the main demo's createAtlasFetch, so a real settlement can
-    // embed it in the transaction's memo and this receipt ends up with the exact id that memo names.
-    const receiptId = `rcp_${toHex(randomBytes(16))}`; // same shape as createAtlasFetch: parseReceiptMemo only accepts rcp_ + 32 lowercase hex
-    let txSignature = syntheticTxSignature();
-    let devnetFallbackReason: string | null = null;
-    if (settle) {
-      try {
-        onchain = await settle(offer, receiptId);
-        txSignature = onchain.txSignature;
-      } catch (error) {
-        devnetFallbackReason = `Devnet settlement failed (${error instanceof Error ? error.message : String(error)}) — this payment is shown without a real on-chain transfer.`;
-      }
-    }
+    const receiptId = `rcp_${toHex(randomBytes(16))}`;
+    const txSignature = syntheticTxSignature();
     const instanceSigner = materializeSigner(world.keys.instance);
     const decisionRecord = buildDecisionRecord({
       id: `dec_${randomId()}`,
@@ -425,7 +404,6 @@ async function evaluateAndMaybeReceipt(
               totalBaseUnits: (BigInt(world.spend.totalBaseUnits) + spent).toString(),
             }
           : { ...world.spend, totalBaseUnits: (BigInt(world.spend.totalBaseUnits) + spent).toString() },
-      ...(devnetFallbackReason ? { devnetFallbackReason } : {}),
     };
   }
 
@@ -440,7 +418,7 @@ async function evaluateAndMaybeReceipt(
       rules: displayRules(gate),
       gate,
       receipt,
-      onchain,
+      onchain: null,
     },
   };
 }
@@ -482,10 +460,10 @@ function baseOffer(world: World, overrides: Partial<X402Offer>): X402Offer {
   };
 }
 
-/** Step 3 (A normal payment). `settle`, when given, is tried for real on Solana devnet. */
-export async function payNormal(world: World, settle?: SettleFn) {
+/** Step 3 (A normal payment). Settlement in this walkthrough is synthetic. */
+export async function payNormal(world: World) {
   const offer = baseOffer(world, {});
-  return evaluateAndMaybeReceipt(world, offer, baseContext(world), 'normal', settle);
+  return evaluateAndMaybeReceipt(world, offer, baseContext(world), 'normal');
 }
 
 /** Step 4 (An attack): prompt-injected agent tries to pay a stranger for an invented "invoice". Always
@@ -512,9 +490,8 @@ export async function priceSpikeSevere(world: World) {
   return evaluateAndMaybeReceipt(world, offer, baseContext(world), 'spike-severe');
 }
 
-/** Step 6 (You are the human): approve or reject the moderate price-spike payment from step 5a.
- * `settle`, when given, is tried for real on Solana devnet (approval only; a rejection never pays). */
-export async function humanDecision(world: World, approve: boolean, settle?: SettleFn) {
+/** Step 6 (You are the human): approve or reject the moderate price-spike payment from step 5a. */
+export async function humanDecision(world: World, approve: boolean) {
   const offer = baseOffer(world, { amount: MODERATE_SPIKE_AMOUNT });
   const approval: GateApproval = {
     id: `apr_${randomId()}`,
@@ -523,7 +500,7 @@ export async function humanDecision(world: World, approve: boolean, settle?: Set
     expiresAt: world.now + 900,
     approver: { userId: 'visitor', role: 'APPROVER' },
   };
-  return evaluateAndMaybeReceipt(world, offer, baseContext(world, { approval }), 'approval', settle);
+  return evaluateAndMaybeReceipt(world, offer, baseContext(world, { approval }), 'approval');
 }
 
 /** Step 8 (Revoke): the owner revokes the mandate, then the agent tries one more payment. */
@@ -544,6 +521,7 @@ export interface OnchainAnchor {
   seq: number;
   chain: ChainClient;
   programId: string;
+  salt?: string;
 }
 
 /** Step 7 (Prove): anchor the receipt into a (single-leaf, in-memory) Merkle batch, then verify it
@@ -558,16 +536,26 @@ export async function proveReceipt(
 ): Promise<{ receipt: BoundReceipt; verification: ReceiptVerification }> {
   const receipt = world.receipts.find((r) => r.id === receiptId);
   if (!receipt) throw new Error('Receipt not found');
-  const root = merkleRoot([receipt.receiptHash]);
-  const proof = merkleProof([receipt.receiptHash], 0);
+  const seq = BigInt(onchain?.seq ?? 0);
+  const mandatePda = findMandatePda(onchain?.programId ?? 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k', Buffer.from(hashMandate(receipt.mandate), 'hex')).address;
+  const built = buildSaltedBatch({
+    mandate: new PublicKey(mandatePda).toBytes(),
+    seq,
+    receiptHashes: [receipt.receiptHash],
+    salts: onchain?.salt ? [onchain.salt] : undefined,
+  });
+  const proof = merkleProof(built.leaves, 0);
   const anchored: BoundReceipt = {
     ...receipt,
     anchor: {
       batchId: `batch_${randomId()}`,
-      merkleRoot: root,
+      merkleRoot: built.merkleRoot,
       leafCount: 1,
       leafIndex: 0,
       proof,
+      leafSalt: built.salts[0],
+      batchHeader: built.batchHeader,
+      batchFileHash: built.batchFileHash,
       txSignature: onchain?.action.txSignature ?? syntheticTxSignature(),
       network: SOLANA_DEVNET_CAIP2,
       anchoredAt: world.now,

@@ -10,7 +10,7 @@ import type { PaymentHistory } from '../payment-outcome';
 /**
  * A small in-memory Solana cluster for hermetic tests and the offline demo (`apps/mock-validator`
  * serves it over JSON-RPC). It is NOT the Solana runtime: it implements exactly the instructions the
- * x402 exact scheme, Atlas Rail and the demo setup use — compute-budget, memo, System transfer /
+ * x402 exact scheme, a payment-channels settle (Ed25519 precompile plus the channel program, no token movement), Atlas Rail and the demo setup use — compute-budget, memo, System transfer /
  * create-account, SPL Token TransferChecked / InitializeMint2 / MintTo, and the Associated Token
  * Account program — with the checks that matter for correctness (signatures, blockhash validity,
  * replay, balances, ownership, mint/decimals, mint authority, ATA derivation).
@@ -23,6 +23,9 @@ const MEMO = ALLOWED_SOLANA_PROGRAM_IDS.MEMO_PROGRAM;
 const TOKEN = ALLOWED_SOLANA_PROGRAM_IDS.TOKEN_PROGRAM;
 const SYSTEM = ALLOWED_SOLANA_PROGRAM_IDS.SYSTEM_PROGRAM;
 const ATA = ALLOWED_SOLANA_PROGRAM_IDS.ASSOCIATED_TOKEN_PROGRAM;
+const ED25519 = 'Ed25519SigVerify111111111111111111111111111';
+const CHANNEL = 'CHNLxYvVA28MJP9PrFuDXccuoGXAx7jBacfLEkahyGsX';
+const MANDATE = 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k';
 const LAMPORTS_PER_SIGNATURE = 5000n;
 const RENT_TOKEN_ACCOUNT = 2_039_280n;
 const RENT_MINT = 1_461_600n;
@@ -345,6 +348,9 @@ export class FakeChain implements ChainClient, PaymentHistory {
           state.tokenAccounts.set(ata, { mint, owner, amount: 0n });
         }
         logs.push('Program log: Create');
+      } else if (programId === ED25519 || programId === CHANNEL || programId === MANDATE) {
+        // Voucher settle does not move tokens. anchor_root is recorded so receipt checks can read the instruction.
+        logs.push(`Program ${programId} invoke`);
       } else {
         return fail(`InvalidProgramForExecution: ${programId}`);
       }

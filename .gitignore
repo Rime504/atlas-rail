@@ -56,6 +56,17 @@ playwright/.cache/
 .anchor
 
 # Local agent instructions (not part of the shared repo)
-CLAUDE.md
 .vercel
 .env*
+
+.tmp
+.tmp-build
+.vitest-tmp
+
+# Solana keypair files (never commit a private key)
+id.json
+*keypair*.json
+*-keypair.json
+
+# Rust build output in any crate
+target/

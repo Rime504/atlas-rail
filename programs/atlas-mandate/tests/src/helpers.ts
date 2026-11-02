@@ -214,6 +214,33 @@ export function encodeAnchorRootArgs(args: AnchorRootArgs): Buffer {
   return Buffer.concat([instructionDiscriminator('anchor_root'), Buffer.from(body)]);
 }
 
+export interface AnchorRootV2Args extends AnchorRootArgs {
+  batchHeader: Uint8Array;
+  batchFileHash: Uint8Array;
+}
+
+// Mirrors `AnchorRootV2Args` field order/types in lib.rs.
+const anchorRootV2ArgsSchema = {
+  struct: {
+    seq: 'u64',
+    merkleRoot: { array: { type: 'u8', len: 32 } },
+    leafCount: 'u32',
+    batchHeader: { array: { type: 'u8', len: 32 } },
+    batchFileHash: { array: { type: 'u8', len: 32 } },
+  },
+} as const;
+
+export function encodeAnchorRootV2Args(args: AnchorRootV2Args): Buffer {
+  const body = borsh.serialize(anchorRootV2ArgsSchema as any, {
+    seq: args.seq,
+    merkleRoot: args.merkleRoot,
+    leafCount: args.leafCount,
+    batchHeader: args.batchHeader,
+    batchFileHash: args.batchFileHash,
+  });
+  return Buffer.concat([instructionDiscriminator('anchor_root_v2'), Buffer.from(body)]);
+}
+
 // Mirrors the `Mandate` account struct field order/types in lib.rs, prefixed by its 8-byte
 // account discriminator (sha256("account:Mandate")[0..8]).
 const mandateAccountSchema = {
@@ -328,6 +355,43 @@ export function decodeRootAccount(data: Buffer): RootAccount {
   };
 }
 
+// Mirrors the `RootV2` account struct field order/types in lib.rs.
+const rootV2AccountSchema = {
+  struct: {
+    mandate: { array: { type: 'u8', len: 32 } },
+    seq: 'u64',
+    merkleRoot: { array: { type: 'u8', len: 32 } },
+    leafCount: 'u32',
+    anchoredAt: 'i64',
+    batchHeader: { array: { type: 'u8', len: 32 } },
+    batchFileHash: { array: { type: 'u8', len: 32 } },
+    bump: 'u8',
+  },
+} as const;
+
+export interface RootV2Account extends RootAccount {
+  batchHeader: Uint8Array;
+  batchFileHash: Uint8Array;
+}
+
+export function decodeRootV2Account(data: Buffer): RootV2Account {
+  const expectedDisc = accountDiscriminator('RootV2');
+  if (!data.subarray(0, 8).equals(expectedDisc)) {
+    throw new Error('account discriminator mismatch: not a RootV2 account');
+  }
+  const raw: any = borsh.deserialize(rootV2AccountSchema as any, data.subarray(8));
+  return {
+    mandate: new PublicKey(raw.mandate),
+    seq: raw.seq,
+    merkleRoot: raw.merkleRoot,
+    leafCount: raw.leafCount,
+    anchoredAt: raw.anchoredAt,
+    batchHeader: raw.batchHeader,
+    batchFileHash: raw.batchFileHash,
+    bump: raw.bump,
+  };
+}
+
 export interface MandateParties {
   owner: Keypair;
   approver: Keypair;
@@ -416,6 +480,26 @@ export function buildAnchorRootIx(
   return { ix, rootPda };
 }
 
+export function buildAnchorRootV2Ix(
+  programId: PublicKey,
+  mandatePda: PublicKey,
+  gateAuthority: PublicKey,
+  args: AnchorRootV2Args,
+): { ix: TransactionInstruction; rootPda: PublicKey } {
+  const [rootPda] = findRootPda(programId, mandatePda, args.seq);
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: mandatePda, isSigner: false, isWritable: true },
+      { pubkey: rootPda, isSigner: false, isWritable: true },
+      { pubkey: gateAuthority, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: encodeAnchorRootV2Args(args),
+  });
+  return { ix, rootPda };
+}
+
 /** Anchor's custom program errors are numbered from 6000 in `#[error_code]` declaration order. */
 export const MandateErrorCode = {
   ApproverIsOwner: 6000,
@@ -431,4 +515,6 @@ export const MandateErrorCode = {
   UnauthorizedAnchor: 6010,
   OutOfOrderSeq: 6011,
   EmptyBatch: 6012,
+  MissingBatchHash: 6013,
+  BatchHeaderMismatch: 6014,
 } as const;

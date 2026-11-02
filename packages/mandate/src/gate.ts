@@ -1,6 +1,7 @@
 import { addBaseUnits, compareBaseUnits } from '@atlas-rail/domain';
 import { verifyMandateChain, hashMandate } from './mandate';
 import { X402Offer, hashOffer, x402OfferSchema } from './offer';
+import { OwnerApprovalSignature, OwnerApprovalTerms, approvalSigners, verifyOwnerApproval } from './owner-approval';
 import { matchesAnyResourcePattern, matchesResourcePattern } from './resource';
 import { AgentMandate, BASE_UNITS_PATTERN, ResourcePriceLimit, SUPPORTED_NETWORKS, agentMandateSchema } from './schema';
 
@@ -85,12 +86,24 @@ export interface GateApproval {
   status: ApprovalStatus;
   expiresAt: number;
   approver: { userId: string; role: string } | null;
+  /**
+   * Owner-signed approval: the terms the wallet signed and its signature. When present, the gate
+   * checks the signature against the mandate's owner and approver keys, and the decision record
+   * (and so the receipt) carries it.
+   */
+  terms?: OwnerApprovalTerms;
+  ownerSignature?: OwnerApprovalSignature;
 }
 
 export interface GateContext {
   /** Epoch seconds, supplied by the caller. The gate never reads a clock. */
   now: number;
   revoked: { revokedAt: number; reason?: string | null } | null;
+  /**
+   * Payer stored on the channel account. Compared only when the offer also names a fee payer.
+   * Omitted on the exact-scheme path and on voucher asks that leave feePayer empty.
+   */
+  channelPayer?: string | null;
   spend: {
     /** Autonomous spend (reserved + settled) inside the rolling window ending at `now`. */
     windowAutonomousBaseUnits: string;
@@ -101,6 +114,17 @@ export interface GateContext {
   /** When false a missing simulation passes (unit tests, prelim evaluation). Production always sets true. */
   requireSimulation: boolean;
   approval: GateApproval | null;
+  /**
+   * Why the owner was asked, in plain words (a limit, or the behaviour check), and who approved.
+   * Recorded on the signed decision so it shows on the receipt. The gate rules never read it.
+   */
+  review?: OwnerReview | null;
+}
+
+export interface OwnerReview {
+  reason: string;
+  approvalId: string | null;
+  approvedBy: string | null;
 }
 
 export interface GateResult {
@@ -247,6 +271,23 @@ export function evaluateGate(mandateInput: unknown, offerInput: unknown, context
     if (!approval.approver || !mandate.escalation.approverRoles.includes(approval.approver.role as never)) {
       approvalProblems.push('approver role is not permitted by the mandate');
     }
+    if (approval.ownerSignature || approval.terms) {
+      const terms = approval.terms;
+      if (!terms || !approval.ownerSignature) {
+        approvalProblems.push('owner approval is missing its terms or its signature');
+      } else {
+        if (terms.offerHash !== offerHash) approvalProblems.push('owner signed a different offer');
+        if (parsedMandate && terms.mandateHash !== hashMandate(parsedMandate)) approvalProblems.push('owner signed for a different mandate');
+        if (terms.approvalId !== approval.id || terms.expiresAt !== approval.expiresAt) approvalProblems.push('owner signature does not match this approval');
+        const checked = verifyOwnerApproval(terms, approval.ownerSignature, {
+          signers: approvalSigners(mandate),
+          agentPublicKey: mandate.agent.publicKey,
+          now: context.now,
+        });
+        if (!checked.ok) approvalProblems.push(`owner signature rejected: ${checked.reason}`);
+        else if (approval.approver?.role !== checked.signer.role) approvalProblems.push('approver role does not match the key that signed');
+      }
+    }
   }
 
   if (hardStop || !mandate || !offer) {
@@ -298,15 +339,28 @@ export function evaluateGate(mandateInput: unknown, offerInput: unknown, context
       );
     }
 
-    // 7. payTo.
-    rules.push(
-      scope.allowedPayTo.includes(offer.payTo)
-        ? pass('PAYTO_ALLOWED', 'Recipient is on the mandate allowlist', { payTo: offer.payTo })
-        : fail('PAYTO_ALLOWED', `Recipient ${offer.payTo} is not on the mandate allowlist`, {
-            payTo: offer.payTo,
-            allowed: [...scope.allowedPayTo],
-          }),
-    );
+    // 7. payTo. A voucher fee payer is checked here only when both sides are present:
+    // null means the voucher path did not name one, and a missing channel payer means there is
+    // no account to compare against.
+    const channelPayer = context.channelPayer ?? null;
+    const feePayerDiffers = offer.feePayer !== null && channelPayer !== null && offer.feePayer !== channelPayer;
+    if (feePayerDiffers) {
+      rules.push(
+        fail('PAYTO_ALLOWED', `Fee payer ${offer.feePayer} is not the channel payer`, {
+          feePayer: offer.feePayer,
+          channelPayer,
+        }),
+      );
+    } else {
+      rules.push(
+        scope.allowedPayTo.includes(offer.payTo)
+          ? pass('PAYTO_ALLOWED', 'Recipient is on the mandate allowlist', { payTo: offer.payTo })
+          : fail('PAYTO_ALLOWED', `Recipient ${offer.payTo} is not on the mandate allowlist`, {
+              payTo: offer.payTo,
+              allowed: [...scope.allowedPayTo],
+            }),
+      );
+    }
 
     // 8. Hard per-payment ceiling (also requires the offer to be in the limits' denomination).
     const sameMint = offer.asset === limits.mint;

@@ -97,15 +97,3 @@ export function verifyMerkleProof(leafHex: string, proof: readonly MerkleStep[],
     return false;
   }
 }
-
-/** Memo written to Solana to anchor a batch. Fixed, human-readable, well under the 566-byte memo limit. */
-export function buildAnchorMemo(input: { merkleRoot: string; leafCount: number; batchId: string }): string {
-  return `atlasrail:anchor:v1:${input.merkleRoot}:${input.leafCount}:${input.batchId}`;
-}
-
-const ANCHOR_MEMO = /^atlasrail:anchor:v1:([0-9a-f]{64}):([1-9][0-9]{0,8}):([A-Za-z0-9_]{1,64})$/;
-
-export function parseAnchorMemo(memo: string): { merkleRoot: string; leafCount: number; batchId: string } | null {
-  const match = ANCHOR_MEMO.exec(memo);
-  return match ? { merkleRoot: match[1], leafCount: Number(match[2]), batchId: match[3] } : null;
-}

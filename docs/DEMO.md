@@ -1,115 +1,70 @@
-# Running the Agent Mandates Demo
+# Running a channel payment
 
-This is the runbook for the six-scene Agent Mandates demo: **Grant → Pay → Attack → Escalate → Prove → Revoke**. It exercises the real API, Postgres, the Policy Gate, an x402 seller, and — unless you use the offline mode — Solana devnet, end to end. Nothing here uses a float for money and nothing here touches mainnet; see [`docs/security/threat-model.md`](security/threat-model.md) and [`spec/agent-mandate-v0.1.md`](../spec/agent-mandate-v0.1.md) for what is and isn't guaranteed.
+Devnet only. A payment opens one channel, asks the mandate gate before anyone signs a voucher, settles the allowed voucher, pays the channel payee, withdraws the leftover, and can anchor the receipt root. Nothing here touches mainnet.
 
-## Which command to run
+There are three ways to start that payment. `createAtlasRail` is the caller client: it creates the mandate, opens the escrow, and pays after `onApprove` when you set `requireApproval`. `examples/atlasrails-pay/agent-payment.ts` is the older script. The playground page `/mandate` connects Phantom and can open, pay, and refund. `/demo` runs the script with a fee payer fixed on this machine.
 
-| Command | Needs | What it does |
-|---|---|---|
-| `pnpm demo` | Docker Desktop (for Postgres + Redis) | The full stack, including the web console at `http://localhost:3000`. |
-| `pnpm demo:offline` | Nothing but Node — no Docker, no devnet | Embedded Postgres + an in-memory Solana JSON-RPC cluster. Slower to start (builds an embedded Postgres binary on first run) but works with no external dependencies and no faucet rate limits. |
-| `pnpm demo:rehearse` | Nothing but Node | `demo:offline` with `--skip-web --exit --auto-approve` — a fast, unattended pass for CI or "did I break anything". |
+## Package
 
-Either top-level command is safe to re-run: it seeds the same demo mandates and accounts idempotently rather than duplicating them.
-
-### What you'll see
-
-The orchestrator (`scripts/demo.mjs`) starts, in order: the database, the mock Solana cluster (offline mode only), the API, the worker, the x402 facilitator, the demo seller API, and — unless `--skip-web` — the console. Once everything reports healthy it prints login credentials and runs the scripted agent through all six scenes with narration in your terminal. Scene 4 (Escalate) pauses for a real human decision: open **`http://localhost:3000/approvals`** (it works on a phone) and tap Approve, or pass `--auto-approve` to have the orchestrator approve it for you automatically after a couple of seconds.
-
-When the scenes finish, the services **stay running** so you can click around the console — Mandates, Live Decisions (a real SSE feed), Approvals, Receipts (with an in-console Verify button) — until you press Ctrl+C.
-
-**Seeded login** (all roles, password `ChangeMe_AtlasRail_DevOnly`): `owner@atlasrail.local`, `approver1@atlasrail.local` / `approver2@atlasrail.local`, `operator@atlasrail.local`, `auditor@atlasrail.local`.
-
-## Useful flags
-
-Both `pnpm demo` and `pnpm demo:offline` accept:
-
-| Flag | Effect |
-|---|---|
-| `--auto-approve` | Auto-approves the scene-4 escalation instead of waiting for you; implies `--exit`. |
-| `--exit` | Exit with the scenes' pass/fail status instead of staying up afterward. |
-| `--skip-web` | Don't build or start the console (faster iteration on the backend/agent). |
-| `--skip-build` | Skip the Turbo build step (use when `dist/` is already current). |
-| `--no-docker` | Use an embedded Postgres instead of `docker compose` for the database (this is what `demo:offline` sets). |
-| `--rpc <url>` | Point at a different Solana RPC endpoint (devnet mode only). |
-| `--asset <demo-mint\|circle-usdc>` | Which token the demo pays with — see below. |
-
-## Funding devnet (only matters for `pnpm demo`, not `:offline`)
-
-The public devnet faucet is aggressively rate limited. `ensureSol` retries with backoff automatically, but if it's still failing:
-
-1. **Fund it yourself once:** send a small amount of devnet SOL from **https://faucet.solana.com** to the funder address the demo prints on first run (`.demo/keyring.json`, key `funder`), or set `DEMO_FUNDER_SECRET_KEY` to a base58 secret key for a wallet you've already funded — the demo will draw SOL from it before hitting the public faucet at all.
-2. **Or skip devnet entirely:** `pnpm demo:offline` never touches the public faucet — it uses an in-memory Solana JSON-RPC cluster that mints SOL and tokens for free and behaves like devnet for every instruction the demo builds (SPL transfers, ATA creation, Memo).
-
-### `DEMO_ASSET`: which token gets paid
-
-- **`demo-mint` (default)** — the demo creates and mints its own USDC-like SPL token. Reliable, no external dependency, what you want for a rehearsal or a live pitch.
-- **`circle-usdc`** — pays with Circle's real devnet USDC (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`). Get at least 50 devnet USDC from **https://faucet.circle.com** (network: Solana Devnet) into the agent's wallet first — the demo prints that address and refuses to proceed with a clear message if the balance is short, rather than a confusing on-chain failure. Only meaningful with real devnet (`pnpm demo`, not `:offline`).
-
-## Verifying a receipt offline, without any of this running
+From the repo root, with the variables in `.env.example` filled in `.env`:
 
 ```bash
-node apps/cli/dist/main.js verify .demo/receipts/receipt-<id>.json --trusted-key <instance public key>
+pnpm --filter atlasrails build
+node scripts/launch-voucher-services.mjs both
+cd examples/atlasrails-pay
+node --experimental-strip-types agent-payment.ts
 ```
 
-This re-checks everything the console's Verify button does — receipt hash, instance signature, delegation chain, decision signature and scope replay, Merkle inclusion, and (if you pass `--check-settlement` with a reachable RPC) the on-chain settlement and anchor — with no network access required beyond that optional RPC check. Exit code `0` means every check passed, `1` means at least one failed, `2` means the input itself was unusable.
+`agent-payment.ts` imports `atlasrails`. It stores `DEMO_FUNDER_SECRET_KEY`, connects that wallet, creates the payee key if `ATLAS_PAYEE_KEY_PATH` is missing, then calls `beginPayment`, `createVoucherKey`, `buildSignedMandate`, `depositUpfront`, `createVoucher`, `settleChannel`, `payPayee`, and `withdrawRemainder`.
 
-## Using a real LLM instead of the scripted agent
+The field list, the key files, and the amount units are in [`packages/atlasrails/MANUAL.md`](../packages/atlasrails/MANUAL.md). The script prints public keys and transaction signatures. It does not print secrets.
 
-The demo agent's "model" is a small interface (`apps/demo-agent/src/model.ts`):
+The API has to be on `ATLAS_API_URL` and the signer on `ATLAS_SIGNER_URL` before the script asks for a voucher key. `ATLAS_DEPOSIT` is token base units of a mint this run creates, with 6 decimals. SOL pays rent and fees.
 
-```ts
-export interface AgentModel {
-  readonly name: string;
-  next(history: readonly AgentMessage[]): Promise<AgentAction>;
-}
-```
-
-The default `ScriptedModel` is deterministic and calls no external API, which is why the demo can't fail because a model provider is down or rate-limited mid-pitch. `AGENT_MODE=llm` switches every scripted-agent step to `LlmModel` (`apps/demo-agent/src/llm-model.ts`), which calls a real provider with tool calling instead:
-
-| Env var | Values | Default |
-|---|---|---|
-| `AGENT_MODE` | `scripted` \| `llm` | `scripted` |
-| `AGENT_PROVIDER` | `anthropic` \| `openai` \| `glm` | `anthropic` |
-| `AGENT_MODEL` | any model id | `claude-haiku-4-5-20251001` for `anthropic`; `glm-5` for `glm`; **required** for `openai` (no default is assumed current) |
-| `GLM_BASE_URL` | Z.ai API base, or a full `/chat/completions` URL | `https://api.z.ai/api/paas/v4` |
-
-The model gets exactly two tools, `fetch_page(url)` and `fetch_paid_resource(url)`, and never sees a payment key — it can only ask for a fetch; the policy gate independently decides whether any resulting payment is allowed. The key comes from `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `ZAI_API_KEY` (for `AGENT_PROVIDER=glm`, which calls Z.ai's OpenAI-compatible endpoint for `glm-5`); if it isn't set, the run falls back to the scripted agent for that step with a visible console notice instead of failing. Nothing about the mandate, the gate, or the receipt changes — the model only decides *what to ask for*; the gate still decides *whether it's allowed to pay*.
-
-## Running the full devnet e2e check (`pnpm agent:e2e`)
-
-Three commands, from the repo root:
+## Mandate page
 
 ```bash
-pnpm install
-pnpm build
-pnpm agent:e2e
+pnpm --filter @atlas-rail/playground dev
 ```
 
-This forces real Solana devnet with on-chain anchoring (`ATLAS_ONCHAIN=1 ATLAS_ANCHOR_ROOT=1`), runs all six scenes unattended (`--no-docker --skip-web --auto-approve --exit`), and writes `reports/e2e-<date>.md` with every scene's Explorer link, p50/p95 gate-decision latency, payment confirmation latency, and the `anchor_root` transaction's compute units and fee. Exit code matches the underlying demo run (`0` = every scene behaved as designed).
+Open `http://localhost:3200/mandate`. Connect Phantom on Devnet, generate the approver, agent, and payee keys, and download the secrets. After `create_mandate` confirms, open the escrow (grace at least 900 seconds), pay, or refund now. Revoke and seal uses the payee key so an already-signed voucher cannot settle during grace. Details are in [`apps/playground/MANDATE.md`](../apps/playground/MANDATE.md).
 
-To exercise the real LLM agent instead of the scripted one, set `AGENT_MODE=llm` and a provider key first:
+## Playground script
+
+From the repo root:
 
 ```bash
-AGENT_MODE=llm ANTHROPIC_API_KEY=sk-... pnpm agent:e2e
-AGENT_MODE=llm AGENT_PROVIDER=glm ZAI_API_KEY=... pnpm agent:e2e
+pnpm --filter @atlas-rail/playground dev
 ```
 
-Re-run it as many times as you like — like `pnpm demo`, it seeds idempotently rather than duplicating mandates or accounts.
+Open `http://localhost:3200/demo`.
 
-## Troubleshooting
+1. Connect the devnet wallet that pays the deposit and the network fee. Phantom or Solflare, on devnet.
+2. Accept the mandate limits shown on the page.
+3. Pay. The page calls `POST /api/voucher-demo`, which runs `scripts/channel-voucher-devnet.mjs` and then `scripts/channel-voucher-anchor.mjs`.
 
-| Symptom | Likely cause / fix |
-|---|---|
-| `Port <n> (<service>) is already in use` | A previous demo run (or something else) is already listening on that port. Stop it, or note that `demo:offline`'s Postgres runs on `54329`, not `5432`, specifically so it doesn't collide with a Docker-based Postgres you also have running. |
-| Stuck at "Starting embedded PostgreSQL" | First run downloads and initializes the embedded Postgres binary — this can take a minute. Subsequent runs are fast. Check `.demo/pg.log` (path printed in the error) if it times out. |
-| `airdrop attempt` retries and eventually fails | The public devnet faucet is rate limited — see **Funding devnet** above. Use `demo:offline`, fund the printed funder address yourself, or set `DEMO_FUNDER_SECRET_KEY`. |
-| Scene 4 seems to hang forever | It's waiting for a human. Open `http://localhost:3000/approvals` and approve or deny, or re-run with `--auto-approve`. Default timeout is 900s (`--approval-timeout <s>` to change it). |
-| `atlas verify` reports `SETTLEMENT_ONCHAIN: SKIP` | You ran it without `--check-settlement`, or without RPC access — this is a skip, not a failure; the other 9 checks are unaffected. |
-| Web console shows "API Offline" | The API didn't finish starting, or `NEXT_PUBLIC_API_BASE_URL` doesn't match where it's actually listening. Check the terminal for the API's own startup errors first — a failed env validation or a missing migration shows up there before the console ever loads. |
-| `pnpm demo` (Docker mode) never gets past "Starting PostgreSQL and Redis with Docker" | Docker Desktop isn't running, or `docker compose` isn't on `PATH`. Either start Docker, or use `pnpm demo:offline` instead, which needs neither. |
-| Approving on your phone doesn't work | Confirm your phone is on the same network and can reach the machine running the demo at its LAN IP (the console defaults to `localhost`, which only resolves on the host itself) — start the orchestrator with `ATLAS_WEB_URL`/`NEXT_PUBLIC_API_BASE_URL` pointed at that LAN IP, or just approve from the host's own browser. |
+The connected address has to be the public key of the key file at `ATLAS_FUNDER_KEY_PATH`. The route loads that file to learn the public key and refuses a different wallet. The payment script does not read that file. It loads `DEMO_FUNDER_SECRET_KEY`, and it still needs the payment fields in the environment. The browser wallet does not sign the voucher. The signer mints a key for the mandate through `POST /v1/voucher-key`.
 
-## What this demo does *not* prove
+The script asks the API to refuse `ATLAS_DENIED_RECIPIENT` first. That request is left unsigned. It signs the voucher for the channel payee only after the gate returns ALLOW. Settlement is an Ed25519 precompile plus `settle` on `CHNLxYvVA28MJP9PrFuDXccuoGXAx7jBacfLEkahyGsX`. The same run distributes the payee share and withdraws the unspent deposit. The anchor script then registers the mandate and submits `anchor_root` on `programs/atlas-mandate`.
 
-It runs entirely on Solana **devnet** (or an in-memory stand-in for it), with generated demo keys that are never committed and are worthless outside this sandbox. It proves the mandate, gate, receipt and console logic work end to end against real transaction construction, simulation and (in devnet mode) real confirmation — it does not constitute a security audit, and `spec/agent-mandate-v0.1.md` is an unadopted proposal, not a standard. See the README's Safety Boundary section before considering anything here for production use.
+The last step shows the settle transaction and the root account.
+
+## Same script from the terminal
+
+From the repo root, with the payment environment set and the fee-payer address matching `DEMO_FUNDER_SECRET_KEY`:
+
+```bash
+node scripts/channel-voucher-devnet.mjs <fee-payer-address>
+node scripts/channel-voucher-anchor.mjs
+```
+
+`scripts/channel-voucher-devnet.mjs` re-exports `packages/atlasrails/payment.mjs`. `ATLAS_FEE_PAYER` is the same check as the argument. The first script writes `reports/channel-voucher-devnet.json`. The second reads that file, checks the channel account, and writes `reports/channel-voucher-anchor.json`. Neither script prints secret keys.
+
+## What you can check afterwards
+
+```bash
+pnpm turbo run build --filter=@atlas-rail/cli...
+node apps/cli/dist/main.js verify --tx <settle-signature> --trusted-key <instance-public-key>
+```
+
+Exit code `0` means the checks passed, `1` means at least one failed, `2` means the input was unusable. Pass the instance key the run actually used. Without `--trusted-key` the instance check fails.

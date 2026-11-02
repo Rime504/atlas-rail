@@ -17,25 +17,39 @@ describe('isFinal: which /verify answers may be cached', () => {
 describe('vercelBlob.read: existence from the store API, not a cacheable URL', () => {
   afterEach(() => {
     vi.doUnmock('@vercel/blob');
+    vi.doUnmock('@atlas-rail/receipt');
     vi.unstubAllGlobals();
     vi.resetModules();
   });
 
-  async function storeWith(head: (pathname: string) => Promise<unknown>) {
+  async function storeWith(head: (pathname: string, blob: { BlobNotFoundError: new () => Error }) => Promise<unknown>) {
     vi.resetModules();
-    vi.doMock('@vercel/blob', async () => {
-      const actual = await vi.importActual<typeof import('@vercel/blob')>('@vercel/blob');
-      return { ...actual, head: vi.fn(head) };
+    vi.doMock('@atlas-rail/receipt', () => ({
+      proveBlockedAttempt: () => ({ verdict: 'NO_PROOF' }),
+      verifyReceipt: async () => ({ pass: false, checks: [] }),
+    }));
+    vi.doMock('@vercel/blob', () => {
+      class BlobNotFoundError extends Error {
+        constructor() {
+          super('The requested blob does not exist');
+          this.name = 'BlobNotFoundError';
+        }
+      }
+      const mocked = {
+        BlobNotFoundError,
+        put: vi.fn(),
+        head: vi.fn((pathname: string) => head(pathname, mocked)),
+      };
+      return mocked;
     });
     return (await import('./receipt-store')).vercelBlob;
   }
 
   it('a missing record is null, decided by head()', async () => {
-    const { BlobNotFoundError } = await vi.importActual<typeof import('@vercel/blob')>('@vercel/blob');
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
-    const store = await storeWith(async () => {
-      throw new BlobNotFoundError();
+    const store = await storeWith(async (_pathname, blob) => {
+      throw new blob.BlobNotFoundError();
     });
     expect(await store.read('receipts/rcp_x.json')).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();

@@ -4,6 +4,7 @@ import {
   signDomainHash,
   verifyDomainHash,
   SIGNATURE_DOMAIN,
+  SIGNATURE_SCHEME,
   toHex,
 } from './crypto';
 import { JsonValue } from './jcs';
@@ -177,7 +178,7 @@ export async function signMandate(
 
   const hash = linkHash(hashMandate(mandate), chain.length, role, signer.publicKey, previous?.signature ?? null);
   const signature = await signDomainHash(signer, SIGNATURE_DOMAIN.mandateLink, hash);
-  const link: DelegationLink = { role, publicKey: signer.publicKey, signature };
+  const link: DelegationLink = { role, publicKey: signer.publicKey, signature, scheme: SIGNATURE_SCHEME };
   return { ...mandate, delegationChain: [...chain, link] };
 }
 

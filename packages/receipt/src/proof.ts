@@ -47,6 +47,8 @@ export interface ProvePaymentOptions {
   /** Reads the mandate's on-chain registry account by mandate hash (hex); null if it isn't registered. */
   loadMandateState?: (mandateHashHex: string) => Promise<OnchainMandateState | null>;
   trustedInstanceKeys?: readonly string[];
+  /** Passed through to `verifyReceipt`. A proof of permission leaves this unset. */
+  untrusted?: boolean;
   programId?: string;
 }
 
@@ -82,6 +84,7 @@ export async function provePayment(txSignature: string, options: ProvePaymentOpt
     chain: options.chain,
     requireAnchor: true,
     trustedInstanceKeys: options.trustedInstanceKeys,
+    untrusted: options.untrusted,
     programId: options.programId,
   });
 
@@ -104,7 +107,7 @@ export async function provePayment(txSignature: string, options: ProvePaymentOpt
 
   const anchor = receipt.anchor
     ? {
-        mechanism: receipt.anchor.mechanism ?? 'memo',
+        mechanism: receipt.anchor.mechanism ?? 'root',
         merkleRoot: receipt.anchor.merkleRoot,
         seq: receipt.anchor.seq ?? null,
         txSignature: receipt.anchor.txSignature,

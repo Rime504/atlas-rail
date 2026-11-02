@@ -1,0 +1,624 @@
+{
+  "generatedAt": "2026-10-27T13:00:53.900Z",
+  "cluster": "local",
+  "pay": "solana-foundation/pay PR #514 @ 898135e",
+  "passed": 10,
+  "runs": [
+    {
+      "run": 1,
+      "ok": true,
+      "ms": 36741,
+      "results": [
+        {
+          "scene": "A normal payment: allowed and paid",
+          "ok": true,
+          "note": "717 ms through pay",
+          "signature": "33rW57S9o8xC8H9VrkbqtZHRkrk9GbnjDPmp9kRY7azSi4eUP5S1VyWxnDk8vFzjt13i7TTyfZbzZCpKaEg9SkVb"
+        },
+        {
+          "scene": "B over the limit: refused, owner asked",
+          "ok": true,
+          "note": "needs owner approval"
+        },
+        {
+          "scene": "C unknown recipient: denied",
+          "ok": true,
+          "note": "recipient is not on the mandate's list"
+        },
+        {
+          "scene": "D owner approves, retry: paid once",
+          "ok": true,
+          "note": "first REJECTED_BEFORE_EXECUTION, after the tap PAID, again OPERATION_ALREADY_STARTED, new pay process DENIED"
+        },
+        {
+          "scene": "E Atlas endpoint down: no payment",
+          "ok": true,
+          "note": "UNAVAILABLE"
+        },
+        {
+          "scene": "F slow answer past the deadline: no payment",
+          "ok": true,
+          "note": "TIMEOUT"
+        },
+        {
+          "scene": "G same operation twice at once: one payment",
+          "ok": true,
+          "note": "one connection: PAID + OPERATION_ALREADY_STARTED; two processes: PAID + DENIED"
+        },
+        {
+          "scene": "Receipts anchored; verify PASS, one byte changed FAIL",
+          "ok": true,
+          "note": "8 decisions (allow and deny) in one anchor 5ZPVWdE1Bs6W…",
+          "anchorSignature": "5ZPVWdE1Bs6WQdgdLkfvY1DmxThq28kaLxZNjtehDGw5SUggSATG9dFELi3gwVnvSpeeouUvCQF7ogdmDavaWasX",
+          "receipts": 8
+        }
+      ],
+      "payments": [
+        "33rW57S9o8xC8H9VrkbqtZHRkrk9GbnjDPmp9kRY7azSi4eUP5S1VyWxnDk8vFzjt13i7TTyfZbzZCpKaEg9SkVb",
+        "2QWSHdLHvAJJS94qMdCsxFNgfDT2M5KTV2BvABvXx9NKnoLUJuz7jEZXBZ3ZXJc1NdfpqzUfgcQEo6KAiGYRqSDd",
+        "VWDk4zzf2wGcKRAsoDo38XRZRWahA2zioTtuv1nYV8fQa1WSHMDtcFJYWF3RgXtp6TdmhoX8kPjKwUAyQe245zb",
+        "zpYhMnJRzFJsyYvuFoTtYhjNzKhM64gd4H4qjpwYbNtAVxnd8pNtCJ1FMCGR5ZwGpz3ws4Jh3WX5FouPucCdv2q"
+      ],
+      "authorityMs": {
+        "median": 36.774499999999534,
+        "max": 129.92179800000304
+      },
+      "speed": {
+        "requests": 500,
+        "allowed": 498,
+        "medianMs": 41.9,
+        "p95Ms": 68.2,
+        "slowestMs": 150.5
+      }
+    },
+    {
+      "run": 2,
+      "ok": true,
+      "ms": 12221,
+      "results": [
+        {
+          "scene": "A normal payment: allowed and paid",
+          "ok": true,
+          "note": "413 ms through pay",
+          "signature": "3yDQpFPCVwqnb7oh4pHs6jnkq4VWGcc94YZrCFJkyHyAmk4tnbJ9Nraw85ruEhPveAvhw9nYRA7a2LuYL7L3oUY3"
+        },
+        {
+          "scene": "B over the limit: refused, owner asked",
+          "ok": true,
+          "note": "needs owner approval"
+        },
+        {
+          "scene": "C unknown recipient: denied",
+          "ok": true,
+          "note": "recipient is not on the mandate's list"
+        },
+        {
+          "scene": "D owner approves, retry: paid once",
+          "ok": true,
+          "note": "first REJECTED_BEFORE_EXECUTION, after the tap PAID, again OPERATION_ALREADY_STARTED, new pay process DENIED"
+        },
+        {
+          "scene": "E Atlas endpoint down: no payment",
+          "ok": true,
+          "note": "UNAVAILABLE"
+        },
+        {
+          "scene": "F slow answer past the deadline: no payment",
+          "ok": true,
+          "note": "TIMEOUT"
+        },
+        {
+          "scene": "G same operation twice at once: one payment",
+          "ok": true,
+          "note": "one connection: PAID + OPERATION_ALREADY_STARTED; two processes: PAID + DENIED"
+        },
+        {
+          "scene": "Receipts anchored; verify PASS, one byte changed FAIL",
+          "ok": true,
+          "note": "8 decisions (allow and deny) in one anchor XmFSxvtGCAa2…",
+          "anchorSignature": "XmFSxvtGCAa25AXQTBxxnSnf56PbLfNWT7hfhDzwkAmJVvUZ66CV3fnv4TS7fKGYbeRnAW2gaYPyrpsPt8snjg1",
+          "receipts": 8
+        }
+      ],
+      "payments": [
+        "3yDQpFPCVwqnb7oh4pHs6jnkq4VWGcc94YZrCFJkyHyAmk4tnbJ9Nraw85ruEhPveAvhw9nYRA7a2LuYL7L3oUY3",
+        "2srAADBv6KxZNvNFTpfwc3aJqHA5pEMVmmc7qb8VrgQUvaSocvJ4k4fQdXhjPrH4KaVMeUMF8rRTR4xS6gJuaNbN",
+        "qaQwAQnv3LuMzZ48R3iAZ4i5VNcoa17wbCQg2iPz333eg3iKJYwUbgMTqyqLzj9YynTBkAVgqof5F3D9F5ACqJX",
+        "24n5tgYqUrG7xwg5bF3XyCSd2VHPtRocft7ebo8961JiCvXbzgPpseEtrxyR8pyQk2b3DfNL5EzRi6QwpMEq15Hs"
+      ],
+      "authorityMs": {
+        "median": 33.562300999998115,
+        "max": 48.3781020000024
+      },
+      "speed": null
+    },
+    {
+      "run": 3,
+      "ok": true,
+      "ms": 11930,
+      "results": [
+        {
+          "scene": "A normal payment: allowed and paid",
+          "ok": true,
+          "note": "346 ms through pay",
+          "signature": "2W64hn6zqzFLs9xrpBvu4jz9V2i94iXAGT9KnYDr4ByxSSomHm7vNWYxbro1kbVPiDHFA7dkJ8SUbnQPovAGRc7h"
+        },
+        {
+          "scene": "B over the limit: refused, owner asked",
+          "ok": true,
+          "note": "needs owner approval"
+        },
+        {
+          "scene": "C unknown recipient: denied",
+          "ok": true,
+          "note": "recipient is not on the mandate's list"
+        },
+        {
+          "scene": "D owner approves, retry: paid once",
+          "ok": true,
+          "note": "first REJECTED_BEFORE_EXECUTION, after the tap PAID, again OPERATION_ALREADY_STARTED, new pay process DENIED"
+        },
+        {
+          "scene": "E Atlas endpoint down: no payment",
+          "ok": true,
+          "note": "UNAVAILABLE"
+        },
+        {
+          "scene": "F slow answer past the deadline: no payment",
+          "ok": true,
+          "note": "TIMEOUT"
+        },
+        {
+          "scene": "G same operation twice at once: one payment",
+          "ok": true,
+          "note": "one connection: PAID + OPERATION_ALREADY_STARTED; two processes: PAID + DENIED"
+        },
+        {
+          "scene": "Receipts anchored; verify PASS, one byte changed FAIL",
+          "ok": true,
+          "note": "8 decisions (allow and deny) in one anchor 2gUsLPtuB7Gx…",
+          "anchorSignature": "2gUsLPtuB7Gx5ZKMA1m1nsUWFv16hcZpjKpMjcYehoHuqe5HXVBCfgguWhK9XE67XkCD6C7kFidGKHYppFPdUWWh",
+          "receipts": 8
+        }
+      ],
+      "payments": [
+        "2W64hn6zqzFLs9xrpBvu4jz9V2i94iXAGT9KnYDr4ByxSSomHm7vNWYxbro1kbVPiDHFA7dkJ8SUbnQPovAGRc7h",
+        "oacESjhWZSTvKYdY3oHvLczW6LTVauqnJBBENFus1cNvXjydrS6awSwZRcKSq7pzftjjGcbYgyVbMq6WygxpjRG",
+        "2orbiwjrJj12NUgCVij4UQfpLzqgahy6kGunCfbwU586LjQTyxFzqXW7h5fohQ5kgrN8Z4SvRV1nvMmTkp2AX2fg",
+        "3Y76DzjyKRYf9GH7MG2toUAVma8qZUbjtMvSnmARzqkbAfnYnYVaDg9oUbq1eJJn9LRiSnz32GXkozTRmzSNLPu2"
+      ],
+      "authorityMs": {
+        "median": 28.167502999989665,
+        "max": 65.72650799999246
+      },
+      "speed": null
+    },
+    {
+      "run": 4,
+      "ok": true,
+      "ms": 12924,
+      "results": [
+        {
+          "scene": "A normal payment: allowed and paid",
+          "ok": true,
+          "note": "698 ms through pay",
+          "signature": "WXPL29MTkmeDzTYYP1Vu32Ym1bseQSFz6uGJkNX7M31MFVvtETfEo7TdiTbGj5D3bDFb4tS23EJmtSDSRYcKiVF"
+        },
+        {
+          "scene": "B over the limit: refused, owner asked",
+          "ok": true,
+          "note": "needs owner approval"
+        },
+        {
+          "scene": "C unknown recipient: denied",
+          "ok": true,
+          "note": "recipient is not on the mandate's list"
+        },
+        {
+          "scene": "D owner approves, retry: paid once",
+          "ok": true,
+          "note": "first REJECTED_BEFORE_EXECUTION, after the tap PAID, again OPERATION_ALREADY_STARTED, new pay process DENIED"
+        },
+        {
+          "scene": "E Atlas endpoint down: no payment",
+          "ok": true,
+          "note": "UNAVAILABLE"
+        },
+        {
+          "scene": "F slow answer past the deadline: no payment",
+          "ok": true,
+          "note": "TIMEOUT"
+        },
+        {
+          "scene": "G same operation twice at once: one payment",
+          "ok": true,
+          "note": "one connection: OPERATION_ALREADY_STARTED + PAID; two processes: PAID + DENIED"
+        },
+        {
+          "scene": "Receipts anchored; verify PASS, one byte changed FAIL",
+          "ok": true,
+          "note": "8 decisions (allow and deny) in one anchor 4pWBZdKnFiAv…",
+          "anchorSignature": "4pWBZdKnFiAvV5Qr8a7XfnkjE8JhNw5PjiQn6uQNyHcwsPymmLioBCFq5aUYTY6Wj4orfg6Ef5HhCsXAuJ7Muwqn",
+          "receipts": 8
+        }
+      ],
+      "payments": [
+        "WXPL29MTkmeDzTYYP1Vu32Ym1bseQSFz6uGJkNX7M31MFVvtETfEo7TdiTbGj5D3bDFb4tS23EJmtSDSRYcKiVF",
+        "2uugiAwxxhXDWLNe7jTBRy2JBYnuwQukZ97CVzHSBzu2xuKymb5BujGTagHPKk5DJ9DRzszB9R4T7LfMGrFeXu1q",
+        "2nuRyLgTo6qvaAQm6MhdTzbc2jmsTSSxgVHhFo4mFiWc3mk2qr1qZWUhVpcXQEXEzy9M6SBZRzbHAgtB2d5cYc5p",
+        "7Lva4e5F8kZKFwDyRJA2aUagnngcnBZyf7RXiyjGuAjeXTkrbYgqgmXhpUA7GudkjDnttA1SEZtA7vYMK4ouGxU"
+      ],
+      "authorityMs": {
+        "median": 33.42710600000282,
+        "max": 84.53080799999589
+      },
+      "speed": null
+    },
+    {
+      "run": 5,
+      "ok": true,
+      "ms": 11995,
+      "results": [
+        {
+          "scene": "A normal payment: allowed and paid",
+          "ok": true,
+          "note": "368 ms through pay",
+          "signature": "2FnRTm82AVWGfUPGUP8Lx1DLs7q2EHMYWYnC81R15AatW2sYknHX82fuBPcvwHWx68JhETEMxY9DFkVLvk6AZNAT"
+        },
+        {
+          "scene": "B over the limit: refused, owner asked",
+          "ok": true,
+          "note": "needs owner approval"
+        },
+        {
+          "scene": "C unknown recipient: denied",
+          "ok": true,
+          "note": "recipient is not on the mandate's list"
+        },
+        {
+          "scene": "D owner approves, retry: paid once",
+          "ok": true,
+          "note": "first REJECTED_BEFORE_EXECUTION, after the tap PAID, again OPERATION_ALREADY_STARTED, new pay process DENIED"
+        },
+        {
+          "scene": "E Atlas endpoint down: no payment",
+          "ok": true,
+          "note": "UNAVAILABLE"
+        },
+        {
+          "scene": "F slow answer past the deadline: no payment",
+          "ok": true,
+          "note": "TIMEOUT"
+        },
+        {
+          "scene": "G same operation twice at once: one payment",
+          "ok": true,
+          "note": "one connection: OPERATION_ALREADY_STARTED + PAID; two processes: PAID + DENIED"
+        },
+        {
+          "scene": "Receipts anchored; verify PASS, one byte changed FAIL",
+          "ok": true,
+          "note": "8 decisions (allow and deny) in one anchor 2nmTmQKjuyGd…",
+          "anchorSignature": "2nmTmQKjuyGdQgh7LN4WPxaLTVWR5diDAkL1tp5osyPkeugaXCWqGqoDdZRwBAdiqmVAfqac6bKSRwXxQWwtfoqJ",
+          "receipts": 8
+        }
+      ],
+      "payments": [
+        "2FnRTm82AVWGfUPGUP8Lx1DLs7q2EHMYWYnC81R15AatW2sYknHX82fuBPcvwHWx68JhETEMxY9DFkVLvk6AZNAT",
+        "2CwsBFMfmzUti9h9Tan9bu6sPfvxEjij76boUYW6dyiTfotHLYAL9Q59PYBSpvX49zJv61Zy9mx3v841Thd6V9S7",
+        "3KTapJPsxqNu9ntYobzvBS4EmwcC328pQm5Vm8orriEPpzRq7hm3rihdPxUfrcQiGJQwUX2j8S8MKCR5cShQX9zV",
+        "4KQqBegq3cAh5SHPQCNTh3sKx7qMEA4rxPeynjyDMWFEVZLmwPFoJRjHKTh5FBE3FJsUqYKTRednh8cPbdf3HFCv"
+      ],
+      "authorityMs": {
+        "median": 33.21129999999539,
+        "max": 90.77169999999751
+      },
+      "speed": null
+    },
+    {
+      "run": 6,
+      "ok": true,
+      "ms": 12175,
+      "results": [
+        {
+          "scene": "A normal payment: allowed and paid",
+          "ok": true,
+          "note": "316 ms through pay",
+          "signature": "fsQ4Z3JaRBPjRGVEaqUTZtpkwWs62DA9MPJj47A6PJRvccxt1QUABp1USW87AtLZopCKSUQAv2mB4yPMRHoxq4f"
+        },
+        {
+          "scene": "B over the limit: refused, owner asked",
+          "ok": true,
+          "note": "needs owner approval"
+        },
+        {
+          "scene": "C unknown recipient: denied",
+          "ok": true,
+          "note": "recipient is not on the mandate's list"
+        },
+        {
+          "scene": "D owner approves, retry: paid once",
+          "ok": true,
+          "note": "first REJECTED_BEFORE_EXECUTION, after the tap PAID, again OPERATION_ALREADY_STARTED, new pay process DENIED"
+        },
+        {
+          "scene": "E Atlas endpoint down: no payment",
+          "ok": true,
+          "note": "UNAVAILABLE"
+        },
+        {
+          "scene": "F slow answer past the deadline: no payment",
+          "ok": true,
+          "note": "TIMEOUT"
+        },
+        {
+          "scene": "G same operation twice at once: one payment",
+          "ok": true,
+          "note": "one connection: OPERATION_ALREADY_STARTED + PAID; two processes: PAID + DENIED"
+        },
+        {
+          "scene": "Receipts anchored; verify PASS, one byte changed FAIL",
+          "ok": true,
+          "note": "8 decisions (allow and deny) in one anchor WhTj6KHgXcFb…",
+          "anchorSignature": "WhTj6KHgXcFbLPPEYUucAfFmWEwjAfLwR8itgkmeG9zuFoKizbztK3Z3Fk7c8YnsFkAHvytwA6VxVftG4EZAPPh",
+          "receipts": 8
+        }
+      ],
+      "payments": [
+        "fsQ4Z3JaRBPjRGVEaqUTZtpkwWs62DA9MPJj47A6PJRvccxt1QUABp1USW87AtLZopCKSUQAv2mB4yPMRHoxq4f",
+        "2vkgvrmCK7i8BPvyCVpRUrNbqHDaozMULReDidsA8k4X1RMkdCJ1unuALFTndBZnKR7FnCGypjejCsBFiSPdt3gr",
+        "4iMM9Eqg1Y3BdbHiHKQkfKzHpdmwqXRKvqTusHyQr7N4w2dKPWKvx2Mk6TBubkthnxcwj8FXF1yxGQBBVRyBt7xW",
+        "2gnJozLH1aMs3mK8fiJnrNyajbCMCtg4Yr5RFZTnrrhuJPGkTn77jRFbnU6YWFwNUDC2SERYAG5R3JAiJGJz9jeJ"
+      ],
+      "authorityMs": {
+        "median": 30.497399999992922,
+        "max": 55.24580699999933
+      },
+      "speed": null
+    },
+    {
+      "run": 7,
+      "ok": true,
+      "ms": 12136,
+      "results": [
+        {
+          "scene": "A normal payment: allowed and paid",
+          "ok": true,
+          "note": "353 ms through pay",
+          "signature": "22bayDFuGCnhFzbiNGHGTCYWSrWRuzXmijviaXvvhT6ThXXck7PHQaLLPhpEr5x5kXPA6id7yFzCMPKM9FYTphW6"
+        },
+        {
+          "scene": "B over the limit: refused, owner asked",
+          "ok": true,
+          "note": "needs owner approval"
+        },
+        {
+          "scene": "C unknown recipient: denied",
+          "ok": true,
+          "note": "recipient is not on the mandate's list"
+        },
+        {
+          "scene": "D owner approves, retry: paid once",
+          "ok": true,
+          "note": "first REJECTED_BEFORE_EXECUTION, after the tap PAID, again OPERATION_ALREADY_STARTED, new pay process DENIED"
+        },
+        {
+          "scene": "E Atlas endpoint down: no payment",
+          "ok": true,
+          "note": "UNAVAILABLE"
+        },
+        {
+          "scene": "F slow answer past the deadline: no payment",
+          "ok": true,
+          "note": "TIMEOUT"
+        },
+        {
+          "scene": "G same operation twice at once: one payment",
+          "ok": true,
+          "note": "one connection: PAID + OPERATION_ALREADY_STARTED; two processes: PAID + DENIED"
+        },
+        {
+          "scene": "Receipts anchored; verify PASS, one byte changed FAIL",
+          "ok": true,
+          "note": "8 decisions (allow and deny) in one anchor 2H8NyRzSJTBB…",
+          "anchorSignature": "2H8NyRzSJTBBM9aps81ijzCTX2gtnB9v1pS7GWjzCYfKYns5Bv1omJncBPazBPsDqXCAFuZknW7upy9AcnSVg522",
+          "receipts": 8
+        }
+      ],
+      "payments": [
+        "22bayDFuGCnhFzbiNGHGTCYWSrWRuzXmijviaXvvhT6ThXXck7PHQaLLPhpEr5x5kXPA6id7yFzCMPKM9FYTphW6",
+        "36LSr8XSyiasPBo12TutxQYVtzfvongbYB31zvDJS295oMgoq16gWqWn53fcTtRugkYDMGPQzQRSC6Cr2iEC6SrM",
+        "5DjRvhWShko65qZa6bVGUGVPzdL9DyFvWh2xa2qtDETTsuZtjMyH26nqkxTa5BUrmFB6wyZi5vUW7ApXkABy9Esd",
+        "9fDTQmkuWVnHg7ry7goZxkGXL84kDCL3Ckqp68Mk2ckPFaQNeRE4pWpCUpnrYD6yYLw9WhB8siVdcThdA1my9mw"
+      ],
+      "authorityMs": {
+        "median": 29.527700000006007,
+        "max": 69.64799900000799
+      },
+      "speed": null
+    },
+    {
+      "run": 8,
+      "ok": true,
+      "ms": 12606,
+      "results": [
+        {
+          "scene": "A normal payment: allowed and paid",
+          "ok": true,
+          "note": "793 ms through pay",
+          "signature": "3yMz3qd4zWrqxrFTLa3mFSmwgsMKzCNsGLsBATR62w74GQUX3iDuvKwh89QYx9e4EmWAU7kGvSLwhdKN2QbRxMWL"
+        },
+        {
+          "scene": "B over the limit: refused, owner asked",
+          "ok": true,
+          "note": "needs owner approval"
+        },
+        {
+          "scene": "C unknown recipient: denied",
+          "ok": true,
+          "note": "recipient is not on the mandate's list"
+        },
+        {
+          "scene": "D owner approves, retry: paid once",
+          "ok": true,
+          "note": "first REJECTED_BEFORE_EXECUTION, after the tap PAID, again OPERATION_ALREADY_STARTED, new pay process DENIED"
+        },
+        {
+          "scene": "E Atlas endpoint down: no payment",
+          "ok": true,
+          "note": "UNAVAILABLE"
+        },
+        {
+          "scene": "F slow answer past the deadline: no payment",
+          "ok": true,
+          "note": "TIMEOUT"
+        },
+        {
+          "scene": "G same operation twice at once: one payment",
+          "ok": true,
+          "note": "one connection: PAID + OPERATION_ALREADY_STARTED; two processes: PAID + DENIED"
+        },
+        {
+          "scene": "Receipts anchored; verify PASS, one byte changed FAIL",
+          "ok": true,
+          "note": "8 decisions (allow and deny) in one anchor 4sXAPaSLxxiV…",
+          "anchorSignature": "4sXAPaSLxxiVJPEFG2HL4AohQBp6J8ZPuq8U8AwGN4VyhAKfqghBShvL4s4eEFbn6Tp8LLBxtwAtUyc69bBe8E5V",
+          "receipts": 8
+        }
+      ],
+      "payments": [
+        "3yMz3qd4zWrqxrFTLa3mFSmwgsMKzCNsGLsBATR62w74GQUX3iDuvKwh89QYx9e4EmWAU7kGvSLwhdKN2QbRxMWL",
+        "5yKkY2SFiNPK1G4S2ghGyjZGPYkUg72DjYn1o8bypdXU7cRJn6CzKRsR6eSiFM6Jcq89C5GUzgwZiyB8uxeifBUZ",
+        "5UVamTTB2cD5zrKYCjZi3drwsYeBCkeC2Ev3RsHEPxEYupKCrtrCC7PQjhnaipGm9dYShzzPVM6sEzPC7XwU4nwK",
+        "4txUrxQ4YV2FM3byZeq6FZWkQREufpU45H9xweVLKXNz8WtdS3v73B822s4YLwLMT5cMLy7ZJkg3LpaPNWq6zQX2"
+      ],
+      "authorityMs": {
+        "median": 40.663297999999486,
+        "max": 78.67189800000051
+      },
+      "speed": null
+    },
+    {
+      "run": 9,
+      "ok": true,
+      "ms": 12208,
+      "results": [
+        {
+          "scene": "A normal payment: allowed and paid",
+          "ok": true,
+          "note": "417 ms through pay",
+          "signature": "5VsdFmUzWmVm5StoNjfkQERSCrvPDeZLqMyiJJJKC28g5iPSoM4yCxD3wvLt9qqNw5UAszVfxeqactN5mw2bSVcA"
+        },
+        {
+          "scene": "B over the limit: refused, owner asked",
+          "ok": true,
+          "note": "needs owner approval"
+        },
+        {
+          "scene": "C unknown recipient: denied",
+          "ok": true,
+          "note": "recipient is not on the mandate's list"
+        },
+        {
+          "scene": "D owner approves, retry: paid once",
+          "ok": true,
+          "note": "first REJECTED_BEFORE_EXECUTION, after the tap PAID, again OPERATION_ALREADY_STARTED, new pay process DENIED"
+        },
+        {
+          "scene": "E Atlas endpoint down: no payment",
+          "ok": true,
+          "note": "UNAVAILABLE"
+        },
+        {
+          "scene": "F slow answer past the deadline: no payment",
+          "ok": true,
+          "note": "TIMEOUT"
+        },
+        {
+          "scene": "G same operation twice at once: one payment",
+          "ok": true,
+          "note": "one connection: PAID + OPERATION_ALREADY_STARTED; two processes: PAID + DENIED"
+        },
+        {
+          "scene": "Receipts anchored; verify PASS, one byte changed FAIL",
+          "ok": true,
+          "note": "8 decisions (allow and deny) in one anchor iUbVAjddsodn…",
+          "anchorSignature": "iUbVAjddsodnu85XCG3K3s3tCsFpitqTwxGuAqZGSVUEQTboCRz6NLn6L7Nyev3xCZxpPXp3Y9jo6wjheTUtZ6x",
+          "receipts": 8
+        }
+      ],
+      "payments": [
+        "5VsdFmUzWmVm5StoNjfkQERSCrvPDeZLqMyiJJJKC28g5iPSoM4yCxD3wvLt9qqNw5UAszVfxeqactN5mw2bSVcA",
+        "5PUSLiZUfX6qSeMF5BnhSDDr2fcd4yhAn4odYnUZ4u5gHoi6hFxaqp1n4SojuW2FkCUNrogDVHK9adrZ6YpooYcJ",
+        "33UvHwvY8EwnEEmL6VYJACNRkhdf2XRSfWsP88r5tuEYEEb6qPwX4dGBDkfKJJ4KReXt3Rvm9WpcoqwxxvgXBX1y",
+        "5o6Cs4HpWftLVpG5kaVU5raRhr7YkD1vxHJJrtKhKuXfpvXSDVE5VNWxuUMhX6C37dVEAM4ToH6PjQuHCpzeGQw2"
+      ],
+      "authorityMs": {
+        "median": 31.735198999987915,
+        "max": 51.134198999992805
+      },
+      "speed": null
+    },
+    {
+      "run": 10,
+      "ok": true,
+      "ms": 11734,
+      "results": [
+        {
+          "scene": "A normal payment: allowed and paid",
+          "ok": true,
+          "note": "261 ms through pay",
+          "signature": "5VR9Crffxr7thkT7vhyaTT5x6EA6P9mBoHdamJNUMp7TKWzYNnFZvUnMNfqcs9igvZ2hp7WuEamM4HhDEfvtJVEn"
+        },
+        {
+          "scene": "B over the limit: refused, owner asked",
+          "ok": true,
+          "note": "needs owner approval"
+        },
+        {
+          "scene": "C unknown recipient: denied",
+          "ok": true,
+          "note": "recipient is not on the mandate's list"
+        },
+        {
+          "scene": "D owner approves, retry: paid once",
+          "ok": true,
+          "note": "first REJECTED_BEFORE_EXECUTION, after the tap PAID, again OPERATION_ALREADY_STARTED, new pay process DENIED"
+        },
+        {
+          "scene": "E Atlas endpoint down: no payment",
+          "ok": true,
+          "note": "UNAVAILABLE"
+        },
+        {
+          "scene": "F slow answer past the deadline: no payment",
+          "ok": true,
+          "note": "TIMEOUT"
+        },
+        {
+          "scene": "G same operation twice at once: one payment",
+          "ok": true,
+          "note": "one connection: OPERATION_ALREADY_STARTED + PAID; two processes: PAID + DENIED"
+        },
+        {
+          "scene": "Receipts anchored; verify PASS, one byte changed FAIL",
+          "ok": true,
+          "note": "8 decisions (allow and deny) in one anchor 3BLLg5CajPiR…",
+          "anchorSignature": "3BLLg5CajPiR1bwheXofuCixXMhz2pRM4tSGDsCJQs2Xzh217Ag2PyXGA4Rpo64HvX3KAXR5HdARSRXbbN2HoQyE",
+          "receipts": 8
+        }
+      ],
+      "payments": [
+        "5VR9Crffxr7thkT7vhyaTT5x6EA6P9mBoHdamJNUMp7TKWzYNnFZvUnMNfqcs9igvZ2hp7WuEamM4HhDEfvtJVEn",
+        "3UYGctTpWG49gK77BNdBpAFoaL5evVpZcKNGXxvPVUCnEkrr8UP2rr8XCnEZpn2JWAUEQfdiioWQLEFkvhqbqc5S",
+        "AvLJDfUapTzro2BsW4c2NUTdajx13nc9M2aUmYP6Lj3mom9JP42hAJ7mQLRUbaer36S4Bv46H8VoWcY72CcPwtX",
+        "3NZz4wMYkoZFUPbpnpzHnW1poQAdnffaxcJuE78t3YfMrzcUNPuUvWWap3DpcsQcHBy3JisMH6H9x2FpDfD1cn6X"
+      ],
+      "authorityMs": {
+        "median": 29.721798999991734,
+        "max": 45.09320000000298
+      },
+      "speed": null
+    }
+  ]
+}

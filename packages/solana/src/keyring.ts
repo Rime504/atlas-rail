@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { Keypair } from '@solana/web3.js';
 import { DevnetKeypairSigner } from './keypair-signer';
@@ -65,6 +65,18 @@ export class DevnetKeyring {
     return new DevnetKeypairSigner(Uint8Array.from(entry.secretKey));
   }
 
+  /** Drops one label. Removes the file when no keys remain. */
+  remove(label: string): void {
+    this.reload();
+    if (!this.file.keys[label]) return;
+    delete this.file.keys[label];
+    if (Object.keys(this.file.keys).length === 0) {
+      if (existsSync(this.path)) unlinkSync(this.path);
+      return;
+    }
+    this.persist();
+  }
+
   /** Signer for a known public key (used to sign on behalf of a console user), or null. */
   signerByPublicKey(publicKey: string): DevnetKeypairSigner | null {
     this.reload();
@@ -73,7 +85,9 @@ export class DevnetKeyring {
   }
 
   private reload(): void {
-    if (existsSync(this.path)) this.file = JSON.parse(readFileSync(this.path, 'utf8')) as KeyringFile;
+    this.file = existsSync(this.path)
+      ? (JSON.parse(readFileSync(this.path, 'utf8')) as KeyringFile)
+      : { version: 1, keys: {} };
   }
 
   private persist(): void {

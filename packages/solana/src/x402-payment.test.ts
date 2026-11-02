@@ -1,21 +1,10 @@
-import {
-  ComputeBudgetProgram,
-  Keypair,
-  PublicKey,
-  SystemProgram,
-  TransactionInstruction,
-  TransactionMessage,
-  VersionedTransaction,
-} from '@solana/web3.js';
-import { TOKEN_PROGRAM_ID, createTransferCheckedInstruction, getAssociatedTokenAddressSync } from '@solana/spl-token';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Keypair, PublicKey, SystemProgram, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SOLANA_DEVNET_CAIP2, sha256Hex } from '@atlas-rail/mandate';
+import { NOW, TEST_MINT, TEST_ORIGIN, signedTestMandate, signers } from '@atlas-rail/mandate/testing';
+import { GateAuthorizationRequiredError, GatedSignerAdapter, MandateDeniedError, UnsupportedPaymentError, VoucherAuthorizer, VoucherRequest, encodeVoucherMessage } from '@atlas-rail/x402';
 import { DevnetKeypairSigner } from './keypair-signer';
-import {
-  analyzeExactPaymentTransaction,
-  buildExactPaymentTransaction,
-  decodeTransaction,
-  transactionMessageHash,
-} from './x402-payment';
+import { decodeTransaction } from './x402-payment';
 
 const originalEnv = { ...process.env };
 beforeEach(() => {
@@ -26,143 +15,124 @@ afterEach(() => {
   process.env = { ...originalEnv };
 });
 
-const MINT = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
-const MEMO = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
-
 const payer = Keypair.generate();
-const feePayer = Keypair.generate();
 const merchant = Keypair.generate();
 const attacker = Keypair.generate();
 const blockhash = Keypair.generate().publicKey.toBase58();
+const CHANNEL = signers.facilitator.publicKey;
 
-const expected = {
-  payer: payer.publicKey.toBase58(),
-  payTo: merchant.publicKey.toBase58(),
-  mint: MINT,
-  amountBaseUnits: '10000',
-  feePayer: feePayer.publicKey.toBase58(),
-};
+function seed(label: string): Uint8Array {
+  const out = new Uint8Array(32);
+  new TextEncoder().encode(label).forEach((b, i) => (out[i] = b));
+  return out;
+}
 
-function build(overrides: Partial<Parameters<typeof buildExactPaymentTransaction>[0]> = {}): string {
-  const tx = buildExactPaymentTransaction({
-    payer: expected.payer,
-    feePayer: expected.feePayer,
-    mint: MINT,
-    decimals: 6,
-    payTo: expected.payTo,
-    amountBaseUnits: '10000',
-    recentBlockhash: blockhash,
+function request(overrides: Partial<VoucherRequest> = {}): VoucherRequest {
+  return {
+    channelId: CHANNEL,
+    cumulativeAmount: '10000',
+    expiresAt: NOW + 600,
+    recipient: signers.merchant.publicKey,
+    resourceUrl: `${TEST_ORIGIN}/research/summary`,
+    asset: TEST_MINT,
+    network: SOLANA_DEVNET_CAIP2,
     ...overrides,
-  });
-  return Buffer.from(tx.serialize()).toString('base64');
+  };
 }
 
-function compile(instructions: TransactionInstruction[], payerKey = feePayer.publicKey): string {
-  const message = new TransactionMessage({ payerKey, recentBlockhash: blockhash, instructions }).compileToV0Message();
-  return Buffer.from(new VersionedTransaction(message).serialize()).toString('base64');
+async function authorizer() {
+  const mandate = await signedTestMandate();
+  const signer = new GatedSignerAdapter({
+    inner: new DevnetKeypairSigner(seed('agent')),
+    trustedInstanceKeys: [signers.instance.publicKey],
+    clock: () => NOW,
+  });
+  return {
+    mandate,
+    signer,
+    authorizer: new VoucherAuthorizer({
+      mandate,
+      instance: signers.instance,
+      signer,
+      organizationId: 'org_test',
+      clock: () => NOW,
+    }),
+  };
 }
 
-function transfer(overrides: { destinationOwner?: PublicKey; amount?: bigint; mint?: PublicKey; authority?: PublicKey } = {}) {
-  const mint = overrides.mint ?? new PublicKey(MINT);
-  return createTransferCheckedInstruction(
-    getAssociatedTokenAddressSync(mint, payer.publicKey),
-    mint,
-    getAssociatedTokenAddressSync(mint, overrides.destinationOwner ?? merchant.publicKey),
-    overrides.authority ?? payer.publicKey,
-    overrides.amount ?? 10000n,
-    6,
-    [],
-    TOKEN_PROGRAM_ID,
-  );
-}
-
-const budget = () => [
-  ComputeBudgetProgram.setComputeUnitLimit({ units: 20000 }),
-  ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 }),
-];
-const memo = () => new TransactionInstruction({ keys: [], programId: new PublicKey(MEMO), data: Buffer.from('nonce') });
-
-describe('exact payment transaction builder + analyzer', () => {
-  it('builds the reference layout and the analyzer accepts it', () => {
-    const raw = build();
-    const tx = decodeTransaction(raw);
-    const programs = tx.message.compiledInstructions.map((ix) => tx.message.staticAccountKeys[ix.programIdIndex].toBase58());
-    expect(programs).toEqual([
-      'ComputeBudget111111111111111111111111111111',
-      'ComputeBudget111111111111111111111111111111',
-      TOKEN_PROGRAM_ID.toBase58(),
-      MEMO,
-    ]);
-    expect(tx.message.staticAccountKeys[0].toBase58()).toBe(expected.feePayer);
-    const analysis = analyzeExactPaymentTransaction(raw, expected);
-    expect(analysis).toMatchObject({ matchesOffer: true, mismatch: null, transferCount: 1, unknownProgramIds: [] });
-    expect(analysis.txMessageHash).toBe(transactionMessageHash(tx));
+describe('payment-channel voucher instead of an exact SPL transfer', () => {
+  it('builds the 50-byte voucher and the signer accepts only those bytes', async () => {
+    const message = encodeVoucherMessage({ channelId: CHANNEL, cumulativeAmount: 10_000n, expiresAt: BigInt(NOW + 600) });
+    expect(message).toHaveLength(50);
+    expect(Array.from(message.slice(0, 2))).toEqual([0x56, 0x01]);
+    const view = new DataView(message.buffer, message.byteOffset, message.byteLength);
+    expect(view.getBigUint64(34, true)).toBe(10_000n);
+    expect(view.getBigInt64(42, true)).toBe(BigInt(NOW + 600));
+    const { authorizer: gate, signer } = await authorizer();
+    const allowed = await gate.requestVoucher(request());
+    expect(sha256Hex(allowed.message)).toBe(allowed.messageHash);
+    expect(allowed.deltaAmount).toBe('10000');
+    const again = encodeVoucherMessage({ channelId: CHANNEL, cumulativeAmount: 10_000n, expiresAt: BigInt(NOW + 600) });
+    expect(sha256Hex(again)).toBe(sha256Hex(allowed.message));
+    await expect(signer.signMessage(allowed.message)).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
   });
 
-  it('uses the seller memo when given and a random nonce otherwise', () => {
-    const fixed = decodeTransaction(build({ memo: 'pi_3abc123def456' }));
-    const memoIx = fixed.message.compiledInstructions.find(
-      (ix) => fixed.message.staticAccountKeys[ix.programIdIndex].toBase58() === MEMO,
-    );
-    expect(Buffer.from(memoIx!.data).toString('utf8')).toBe('pi_3abc123def456');
-    const a = analyzeExactPaymentTransaction(build(), expected).txMessageHash;
-    const b = analyzeExactPaymentTransaction(build(), expected).txMessageHash;
-    expect(a).not.toBe(b); // different nonce memo => different message
+  it('is unaffected by signing: the voucher hash does not include the signature', async () => {
+    const { authorizer: gate } = await authorizer();
+    const allowed = await gate.requestVoucher(request());
+    expect(sha256Hex(allowed.message)).toBe(allowed.messageHash);
+    expect(allowed.signature.length).toBe(64);
   });
 
-  it('is unaffected by signing: the message hash is stable across signatures', async () => {
-    const unsigned = build();
-    const signer = new DevnetKeypairSigner(payer.secretKey);
-    const signed = await signer.signTransaction(unsigned);
-    expect(analyzeExactPaymentTransaction(signed.signedBase64, expected).txMessageHash).toBe(
-      analyzeExactPaymentTransaction(unsigned, expected).txMessageHash,
-    );
-  });
-
-  describe('rejects transactions that do not pay exactly the offer', () => {
-    const cases: Array<[string, () => string, RegExp]> = [
-      ['different recipient', () => compile([...budget(), transfer({ destinationOwner: attacker.publicKey }), memo()]), /destination/],
-      ['different amount (one base unit more)', () => compile([...budget(), transfer({ amount: 10001n }), memo()]), /amount/],
-      ['different amount (one base unit less)', () => compile([...budget(), transfer({ amount: 9999n }), memo()]), /amount/],
-      ['different mint', () => compile([...budget(), transfer({ mint: new PublicKey(attacker.publicKey) }), memo()]), /mint/],
-      ['different authority', () => compile([...budget(), transfer({ authority: attacker.publicKey }), memo()]), /authority/],
-      ['two transfers (double payment)', () => compile([...budget(), transfer(), transfer(), memo()]), /./],
-      ['no transfer at all', () => compile([...budget(), memo()]), /./],
-      [
-        'hidden SOL drain via the System program',
-        () =>
-          compile([
-            ...budget(),
-            transfer(),
-            SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: attacker.publicKey, lamports: 1_000_000 }),
-            memo(),
-          ]),
-        /unexpected instruction/,
-      ],
-      ['fee payer used as an account', () => compile([...budget(), transfer({ authority: feePayer.publicKey }), memo()]), /fee payer/],
-      ['excessive compute unit price', () => compile([ComputeBudgetProgram.setComputeUnitLimit({ units: 20000 }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50_000_000 }), transfer(), memo()]), /price/],
-      ['excessive compute unit limit', () => compile([ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 }), transfer(), memo()]), /limit/],
-      ['two memos', () => compile([...budget(), transfer(), memo(), memo()]), /memo/],
+  describe('rejects a voucher that does not pay exactly the offer', () => {
+    const cases: Array<[string, (input: VoucherRequest) => Partial<VoucherRequest>, 'deny' | 'reject']> = [
+      ['different recipient', () => ({ recipient: signers.attacker.publicKey }), 'deny'],
+      ['different amount (one base unit more than the ceiling)', () => ({ cumulativeAmount: '50000001' }), 'deny'],
+      ['different mint', () => ({ asset: signers.attacker.publicKey }), 'deny'],
+      ['no new spend at all', () => ({ cumulativeAmount: '0' }), 'reject'],
+      ['expired voucher', () => ({ expiresAt: NOW }), 'reject'],
+      ['channel id is not a key', () => ({ channelId: 'not-a-key' }), 'reject'],
     ];
-    for (const [name, make, pattern] of cases) {
-      it(name, () => {
-        const analysis = analyzeExactPaymentTransaction(make(), expected);
-        expect(analysis.matchesOffer).toBe(false);
-        expect(analysis.mismatch).toMatch(pattern);
+    for (const [name, patch, kind] of cases) {
+      it(name, async () => {
+        const { authorizer: gate, signer } = await authorizer();
+        const sign = vi.spyOn(signer, 'signVoucherWithAuthorization');
+        const ask = gate.requestVoucher(request(patch(request())));
+        if (kind === 'deny') await expect(ask).rejects.toBeInstanceOf(MandateDeniedError);
+        else await expect(ask).rejects.toBeInstanceOf(UnsupportedPaymentError);
+        expect(sign).not.toHaveBeenCalled();
       });
     }
 
-    it('unexpected fee payer', () => {
-      const analysis = analyzeExactPaymentTransaction(build({ feePayer: attacker.publicKey.toBase58() }), expected);
-      expect(analysis.matchesOffer).toBe(false);
-      expect(analysis.mismatch).toMatch(/fee payer/);
+    it('two spends of the same voucher (double payment)', async () => {
+      const { authorizer: gate, signer } = await authorizer();
+      await gate.requestVoucher(request());
+      const sign = vi.spyOn(signer, 'signVoucherWithAuthorization');
+      await expect(gate.requestVoucher(request())).rejects.toBeInstanceOf(UnsupportedPaymentError);
+      expect(sign).not.toHaveBeenCalled();
     });
 
-    it('flags programs outside the allowlist', () => {
-      const evil = new TransactionInstruction({ keys: [], programId: attacker.publicKey, data: Buffer.from([1]) });
-      const analysis = analyzeExactPaymentTransaction(compile([...budget(), transfer(), evil, memo()]), expected);
-      expect(analysis.unknownProgramIds).toContain(attacker.publicKey.toBase58());
-      expect(analysis.matchesOffer).toBe(false);
+    it('a later cumulative that rewinds the watermark', async () => {
+      const { authorizer: gate, signer } = await authorizer();
+      await gate.requestVoucher(request());
+      const sign = vi.spyOn(signer, 'signVoucherWithAuthorization');
+      await expect(gate.requestVoucher(request({ cumulativeAmount: '20000', settledAmount: '0' }))).rejects.toBeInstanceOf(UnsupportedPaymentError);
+      expect(sign).not.toHaveBeenCalled();
+    });
+
+    it('tampered voucher bytes are not covered by the authorisation', async () => {
+      const { authorizer: gate, signer, mandate } = await authorizer();
+      const allowed = await gate.requestVoucher(request());
+      const tampered = Uint8Array.from(allowed.message);
+      tampered[34] ^= 0xff;
+      await expect(signer.signVoucherWithAuthorization(tampered, allowed.authorization, allowed.decision, mandate)).rejects.toBeInstanceOf(
+        GateAuthorizationRequiredError,
+      );
+    });
+
+    it('flags a message that is not the 50-byte voucher', async () => {
+      const { signer } = await authorizer();
+      await expect(signer.signVoucherWithAuthorization(new Uint8Array(50), null, null, null)).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
     });
   });
 });
@@ -176,26 +146,33 @@ describe('DevnetKeypairSigner', () => {
     expect(() => new DevnetKeypairSigner(payer.secretKey)).toThrow(/disabled/);
   });
 
-  it('signs only its own slot and leaves the fee payer slot empty', async () => {
+  function lonePayerTx(): string {
+    const message = new TransactionMessage({
+      payerKey: payer.publicKey,
+      recentBlockhash: blockhash,
+      instructions: [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: merchant.publicKey, lamports: 1 })],
+    }).compileToV0Message();
+    return Buffer.from(new VersionedTransaction(message).serialize()).toString('base64');
+  }
+
+  it('signs only its own slot', async () => {
     const signer = new DevnetKeypairSigner(payer.secretKey);
-    const signed = await signer.signTransaction(build());
+    const signed = await signer.signTransaction(lonePayerTx());
     const tx = decodeTransaction(signed.signedBase64);
-    expect(tx.signatures).toHaveLength(2);
-    expect(tx.signatures[0].every((b) => b === 0)).toBe(true); // fee payer (facilitator) has not signed
-    expect(tx.signatures[1].some((b) => b !== 0)).toBe(true);
+    expect(tx.signatures).toHaveLength(1);
+    expect(tx.signatures[0].some((b) => b !== 0)).toBe(true);
   });
 
   it('refuses to sign a transaction it is not a required signer of', async () => {
     const signer = new DevnetKeypairSigner(attacker.secretKey);
-    await expect(signer.signTransaction(build())).rejects.toThrow(/not a required signer/);
+    await expect(signer.signTransaction(lonePayerTx())).rejects.toThrow(/not a required signer/);
   });
 
-  it('signs arbitrary messages that verify under the same public key', async () => {
+  it('signs a 50-byte voucher message that verifies under the same public key', async () => {
     const { ed25519 } = await import('@noble/curves/ed25519');
-    const signer = new DevnetKeypairSigner(payer.secretKey);
-    const message = new TextEncoder().encode('hello');
+    const signer = new DevnetKeypairSigner(seed('agent'));
+    const message = encodeVoucherMessage({ channelId: CHANNEL, cumulativeAmount: 10_000n, expiresAt: BigInt(NOW + 600) });
     const signature = await signer.signMessage(message);
-    expect(ed25519.verify(signature, message, payer.publicKey.toBytes())).toBe(true);
-    expect(signer.publicKey).toBe(payer.publicKey.toBase58());
+    expect(ed25519.verify(signature, message, new PublicKey(signer.publicKey).toBytes())).toBe(true);
   });
 });

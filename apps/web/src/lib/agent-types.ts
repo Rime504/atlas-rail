@@ -136,6 +136,84 @@ export interface BoundReceiptView {
   };
 }
 
+export interface PaymentTokenView {
+  mint: string;
+  label: string;
+  decimals: number | null;
+}
+
+export interface PaymentClaimsView {
+  rootAnchored: boolean;
+  rootDetail: string;
+  inclusion: 'verified' | 'failed' | 'not_anchored' | 'unavailable';
+  inclusionDetail: string;
+  settlementRecorded: boolean;
+  settlementDetail: string;
+}
+
+export interface PaymentStageView {
+  id: string;
+  label: string;
+  state: 'done' | 'blocked' | 'waiting' | 'unavailable';
+  detail: string;
+}
+
+export type PaymentStatusView = 'settled' | 'authorized' | 'pending' | 'blocked' | 'failed' | 'verification_unavailable';
+
+export interface PaymentRowView {
+  id: string;
+  mandateId: string;
+  status: PaymentStatusView;
+  statusLabel: string;
+  purpose: string;
+  recipient: string;
+  token: PaymentTokenView;
+  namespace: 'devnet' | 'other';
+  network: string;
+  requestedAmount: string | null;
+  authorizedAmount: string | null;
+  settledAmount: string | null;
+  at: number;
+  settlementSignature: string | null;
+  receiptId: string | null;
+  policy: string | null;
+  claims: PaymentClaimsView;
+  timeline: PaymentStageView[];
+  anchor: null | {
+    txSignature: string;
+    merkleRoot: string;
+    leafIndex: number;
+    leafCount: number;
+    anchoredAt: number | null;
+    network: string;
+  };
+  fees: { available: false; detail: string };
+}
+
+export interface PaymentBatchView {
+  txSignature: string;
+  merkleRoot: string;
+  leafCount: number;
+  anchoredAt: number | null;
+  network: string;
+  namespace: 'devnet' | 'other';
+  receiptCount: number;
+  settlementsRecorded: number;
+  inclusionVerified: number;
+  inclusionFailed: number;
+  confirmation: 'stored_not_rechecked';
+  note: string;
+}
+
+export interface PaymentHistoryView {
+  payments: PaymentRowView[];
+  totals: Array<{ namespace: 'devnet' | 'other'; mint: string; label: string; decimals: number | null; settledBaseUnits: string; settledCount: number }>;
+  counts: { settled: number; authorized: number; pending: number; blocked: number; failed: number; verificationUnavailable: number };
+  batches: PaymentBatchView[];
+  fees: { available: false; detail: string };
+  limitNote: string;
+}
+
 export interface AnchorRunResult {
   batch: { id: string; merkleRoot: string; leafCount: number; txSignature: string | null } | null;
   anchored: number;

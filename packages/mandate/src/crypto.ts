@@ -15,9 +15,19 @@ export const SIGNATURE_DOMAIN = {
   receipt: 'atlasrail/v0.1/receipt',
   gateAuthorization: 'atlasrail/v0.1/gate-authorization',
   agentRequest: 'atlasrail/v0.1/agent-request',
+  /** A signed spending-authority answer (pay.sh). */
+  authorityAnswer: 'atlasrail/v0.1/authority-answer',
 } as const;
 
 export type SignatureDomain = (typeof SIGNATURE_DOMAIN)[keyof typeof SIGNATURE_DOMAIN];
+
+/**
+ * The one signature scheme v0.1 uses. Documents record it next to each signature (`scheme`); a missing
+ * field means `ed25519`, and any other value is rejected, so a later scheme (for example a
+ * post-quantum one) can be added without old verifiers accepting it by mistake.
+ */
+export const SIGNATURE_SCHEME = 'ed25519' as const;
+export type SignatureScheme = typeof SIGNATURE_SCHEME;
 
 /** Anything that can produce Ed25519 signatures over arbitrary bytes (HSM, MPC, keyring, ...). */
 export interface MessageSigner {

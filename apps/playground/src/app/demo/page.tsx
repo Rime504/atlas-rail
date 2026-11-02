@@ -1,830 +1,354 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, Github, FileText, Globe, Loader2, RotateCcw, Search, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Globe, Loader2, Zap } from 'lucide-react';
 import { WEBSITE_URL } from '@/lib/links';
+import { Connection, LAMPORTS_PER_SOL, type PublicKey } from '@solana/web3.js';
 import { ProgressBar } from '@/components/ProgressBar';
 import { VerdictBanner } from '@/components/Verdict';
-import { RuleList } from '@/components/RuleList';
-import { Details, ExplorerLink, MonoAddress } from '@/components/Details';
-import { EXPECTED_PRICE, MODERATE_SPIKE_AMOUNT, SEVERE_SPIKE_AMOUNT } from '@/lib/amounts';
-import { mandateCardTiles } from '@/lib/mandate-card';
-import { formatUsd } from '@/lib/format';
-import type { ActionType, PaymentOutcome, Publication, StepResponse, World } from '@/lib/types';
-import { publishWithRetry } from '@/lib/publication';
-import type { ReceiptVerification } from '@atlas-rail/receipt';
+import { ExplorerLink } from '@/components/Details';
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 4;
+const DEVNET_RPC = 'https://api.devnet.solana.com';
+type InjectedWallet = {
+  publicKey: PublicKey | null;
+  connect: () => Promise<{ publicKey: PublicKey }>;
+};
 
-interface Outcomes {
-  normal?: PaymentOutcome;
-  attack?: PaymentOutcome;
-  moderate?: PaymentOutcome;
-  severe?: PaymentOutcome;
-  human?: PaymentOutcome;
-  afterRevoke?: PaymentOutcome;
+interface PaymentProof {
+  payer: string;
+  channel: string;
+  channelExplorer: string;
+  denial: { signed: boolean; message: string | null };
+  settleSignature: string;
+  settleExplorer: string;
+  anchorSignature: string;
+  anchorExplorer: string;
+  rootPda: string;
+  rootExplorer: string;
+  merkleRoot: string | null;
+  receiptId: string | null;
+  deposit: string | number | null;
+  settled: string | number | null;
 }
 
-interface DemoState {
-  step: number;
-  world: World | null;
-  outcomes: Outcomes;
-  verification: ReceiptVerification | null;
-  publication: StepResponse['publication'] | null;
-  useDevnet: boolean;
-  finished: boolean;
-}
-
-const INITIAL_STATE: DemoState = { step: 1, world: null, outcomes: {}, verification: null, publication: null, useDevnet: false, finished: false };
-
-async function callApi(world: World | null, action: { type: ActionType; approve?: boolean; useDevnet?: boolean }): Promise<StepResponse> {
-  const res = await fetch('/api/step', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ world, action }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? 'Something went wrong');
-  return data as StepResponse;
+function browserWallet(): InjectedWallet | null {
+  const scope = window as Window & { solana?: InjectedWallet; solflare?: InjectedWallet };
+  return scope.solana ?? scope.solflare ?? null;
 }
 
 export default function DemoPage() {
-  const [state, setState] = useState<DemoState>(INITIAL_STATE);
-  const [history, setHistory] = useState<DemoState[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState(1);
+  const [address, setAddress] = useState<string | null>(null);
+  const [sol, setSol] = useState<string | null>(null);
+  const [mandateReady, setMandateReady] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const initRequested = useRef(false);
+  const [proof, setProof] = useState<PaymentProof | null>(null);
+  const [localOnly, setLocalOnly] = useState<string | null>(null);
 
-  const runInit = useCallback(async (useDevnet: boolean) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await callApi(null, { type: 'init', useDevnet });
-      setState({ step: 1, world: data.world, outcomes: {}, verification: null, publication: null, useDevnet, finished: false });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start the demo');
-    } finally {
-      setLoading(false);
-    }
+  // On a hosted deployment the demo cannot run (it needs this repo's scripts and a local key file): say so up front.
+  useEffect(() => {
+    fetch('/api/voucher-demo')
+      .then((res) => res.json() as Promise<{ localOnly?: boolean; error?: string }>)
+      .then((data) => {
+        if (data.localOnly) setLocalOnly(data.error ?? 'This demo runs locally. See the video.');
+      })
+      .catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    if (initRequested.current) return;
-    initRequested.current = true;
-    void runInit(false);
-  }, [runInit]);
-
-  const push = (next: DemoState) => {
-    setHistory((h) => [...h, state]);
-    setState(next);
-  };
-
-  const back = () => {
-    const prev = history[history.length - 1];
-    if (!prev) return;
-    setHistory((h) => h.slice(0, -1));
-    setState(prev);
+  async function connect() {
     setError(null);
-  };
+    const injected = browserWallet();
+    if (!injected) {
+      setError('No wallet found. Install Phantom or Solflare, switch it to Devnet, then refresh.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const connected = await injected.connect();
+      setAddress(connected.publicKey.toBase58());
+      try {
+        const balance = await Promise.race([
+          new Connection(DEVNET_RPC, 'confirmed').getBalance(connected.publicKey),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+        ]);
+        setSol((balance / LAMPORTS_PER_SOL).toFixed(4));
+      } catch {
+        setSol(null);
+      }
+    } catch (cause) {
+      setAddress(null);
+      setSol(null);
+      setError(cause instanceof Error ? cause.message : 'The wallet rejected the connection.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  const run = async (action: { type: ActionType; approve?: boolean }, apply: (data: StepResponse) => DemoState) => {
-    if (!state.world) return;
-    setLoading(true);
+  async function pay() {
+    if (!address || !mandateReady) return;
+    setBusy(true);
     setError(null);
     try {
-      const data = await callApi(state.world, action);
-      push(apply(data));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      const res = await fetch('/api/voucher-demo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ payer: address }),
+      });
+      const data = (await res.json()) as PaymentProof & { error?: string };
+      if (!res.ok) throw new Error(data.error ?? 'Payment failed');
+      setProof(data);
+      setStep(4);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Payment failed');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  };
+  }
 
-  const goTo = (step: number) => push({ ...state, step });
-
-  // Step 7 retries publishing in place (no history entry), always against the latest world: a retry
-  // that has to anchor again returns an updated one.
-  const worldRef = useRef(state.world);
-  worldRef.current = state.world;
-  const publishAgain = async (): Promise<Publication> => {
-    const data = await callApi(worldRef.current, { type: 'publish' });
-    const publication = data.publication ?? { stored: false, retryable: true, reason: 'No answer from the receipt store.', txSignature: null };
-    worldRef.current = data.world;
-    setState((s) => ({ ...s, world: data.world, publication }));
-    return publication;
-  };
-
-  const restart = () => {
-    setHistory([]);
-    setState(INITIAL_STATE);
-    initRequested.current = false;
-    void runInit(false);
-  };
-
-  const world = state.world;
+  const canNext = step === 1 ? Boolean(address) : step === 2 ? mandateReady : step === 3 ? Boolean(proof) : false;
 
   return (
     <main className="mx-auto min-h-screen max-w-2xl px-6 py-12 sm:py-16">
-      <ProgressBar step={Math.min(state.step, TOTAL_STEPS)} total={TOTAL_STEPS} />
-      {state.world && <ModeBadge world={state.world} />}
-
-      {error && (
+      <a href={WEBSITE_URL} target="_blank" rel="noreferrer" className="mb-6 inline-flex items-center gap-1.5 text-sm text-mutedText hover:text-white">
+        <Globe className="h-4 w-4" aria-hidden="true" /> Website
+      </a>
+      {localOnly ? (
+        <section className="rounded-2xl border border-border bg-surface p-6">
+          <h1 className="font-display text-3xl font-semibold">{localOnly}</h1>
+          <p className="mt-3 text-sm text-mutedText">
+            This page pays on Solana devnet from a key file on the developer&apos;s machine, so it does not run on a hosted preview.
+          </p>
+          <Link href="/" className="mt-6 inline-flex items-center gap-2 text-sm text-mutedText hover:text-white">
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to the playground
+          </Link>
+        </section>
+      ) : null}
+      <div hidden={Boolean(localOnly)}>
+      <ProgressBar step={step} total={TOTAL_STEPS} />
+      {error ? (
         <div role="alert" className="mb-6 rounded-xl border border-deny/40 bg-deny/10 px-4 py-3 text-sm text-deny">
           {error}
         </div>
-      )}
+      ) : null}
 
-      {world?.devnetFallbackReason && (
-        <div role="status" className="mb-6 rounded-xl border border-escalate/40 bg-escalate/10 px-4 py-3 text-sm text-escalate">
-          {world.devnetFallbackReason}
-        </div>
-      )}
-
-      <div className="animate-fade-in">
-        {!world && !error ? (
-          <LoadingCard label="Waking up the agent…" />
-        ) : (
-          world &&
-          (state.step === 1 ? (
-            <StepMeetAgent
-              world={world}
-              useDevnet={state.useDevnet}
-              onToggleDevnet={(v) => void runInit(v)}
-              loading={loading}
-            />
-          ) : state.step === 2 ? (
-            <StepGiveRules
-              world={world}
-              loading={loading}
-              onSign={() => run({ type: 'sign-mandate' }, (d) => ({ ...state, world: d.world }))}
-            />
-          ) : state.step === 3 ? (
-            <StepNormalPayment
-              outcome={state.outcomes.normal}
-              loading={loading}
-              onRun={() => run({ type: 'pay-normal' }, (d) => ({ ...state, world: d.world, outcomes: { ...state.outcomes, normal: d.payment } }))}
-            />
-          ) : state.step === 4 ? (
-            <StepAttack
-              outcome={state.outcomes.attack}
-              loading={loading}
-              onRun={() => run({ type: 'attack' }, (d) => ({ ...state, world: d.world, outcomes: { ...state.outcomes, attack: d.payment } }))}
-            />
-          ) : state.step === 5 ? (
-            <StepPriceSpike
-              moderate={state.outcomes.moderate}
-              severe={state.outcomes.severe}
-              loading={loading}
-              onRunModerate={() =>
-                run({ type: 'price-spike-moderate' }, (d) => ({ ...state, world: d.world, outcomes: { ...state.outcomes, moderate: d.payment } }))
-              }
-              onRunSevere={() =>
-                run({ type: 'price-spike-severe' }, (d) => ({ ...state, world: d.world, outcomes: { ...state.outcomes, severe: d.payment } }))
-              }
-            />
-          ) : state.step === 6 ? (
-            <StepHuman
-              moderate={state.outcomes.moderate}
-              human={state.outcomes.human}
-              loading={loading}
-              onDecide={(approve) =>
-                run({ type: 'human-decision', approve }, (d) => ({ ...state, world: d.world, outcomes: { ...state.outcomes, human: d.payment } }))
-              }
-            />
-          ) : state.step === 7 ? (
-            <StepProve
-              world={world}
-              verification={state.verification}
-              publication={state.publication}
-              loading={loading}
-              publishAgain={publishAgain}
-              onVerify={() =>
-                run({ type: 'prove' }, (d) => ({ ...state, world: d.world, verification: d.verification ?? null, publication: d.publication ?? null }))
-              }
-            />
-          ) : (
-            <StepRevoke
-              world={world}
-              afterRevoke={state.outcomes.afterRevoke}
-              finished={state.finished}
-              loading={loading}
-              onRevoke={() => run({ type: 'revoke' }, (d) => ({ ...state, world: d.world }))}
-              onPayAgain={() =>
-                run({ type: 'pay-after-revoke' }, (d) => ({ ...state, world: d.world, outcomes: { ...state.outcomes, afterRevoke: d.payment } }))
-              }
-              onFinish={() => setState((s) => ({ ...s, finished: true }))}
-              onRestart={restart}
-            />
-          ))
-        )}
-      </div>
-
-      {world && !state.finished && (
-        <nav className="mt-10 flex items-center justify-between">
+      {step === 1 ? (
+        <section>
+          <h1 className="font-display text-3xl font-semibold">Connect your wallet</h1>
+          <p className="mt-3 text-sm text-mutedText">
+            Phantom or Solflare, on devnet. This account pays the deposit and the network fee. The voucher is signed on this machine only after the mandate allows it.
+          </p>
+          <ol className="mt-6 space-y-2">
+            {['Your wallet is the fee payer', 'Atlas Rail signs the voucher only if the mandate allows it', 'Next, you set the rules for that spend'].map((item, index) => (
+              <li key={item} className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-background font-mono text-xs text-mutedText">{index + 1}</span>
+                {item}
+              </li>
+            ))}
+          </ol>
           <button
             type="button"
-            onClick={back}
-            disabled={history.length === 0 || loading}
-            className="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium text-mutedText transition hover:text-white disabled:opacity-30"
+            onClick={connect}
+            disabled={busy}
+            className="mt-8 inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background disabled:opacity-60"
           >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+            {busy ? 'Connecting' : address ? 'Reconnect' : 'Connect wallet'}
           </button>
-          {state.step < TOTAL_STEPS && canAdvance(state) && (
-            <button
-              type="button"
-              onClick={() => goTo(state.step + 1)}
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-2.5 text-sm font-semibold text-background shadow-glow transition-transform hover:scale-[1.03] disabled:opacity-50"
-            >
-              Next <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </button>
-          )}
-        </nav>
-      )}
+          {address && !busy ? (
+            <div className="mt-6 rounded-2xl border border-allow/40 bg-allow/10 p-4">
+              <p className="text-xs uppercase tracking-wide text-allow">Payer connected</p>
+              <p className="mt-2 break-all font-mono text-sm">{address}</p>
+              <p className="mt-3 text-sm text-mutedText">{sol ? `Devnet balance: ${sol} SOL` : 'Devnet balance unavailable'}</p>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {step === 2 ? (
+        <section>
+          <h1 className="font-display text-3xl font-semibold">Create the mandate</h1>
+          <p className="mt-3 text-sm text-mutedText">
+            Owner, approver, and the voucher signer sign the mandate when you pay. The payee is the recipient created for that channel.
+          </p>
+          {address ? <p className="mt-4 text-xs text-mutedText">Payer {address}</p> : null}
+          <div className="mt-6 rounded-2xl border border-border bg-surface p-6">
+            <dl className="grid grid-cols-2 gap-4 text-sm">
+              <FixedRule label="Max per payment" value="1 token" />
+              <FixedRule label="Max per day" value="1 token" />
+              <FixedRule label="Max total" value="1 token" />
+              <FixedRule label="This payment" value="0.01 token" />
+              <FixedRule label="Resource" value="http://localhost:4402/research/*" wide />
+            </dl>
+          </div>
+          <div className="mt-6">
+            {mandateReady ? (
+              <VerdictBanner verdict="ALLOW" headline="These rules will be signed when you pay" />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setMandateReady(true)}
+                className="inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow"
+              >
+                Use these rules
+              </button>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {step === 3 ? (
+        <section>
+          <h1 className="font-display text-3xl font-semibold">Pay on devnet</h1>
+          <p className="mt-3 text-sm text-mutedText">
+            The machine pays with the connected devnet fee payer key. Each mandate gets its own random voucher key. The browser extension does not sign the voucher.
+          </p>
+          <ol className="mt-6 space-y-2">
+            {['Open the channel and deposit 0.01', 'Refuse the random recipient', 'Sign the allowed voucher', 'Settle on the payment-channels program', 'Anchor the receipt root'].map((item, index) => (
+              <li key={item} className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-background font-mono text-xs text-mutedText">{index + 1}</span>
+                {item}
+                {busy ? <Loader2 className="ml-auto h-4 w-4 animate-spin text-mutedText" aria-hidden="true" /> : null}
+              </li>
+            ))}
+          </ol>
+          <button
+            type="button"
+            onClick={pay}
+            disabled={busy || !address || !mandateReady}
+            className="mt-8 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background disabled:opacity-60"
+          >
+            {busy ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Paying…
+              </span>
+            ) : (
+              'Pay on devnet'
+            )}
+          </button>
+          {busy ? <p className="mt-4 text-sm text-mutedText">Two devnet transactions. This usually takes about a minute.</p> : null}
+        </section>
+      ) : null}
+
+      {step === 4 && proof ? (
+        <section>
+          <h1 className="font-display text-3xl font-semibold">Settled and anchored</h1>
+          <p className="mt-3 text-sm text-mutedText">The chain accepted the voucher. The root account is the separate receipt proof.</p>
+          <Flow proof={proof} />
+          <div className="mt-6 space-y-3">
+            <VerdictBanner verdict="DENY" headline={proof.denial.signed ? 'Attack was signed' : `Refused (${proof.denial.message ?? 'denied'})`} />
+            <VerdictBanner verdict="ALLOW" headline="Voucher settled" />
+          </div>
+          <div className="mt-6 space-y-4">
+            <ProofRow
+              label="Channel"
+              hint="Escrow record. Deposit and settled amount live here. The tokens sit in its token account."
+              value={proof.channel}
+              href={proof.channelExplorer}
+            />
+            <ProofRow label="Settle transaction" hint="The payment. The program accepted the signed voucher." value={proof.settleSignature} href={proof.settleExplorer} />
+            <ProofRow label="Anchor transaction" hint="Writes the receipt root. It does not move the tokens." value={proof.anchorSignature} href={proof.anchorExplorer} />
+            <ProofRow label="Root account" hint="93-byte Merkle root for this receipt." value={proof.rootPda} href={proof.rootExplorer} />
+          </div>
+          <div className="mt-4 rounded-2xl border border-border bg-surface p-4 text-sm text-mutedText">
+            {proof.receiptId ? <p>Receipt {proof.receiptId}</p> : null}
+            <p className="mt-2">
+              Deposit {String(proof.deposit ?? '10000')} · settled {String(proof.settled ?? '10000')}
+            </p>
+            {proof.merkleRoot ? <p className="mt-2 break-all font-mono text-xs text-white">{proof.merkleRoot}</p> : null}
+          </div>
+        </section>
+      ) : null}
+
+      <div className="mt-10 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setStep((current) => Math.max(1, current - 1))}
+          disabled={step === 1 || busy}
+          className="inline-flex items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back
+        </button>
+        {step < 4 ? (
+          <button
+            type="button"
+            onClick={() => setStep((current) => current + 1)}
+            disabled={!canNext || busy}
+            className="inline-flex items-center gap-2 rounded-full bg-solana-gradient px-5 py-2.5 text-sm font-semibold text-background disabled:opacity-40"
+          >
+            Next <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </button>
+        ) : (
+          <Link href="/" className="text-sm text-mutedText hover:text-white">
+            Back to start
+          </Link>
+        )}
+      </div>
+      </div>
     </main>
   );
 }
 
-function canAdvance(state: DemoState): boolean {
-  switch (state.step) {
-    case 1:
-      return true;
-    case 2:
-      return Boolean(state.world?.mandate?.delegationChain.length === 3);
-    case 3:
-      return Boolean(state.outcomes.normal);
-    case 4:
-      return Boolean(state.outcomes.attack);
-    case 5:
-      return Boolean(state.outcomes.moderate && state.outcomes.severe);
-    case 6:
-      return Boolean(state.outcomes.human);
-    case 7:
-      return true;
-    default:
-      return false;
-  }
-}
-
-/* ---- shared bits -------------------------------------------------------------------------------- */
-
-/** Shown on every step so the mode is never ambiguous mid-walkthrough — the toggle itself only
- * appears on step 1. */
-function ModeBadge({ world }: { world: World }) {
-  // A devnet run over the hourly limit continues without on-chain actions; say so on every step.
-  const mode = world.mode !== 'devnet' ? 'instant' : world.devnetAllowed ? 'devnet' : 'limited';
-  const label = { devnet: 'Real Solana devnet', limited: 'Devnet limit reached · not on-chain this run', instant: 'Instant mode (no chain)' }[mode];
-  const dot = { devnet: 'bg-solana-green', limited: 'bg-escalate', instant: 'bg-mutedText' }[mode];
-  return (
-    <div className="mb-6 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-mutedText" data-testid="mode-badge" data-mode={mode}>
-      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-hidden="true" />
-      {label}
-    </div>
-  );
-}
-
-function LoadingCard({ label }: { label: string }) {
-  return (
-    <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-mutedText">
-      <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
-      <p className="text-sm">{label}</p>
-    </div>
-  );
-}
-
-function StepHeading({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <header className="mb-6">
-      <h1 className="font-display text-2xl font-semibold sm:text-3xl">{title}</h1>
-      <p className="mt-2 text-sm text-mutedText">{subtitle}</p>
-    </header>
-  );
-}
-
-function PrimaryButton({ onClick, loading, disabled, children }: { onClick: () => void; loading: boolean; disabled?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={loading || disabled}
-      className="inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {loading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-      {children}
-    </button>
-  );
-}
-
-function Card({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-2xl border border-border bg-surface p-6">{children}</div>;
-}
-
-/* ---- Step 1 --------------------------------------------------------------------------------------- */
-
-function StepMeetAgent({
-  world,
-  useDevnet,
-  onToggleDevnet,
-  loading,
-}: {
-  world: World;
-  useDevnet: boolean;
-  onToggleDevnet: (v: boolean) => void;
-  loading: boolean;
-}) {
-  return (
-    <section>
-      <StepHeading title="Meet the agent" subtitle="This is a research agent with its own Solana wallet. It can browse the web and pay for things on its own — within limits you are about to set." />
-      <Card>
-        <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-solana-gradient text-xl font-display font-bold text-background">
-            RA
-          </div>
-          <div>
-            <p className="font-display text-lg font-semibold">Research Agent</p>
-            <p className="text-sm text-mutedText">Looks up research summaries and pays for them when it needs to.</p>
-          </div>
-        </div>
-        <div className="mt-5 flex items-center justify-between rounded-xl bg-background px-4 py-3">
-          <span className="text-xs uppercase tracking-wide text-mutedText">Wallet address</span>
-          <MonoAddress value={world.keys.agent.publicKey} chars={8} />
-        </div>
-      </Card>
-
-      <label className="mt-6 flex items-center justify-between rounded-2xl border border-border bg-surface px-5 py-4">
-        <span className="text-sm">
-          <span className="font-medium">Use real Solana devnet</span>
-          <span className="block text-xs text-mutedText">Registers and revokes the mandate on the real, deployed program. Falls back automatically if unavailable.</span>
-        </span>
-        <input
-          type="checkbox"
-          checked={useDevnet}
-          disabled={loading}
-          onChange={(e) => onToggleDevnet(e.target.checked)}
-          className="h-5 w-9 flex-shrink-0 appearance-none rounded-full bg-border bg-[length:200%_100%] bg-right transition-all checked:bg-solana-gradient checked:bg-left"
-          aria-label="Use real Solana devnet"
-        />
-      </label>
-      {loading && <p className="mt-2 text-xs text-mutedText">Switching mode…</p>}
-    </section>
-  );
-}
-
-/* ---- Step 2 --------------------------------------------------------------------------------------- */
-
-function StepGiveRules({ world, loading, onSign }: { world: World; loading: boolean; onSign: () => void }) {
-  const signed = world.mandate?.delegationChain.length === 3;
-  return (
-    <section>
-      <StepHeading title="Give it rules" subtitle="The owner drafts a mandate; an independent approver and the agent itself each sign it. These are the hard limits the gate will enforce on every payment." />
-      <Card>
-        <dl className="grid grid-cols-2 gap-4 text-sm">
-          {mandateCardTiles().map((tile) => (
-            <Rule key={tile.label} label={tile.label} value={tile.value} wide={tile.wide} />
-          ))}
-        </dl>
-        <Details label="Show the signed mandate">
-          <ol className="space-y-2 text-xs text-mutedText">
-            {world.mandate?.delegationChain.map((link, i) => (
-              <li key={i} className="flex items-center gap-2">
-                <ShieldCheck className="h-3.5 w-3.5 text-allow" aria-hidden="true" />
-                <span className="font-medium text-white/80">{link.role}</span>
-                <MonoAddress value={link.publicKey} />
-              </li>
-            ))}
-            {!world.mandate?.delegationChain.length && <li>Not signed yet.</li>}
-          </ol>
-        </Details>
-      </Card>
-
-      <div className="mt-6">
-        {!signed ? (
-          <PrimaryButton onClick={onSign} loading={loading}>
-            Sign and register on Solana
-          </PrimaryButton>
-        ) : (
-          <div className="space-y-3">
-            <VerdictBanner verdict="ALLOW" headline="Signed by owner, approver and agent" />
-            {world.mandateOnchain && <ExplorerLink url={world.mandateOnchain.explorerUrl} />}
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function Rule({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
+function FixedRule({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
   return (
     <div className={`rounded-xl bg-background px-4 py-3${wide ? ' col-span-2' : ''}`}>
       <dt className="text-xs uppercase tracking-wide text-mutedText">{label}</dt>
-      <dd className="mt-1 font-display text-base font-semibold">{value}</dd>
+      <dd className="mt-1 break-all font-display text-base font-semibold">{value}</dd>
     </div>
   );
 }
 
-/* ---- Step 3 --------------------------------------------------------------------------------------- */
+const FLOW = [
+  { title: 'Agent asks', body: 'The agent requests a voucher for this channel.' },
+  { title: 'Gate checks', body: 'Atlas Rail compares the delta with the mandate.' },
+  { title: 'Sign if allowed', body: 'The voucher key signs only an ALLOW.' },
+  { title: 'Settle', body: 'The payment-channels program accepts the voucher.' },
+  { title: 'Anchor', body: 'anchor_root stores the receipt Merkle root.' },
+] as const;
 
-function StepNormalPayment({ outcome, loading, onRun }: { outcome?: PaymentOutcome; loading: boolean; onRun: () => void }) {
-  return (
-    <section>
-      <StepHeading title="A normal payment" subtitle={`The agent buys a ${formatUsd(EXPECTED_PRICE)} research summary from a seller the mandate allows.`} />
-      {!outcome ? (
-        <PrimaryButton onClick={onRun} loading={loading}>
-          Run the payment
-        </PrimaryButton>
-      ) : (
-        <PaymentResult outcome={outcome} />
-      )}
-    </section>
-  );
-}
-
-function PaymentResult({ outcome }: { outcome: PaymentOutcome }) {
-  return (
-    <div className="space-y-4">
-      <VerdictBanner verdict={outcome.verdict} headline={outcome.headline} />
-      {outcome.onchain && <ExplorerLink url={outcome.onchain.explorerUrl} />}
-      <Details label="Show the rules it was checked against">
-        <RuleList rules={outcome.rules} />
-      </Details>
-    </div>
-  );
-}
-
-/* ---- Step 4 --------------------------------------------------------------------------------------- */
-
-function StepAttack({ outcome, loading, onRun }: { outcome?: PaymentOutcome; loading: boolean; onRun: () => void }) {
-  return (
-    <section>
-      <StepHeading
-        title="An attack"
-        subtitle="A web page the agent reads carries a hidden instruction: pay a stranger 500 USDC right now. A prompt-injected agent obeys. Watch what the gate does."
-      />
-      {!outcome ? (
-        <PrimaryButton onClick={onRun} loading={loading}>
-          Let the compromised agent try to pay
-        </PrimaryButton>
-      ) : (
-        <PaymentResult outcome={outcome} />
-      )}
-    </section>
-  );
-}
-
-/* ---- Step 5 --------------------------------------------------------------------------------------- */
-
-function StepPriceSpike({
-  moderate,
-  severe,
-  loading,
-  onRunModerate,
-  onRunSevere,
-}: {
-  moderate?: PaymentOutcome;
-  severe?: PaymentOutcome;
-  loading: boolean;
-  onRunModerate: () => void;
-  onRunSevere: () => void;
-}) {
-  return (
-    <section className="space-y-6">
-      <StepHeading
-        title="Price spike"
-        subtitle="The same, approved seller suddenly charges more for the same research call. The mandate's price limit (rule 15) has two zones."
-      />
-      <div>
-        <p className="mb-2 text-sm font-medium text-mutedText">
-          A moderate rise — {formatUsd(EXPECTED_PRICE)} → {formatUsd(MODERATE_SPIKE_AMOUNT)}
-        </p>
-        {!moderate ? (
-          <PrimaryButton onClick={onRunModerate} loading={loading}>
-            Charge {formatUsd(MODERATE_SPIKE_AMOUNT)} instead
-          </PrimaryButton>
-        ) : (
-          <PaymentResult outcome={moderate} />
-        )}
-      </div>
-      <div>
-        <p className="mb-2 text-sm font-medium text-mutedText">
-          A 5× spike, above the hard maximum — {formatUsd(EXPECTED_PRICE)} → {formatUsd(SEVERE_SPIKE_AMOUNT)}
-        </p>
-        {!severe ? (
-          <PrimaryButton onClick={onRunSevere} loading={loading} disabled={!moderate}>
-            Charge {formatUsd(SEVERE_SPIKE_AMOUNT)} instead
-          </PrimaryButton>
-        ) : (
-          <PaymentResult outcome={severe} />
-        )}
-      </div>
-    </section>
-  );
-}
-
-/* ---- Step 6 --------------------------------------------------------------------------------------- */
-
-function StepHuman({
-  moderate,
-  human,
-  loading,
-  onDecide,
-}: {
-  moderate?: PaymentOutcome;
-  human?: PaymentOutcome;
-  loading: boolean;
-  onDecide: (approve: boolean) => void;
-}) {
-  return (
-    <section>
-      <StepHeading title="You are the human" subtitle="The moderate price rise from the last step needs a person to decide. It's you." />
-      {moderate && (
-        <Card>
-          <p className="text-sm text-mutedText">
-            Seller wants {formatUsd(MODERATE_SPIKE_AMOUNT)} for a call the mandate expects to cost {formatUsd(EXPECTED_PRICE)}.
-          </p>
-        </Card>
-      )}
-      {!human ? (
-        <div className="mt-6 flex gap-3">
-          <PrimaryButton onClick={() => onDecide(true)} loading={loading}>
-            Approve
-          </PrimaryButton>
-          <button
-            type="button"
-            onClick={() => onDecide(false)}
-            disabled={loading}
-            className="inline-flex items-center gap-2 rounded-full border border-deny/40 px-6 py-3 text-sm font-semibold text-deny transition hover:bg-deny/10 disabled:opacity-50"
-          >
-            Reject
-          </button>
-        </div>
-      ) : (
-        <div className="mt-6">
-          <PaymentResult outcome={human} />
-        </div>
-      )}
-    </section>
-  );
-}
-
-/* ---- Step 7 --------------------------------------------------------------------------------------- */
-
-/** A bare "SKIP" badge doesn't tell a visitor whether that's expected or a problem — this gives the
- * on-chain checks (the only ones that can SKIP in this walkthrough) a reason tied to what's actually
- * true for this run. In devnet mode, a SKIP here means the on-chain attempt itself failed; the
- * banner at the top of the page already explains why, so this just points there instead of
- * repeating the CLI-oriented message `verifyReceipt` generates for an offline `atlas verify` run. */
-function skipReason(check: ReceiptVerification['checks'][number], mode: World['mode']): string {
-  if (check.id === 'ANCHOR_ONCHAIN' || check.id === 'SETTLEMENT_ONCHAIN') {
-    return mode === 'devnet' ? 'Devnet attempt did not complete this run — see the notice above.' : 'Instant mode — turn on real devnet to check this on-chain.';
-  }
-  return check.message;
-}
-
-function StepProve({
-  world,
-  verification,
-  publication,
-  loading,
-  onVerify,
-  publishAgain,
-}: {
-  world: World;
-  verification: ReceiptVerification | null;
-  publication: StepResponse['publication'] | null;
-  loading: boolean;
-  onVerify: () => void;
-  publishAgain: () => Promise<Publication>;
-}) {
-  const receipt = world.receipts[world.receipts.length - 1];
-  return (
-    <section>
-      <StepHeading
-        title="Proof"
-        subtitle="Every decision — allowed, escalated or blocked — is signed. An allowed payment also gets a verifiable receipt anyone can check, with no account and no trust required."
-      />
-      {!receipt ? (
-        <Card>
-          <p className="text-sm text-mutedText">No receipt yet — go back and approve a payment first.</p>
-        </Card>
-      ) : (
-        <>
-          <Card>
-            <div className="flex items-center justify-between">
-              <span className="text-xs uppercase tracking-wide text-mutedText">Receipt</span>
-              <MonoAddress value={receipt.id} />
-            </div>
-            <Details label="Show the raw receipt">
-              <pre className="max-h-64 overflow-auto rounded-lg bg-background p-3 font-mono text-[11px] text-mutedText">{JSON.stringify(receipt, null, 2)}</pre>
-            </Details>
-          </Card>
-          <div className="mt-6">
-            {!verification ? (
-              <PrimaryButton onClick={onVerify} loading={loading}>
-                Verify this receipt
-              </PrimaryButton>
-            ) : (
-              <ul className="space-y-2">
-                {verification.checks.map((check) => (
-                  <li
-                    key={check.id}
-                    className={`animate-pop-in flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${
-                      check.status === 'PASS'
-                        ? 'border-allow/30 bg-allow/5 text-allow'
-                        : check.status === 'FAIL'
-                          ? 'border-deny/30 bg-deny/5 text-deny'
-                          : 'border-border bg-surface text-mutedText'
-                    }`}
-                  >
-                    <div className="flex-1">
-                      <span className="font-medium">{check.title}</span>
-                      {check.status === 'SKIP' && <p className="mt-0.5 text-xs opacity-80">{skipReason(check, world.mode)}</p>}
-                    </div>
-                    <span className="ml-auto flex-shrink-0 text-xs font-medium opacity-80">{check.status === 'SKIP' ? 'N/A' : check.status}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          {verification && <PublishPanel world={world} publication={publication} publishAgain={publishAgain} />}
-        </>
-      )}
-    </section>
-  );
-}
-
-/**
- * The payoff of the proof step: hand the real payment to /verify, which knows nothing about this
- * session. Publishing never fails silently: it is retried automatically, then offered as a button,
- * and anything that retrying cannot fix is explained.
- */
-function PublishPanel({
-  world,
-  publication,
-  publishAgain,
-}: {
-  world: World;
-  publication: StepResponse['publication'] | null;
-  publishAgain: () => Promise<Publication>;
-}) {
-  const [attempt, setAttempt] = useState<{ n: number; total: number } | null>(null);
-  const autoStarted = useRef(false);
-  const isDevnet = world.mode === 'devnet';
-  const needsRetry = isDevnet && !publication?.stored && (publication?.retryable ?? true);
-
-  const retry = useCallback(async () => {
-    setAttempt({ n: 1, total: 3 });
-    await publishWithRetry(publishAgain, { onAttempt: (n, total) => setAttempt({ n, total }) });
-    setAttempt(null);
-  }, [publishAgain]);
-
+function Flow({ proof }: { proof: PaymentProof }) {
+  const [lit, setLit] = useState(0);
   useEffect(() => {
-    if (needsRetry && !autoStarted.current) {
-      autoStarted.current = true;
-      void retry();
-    }
-  }, [needsRetry, retry]);
-
-  if (publication?.stored) {
-    return (
-      <div className="mt-6 rounded-2xl border border-allow/30 bg-allow/5 p-5" data-testid="publish-panel" data-state="published">
-        <p className="text-sm text-white/90">This payment is on Solana devnet and its receipt is public. Check it the way a stranger would, from the transaction alone.</p>
-        <Link href={`/verify?tx=${publication.txSignature}`} className="mt-4 inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow">
-          <Search className="h-4 w-4" aria-hidden="true" /> Verify this payment from the chain
-        </Link>
-      </div>
-    );
-  }
-
-  if (isDevnet && (attempt || (needsRetry && !autoStarted.current))) {
-    return (
-      <div role="status" className="mt-6 flex items-center gap-3 rounded-2xl border border-border bg-surface p-5 text-sm text-white/90" data-testid="publish-panel" data-state="publishing">
-        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-        Publishing receipt…{attempt ? ` (attempt ${attempt.n} of ${attempt.total})` : ''}
-      </div>
-    );
-  }
-
-  if (isDevnet && publication?.retryable !== false) {
-    return (
-      <div role="alert" className="mt-6 rounded-2xl border border-escalate/40 bg-escalate/10 p-5" data-testid="publish-panel" data-state="failed">
-        <p className="text-sm text-white/90">The receipt could not be published yet{publication ? `: ${publication.reason}` : '.'}</p>
-        <button
-          type="button"
-          onClick={() => void retry()}
-          className="mt-4 inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow"
-        >
-          <RotateCcw className="h-4 w-4" aria-hidden="true" /> Try again
-        </button>
-      </div>
-    );
-  }
-
+    if (lit >= FLOW.length) return;
+    const timer = setTimeout(() => setLit((current) => current + 1), 650);
+    return () => clearTimeout(timer);
+  }, [lit]);
   return (
-    <div className="mt-6 rounded-2xl border border-border bg-surface p-5" data-testid="publish-panel" data-state="unavailable">
-      <p className="text-sm text-mutedText">
-        {isDevnet && publication
-          ? `${publication.reason} Its receipt cannot be looked up from the chain.`
-          : 'In Instant mode this payment is simulated, so there is nothing on-chain to look up. Turn on real devnet at step 1 to make one you can check, or check a real one now.'}
-      </p>
-      <Link href="/verify" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-solana-green hover:underline">
-        <Search className="h-4 w-4" aria-hidden="true" /> Verify a real devnet payment
-      </Link>
-    </div>
+    <ol className="mt-6">
+      {FLOW.map((node, index) => {
+        const on = index < lit;
+        const href = index === 3 ? proof.settleExplorer : index === 4 ? proof.rootExplorer : null;
+        return (
+          <li key={node.title}>
+            {index > 0 ? (
+              <div className="flex justify-center py-1" aria-hidden="true">
+                <Zap className={`h-4 w-4 ${on ? 'animate-pulse text-solana-green' : 'text-border'}`} />
+              </div>
+            ) : null}
+            <div className={`rounded-2xl border px-4 py-3 transition ${on ? 'border-allow/50 bg-allow/10 shadow-glow-green' : 'border-border bg-surface'}`}>
+              <p className="text-sm font-semibold">{node.title}</p>
+              <p className="mt-1 text-xs text-mutedText">{node.body}</p>
+              {href && on ? <ExplorerLink url={href} /> : null}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
-/* ---- Step 8 + end screen ---------------------------------------------------------------------------- */
-
-function StepRevoke({
-  world,
-  afterRevoke,
-  finished,
-  loading,
-  onRevoke,
-  onPayAgain,
-  onFinish,
-  onRestart,
-}: {
-  world: World;
-  afterRevoke?: PaymentOutcome;
-  finished: boolean;
-  loading: boolean;
-  onRevoke: () => void;
-  onPayAgain: () => void;
-  onFinish: () => void;
-  onRestart: () => void;
-}) {
-  if (finished) {
-    return (
-      <section className="text-center">
-        <h1 className="font-display text-3xl font-semibold">Every payment proves it was allowed.</h1>
-        <p className="mt-3 text-lg text-white/90">Check any one yourself.</p>
-        <div className="mt-8 flex flex-col items-center gap-3">
-          <Link href="/verify" className="inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow">
-            <Search className="h-4 w-4" aria-hidden="true" /> Verify a payment
-          </Link>
-          <a href={WEBSITE_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-mutedText hover:text-white">
-            <Globe className="h-4 w-4" aria-hidden="true" /> Website
-          </a>
-          <a href="https://github.com/Rime504/atlas-rail" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-mutedText hover:text-white">
-            <Github className="h-4 w-4" aria-hidden="true" /> View the code
-          </a>
-          <a
-            href="https://github.com/Rime504/atlas-rail/blob/master/spec/agent-mandate-v0.1.md"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 text-sm text-mutedText hover:text-white"
-          >
-            <FileText className="h-4 w-4" aria-hidden="true" /> Read the spec
-          </a>
-          <a
-            href={`https://explorer.solana.com/address/CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k?cluster=devnet`}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 text-sm text-mutedText hover:text-white"
-          >
-            The program on Explorer ↗
-          </a>
-          <button type="button" onClick={onRestart} className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-6 py-3 text-sm font-semibold text-white hover:bg-surfaceRaised">
-            <RotateCcw className="h-4 w-4" aria-hidden="true" /> Run it again
-          </button>
-        </div>
-      </section>
-    );
-  }
-
-  const revoked = Boolean(world.revoked);
+function ProofRow({ label, hint, value, href }: { label: string; hint: string; value: string; href: string }) {
   return (
-    <section>
-      <StepHeading title="Revoke" subtitle="The owner revokes the mandate. The agent's very next payment is denied instantly — no delay, no exceptions." />
-      {!revoked ? (
-        <PrimaryButton onClick={onRevoke} loading={loading}>
-          Revoke on Solana
-        </PrimaryButton>
-      ) : (
-        <div className="space-y-4">
-          <VerdictBanner verdict="DENY" headline="Mandate revoked" />
-          {world.revokeOnchain && <ExplorerLink url={world.revokeOnchain.explorerUrl} />}
-          {!afterRevoke ? (
-            <PrimaryButton onClick={onPayAgain} loading={loading}>
-              Try the payment again
-            </PrimaryButton>
-          ) : (
-            <>
-              <PaymentResult outcome={afterRevoke} />
-              <button
-                type="button"
-                onClick={onFinish}
-                className="mt-4 inline-flex items-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow transition-transform hover:scale-[1.02]"
-              >
-                Finish <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </>
-          )}
-        </div>
-      )}
-    </section>
+    <div className="rounded-2xl border border-border bg-surface p-4">
+      <div className="flex items-center gap-2">
+        <CheckCircle2 className="h-4 w-4 text-allow" aria-hidden="true" />
+        <p className="text-xs uppercase tracking-wide text-mutedText">{label}</p>
+      </div>
+      <p className="mt-2 text-sm text-white/90">{hint}</p>
+      <p className="mt-2 break-all font-mono text-xs">{value}</p>
+      <ExplorerLink url={href} />
+    </div>
   );
 }

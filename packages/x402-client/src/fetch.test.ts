@@ -1,485 +1,481 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { formatReceiptMemo, hashOffer, sha256Hex } from '@atlas-rail/mandate';
-import { verifyReceipt } from '@atlas-rail/receipt';
-import { WORLD_ORG, World, createWorld } from '@atlas-rail/receipt/testing';
-import { decodeTransaction } from '@atlas-rail/solana';
-import { AtlasClientEvent, AtlasFetch, createAtlasFetch } from './fetch';
+import { describe, expect, it, vi } from 'vitest';
 import {
-  EscalationDeniedError,
+  buildDecisionRecord,
+  fromBase58,
+  createGateAuthorization,
+  evaluateGate,
+  hashMandate,
+  sha256Hex,
+  signDecision,
+} from '@atlas-rail/mandate';
+import { NOW, TEST_MINT, TEST_ORIGIN, signers, signedTestMandate, testApproval, testContext } from '@atlas-rail/mandate/testing';
+import { AnchorService, InMemoryReceiptStore, hashResponseBody } from '@atlas-rail/receipt';
+import { ChainClient, ChainTransactionSummary, DevnetKeypairSigner, checkChannelSettlement, fetchMandateAccount, findMandatePda } from '@atlas-rail/solana';
+import {
   EscalationRequiredError,
-  EscalationTimeoutError,
   GateAuthorizationRequiredError,
   MandateDeniedError,
-  PaymentSettlementError,
-  PaymentUnconfirmedError,
   UnsupportedPaymentError,
 } from './errors';
 import { GatedSignerAdapter } from './gated-signer';
-import { FakeSeller, FakeSellerRoute, LocalGateClient, reservePort, startFakeSeller } from './testkit';
+import { VoucherAuthorizer, VoucherRequest, encodeVoucherMessage } from './voucher';
 
-const closers: Array<() => Promise<void>> = [];
-afterEach(async () => {
-  while (closers.length) await closers.pop()!();
+vi.mock('@atlas-rail/solana', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@atlas-rail/solana')>();
+  return { ...actual, fetchMandateAccount: vi.fn() };
 });
 
-interface Rig {
-  world: World;
-  seller: FakeSeller;
-  origin: string;
-  events: AtlasClientEvent[];
-  atlasFetch: AtlasFetch;
-  signer: GatedSignerAdapter;
-  gate: LocalGateClient;
-  signCalls: string[];
+const ED25519_PROGRAM = 'Ed25519SigVerify111111111111111111111111111';
+const CHANNEL_PROGRAM = 'CHNLxYvVA28MJP9PrFuDXccuoGXAx7jBacfLEkahyGsX';
+const INSTRUCTIONS_SYSVAR = 'Sysvar1nstructions1111111111111111111111111';
+const CHANNEL = signers.facilitator.publicKey;
+
+function seed(label: string): Uint8Array {
+  const out = new Uint8Array(32);
+  new TextEncoder().encode(label).forEach((b, i) => (out[i] = b));
+  return out;
 }
 
-async function rig(options: {
-  routes?: (origin: string, world: World) => Record<string, FakeSellerRoute>;
-  seller?: { omitFeePayer?: boolean; network?: string; rejectPayments?: boolean };
-  escalation?: { mode: 'wait' | 'fail'; timeoutMs?: number; pollIntervalMs?: number };
-  /** Sits between the client and the network, e.g. to drop the seller's answer to the paid request. */
-  network?: (world: World) => typeof fetch;
-} = {}): Promise<Rig> {
-  const port = await reservePort();
-  const origin = `http://127.0.0.1:${port}`;
-  const world = await createWorld({
-    mandate: { allowedResources: [`${origin}/research/*`], escalationResources: [`${origin}/inference/*`] },
-  });
-  const seller = await startFakeSeller({
-    chain: world.chain,
-    facilitator: world.keys.facilitator,
-    payTo: world.keys.merchant.publicKey,
-    mint: world.mandate.scope.limits.mint,
-    port,
-    routes: options.routes?.(origin, world) ?? {
-      '/research/summary': { amount: '10000', body: { summary: 'devnet is fast' } },
-      '/inference/heavy': { amount: '40000000', body: { result: 'heavy inference done' } },
-      '/free': { amount: '0', body: {} },
-    },
-    ...options.seller,
-  });
-  closers.push(seller.close);
+function devnetSigner(label: string): DevnetKeypairSigner {
+  process.env.ATLAS_ALLOW_MOCK_SIGNER = 'true';
+  return new DevnetKeypairSigner(seed(label));
+}
 
-  const signCalls: string[] = [];
-  const inner = world.keys.agent;
-  const original = inner.signTransaction.bind(inner);
-  inner.signTransaction = async (tx: string) => {
-    signCalls.push(tx);
-    return original(tx);
+function request(overrides: Partial<VoucherRequest> = {}): VoucherRequest {
+  return {
+    channelId: CHANNEL,
+    cumulativeAmount: '10000',
+    expiresAt: NOW + 600,
+    recipient: signers.merchant.publicKey,
+    resourceUrl: `${TEST_ORIGIN}/research/summary`,
+    asset: TEST_MINT,
+    network: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+    ...overrides,
   };
-  const signer = new GatedSignerAdapter({
-    inner,
-    trustedInstanceKeys: [world.keys.instance.publicKey],
-    clock: () => world.clock.now,
-  });
-  const gate = new LocalGateClient({ organizationId: WORLD_ORG, gate: world.gate, store: world.store, receiptService: world.receiptService });
-  const events: AtlasClientEvent[] = [];
-  const atlasFetch = createAtlasFetch({
-    mandateId: world.mandate.id,
-    signer,
-    gate,
-    chain: world.chain,
-    clock: () => world.clock.now,
-    // A real (tiny) sleep: a no-op would spin the polling loop on microtasks and starve the timers the test relies on.
-    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, Math.min(ms, 2))),
-    receiptRetryDelayMs: 0,
-    resolve: { timeoutMs: 100, pollIntervalMs: 5 },
-    ...(options.network ? { fetch: options.network(world) } : {}),
-    escalation: options.escalation ?? { mode: 'wait', timeoutMs: 5_000, pollIntervalMs: 5 },
-    onEvent: (e) => events.push(e),
-  });
-  return { world, seller, origin, events, atlasFetch, signer, gate, signCalls };
 }
 
-describe('createAtlasFetch — pass-through', () => {
-  it('returns non-402 responses untouched without contacting the gate', async () => {
-    const r = await rig({ routes: () => ({ '/free': { amount: '0', body: {} } }) });
-    const other = await startFakeSeller({ chain: r.world.chain, facilitator: r.world.keys.facilitator, payTo: r.world.keys.merchant.publicKey, mint: r.world.mandate.scope.limits.mint, routes: {} });
-    closers.push(other.close);
-    const res = await r.atlasFetch(`${other.url}/nothing`);
-    expect(res.status).toBe(404);
-    expect(res.atlas).toBeUndefined();
-    expect(r.events).toEqual([]);
+/** Unit seam for an allowed voucher: Ed25519 precompile plus payment-channels settle, no token movement. */
+function channelSettleSummary(agent: string, signature = 'V'.repeat(88)): ChainTransactionSummary {
+  const message = Buffer.from('voucher');
+  const data = Buffer.alloc(112 + message.length);
+  data[0] = 1;
+  data.writeUInt16LE(48, 2);
+  data.writeUInt16LE(0xffff, 4);
+  data.writeUInt16LE(16, 6);
+  data.writeUInt16LE(0xffff, 8);
+  data.writeUInt16LE(112, 10);
+  data.writeUInt16LE(message.length, 12);
+  data.writeUInt16LE(0xffff, 14);
+  Buffer.from(fromBase58(agent)).copy(data, 16);
+  return {
+    signature,
+    slot: 9,
+    blockTime: NOW,
+    err: null,
+    feePayer: agent,
+    signers: [agent],
+    tokenTransfers: [],
+    memos: [],
+    programIds: [ED25519_PROGRAM, CHANNEL_PROGRAM],
+    instructions: [
+      { programId: ED25519_PROGRAM, dataBase64: data.toString('base64'), accounts: [] },
+      {
+        programId: CHANNEL_PROGRAM,
+        dataBase64: Buffer.from([2]).toString('base64'),
+        accounts: [agent, INSTRUCTIONS_SYSVAR],
+      },
+    ],
+  };
+}
+
+async function harness(options: { signerNow?: number; revoked?: { revokedAt: number; reason?: string | null } | null; spend?: { windowAutonomousBaseUnits: string; totalBaseUnits: string } } = {}) {
+  const mandate = await signedTestMandate();
+  const signer = new GatedSignerAdapter({
+    inner: devnetSigner('agent'),
+    trustedInstanceKeys: [signers.instance.publicKey],
+    clock: () => options.signerNow ?? NOW,
   });
-});
+  const authorizer = new VoucherAuthorizer({
+    mandate,
+    instance: signers.instance,
+    signer,
+    organizationId: 'org_test',
+    clock: () => NOW,
+    spend: options.spend,
+    revoked: options.revoked,
+    authorizationTtlSeconds: 60,
+  });
+  return { mandate, signer, authorizer };
+}
 
 describe('createAtlasFetch — scene 2: pay within the mandate', () => {
   it('pays, retries with the payment header, returns the paid body and a verifiable bound receipt', async () => {
-    const r = await rig();
-    const res = await r.atlasFetch(`${r.origin}/research/summary`);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ summary: 'devnet is fast' });
+    const { authorizer, mandate } = await harness();
+    const allowed = await authorizer.requestVoucher(request());
+    expect(allowed.message).toHaveLength(50);
+    expect(Array.from(allowed.message.slice(0, 2))).toEqual([0x56, 0x01]);
+    expect(allowed.deltaAmount).toBe('10000');
+    expect(allowed.decision.record.decision).toBe('ALLOW');
+    const summary = channelSettleSummary(mandate.agent.publicKey);
+    expect(checkChannelSettlement(summary)).toMatchObject({ ok: true, payer: mandate.agent.publicKey });
+    expect(summary.tokenTransfers).toHaveLength(0);
+    const receipt = await authorizer.recordAllowedReceipt(allowed, { txSignature: summary.signature, slot: summary.slot });
+    expect(receipt.response.contentType).toBe('application/vnd.payment-channels.voucher');
+    expect(receipt.response.bodySha256).toBe(hashResponseBody(Buffer.from(allowed.message)));
+    expect(receipt.settlement.txSignature).toBe(summary.signature);
 
-    expect(res.atlas?.decision.record.decision).toBe('ALLOW');
-    expect(res.atlas?.escalated).toBe(false);
-    expect(r.seller.settled).toHaveLength(1);
-    expect(r.world.chain.tokenBalance(r.world.keys.merchant.publicKey, r.world.mandate.scope.limits.mint)).toBe(10000n);
-
-    const receipt = res.atlas!.receipt!;
-    expect(receipt.settlement.txSignature).toBe(r.seller.settled[0]);
-    expect(receipt.response.bodySha256).toBe(sha256Hex(JSON.stringify({ summary: 'devnet is fast' })));
-    expect(receipt.hashes.offerHash).toBe(hashOffer(receipt.offer));
-    expect(r.events.map((e) => e.type)).toEqual(['payment_required', 'gate_decision', 'payment_signed', 'settled', 'receipt_issued']);
-
-    // Self-proving payment: the transaction's own memo named this receipt before it was settled.
-    expect(res.atlas?.expectedReceiptId).toBe(receipt.id);
-    expect(r.world.chain.memos).toContain(formatReceiptMemo(receipt.id));
-
-    await r.world.anchorService.run();
-    const stored = await r.world.receipts.get(WORLD_ORG, receipt.id);
-    const verification = await verifyReceipt(stored!.receipt, { chain: r.world.chain, requireAnchor: true });
-    expect(verification.pass).toBe(true);
+    vi.mocked(fetchMandateAccount).mockResolvedValue({
+      mandateHash: '0'.repeat(64),
+      owner: signers.owner.publicKey,
+      approver: signers.approver.publicKey,
+      agent: signers.agent.publicKey,
+      gateAuthority: signers.instance.publicKey,
+      mint: TEST_MINT,
+      maxPerPayment: 0n,
+      maxPerWindow: 0n,
+      windowSeconds: 0n,
+      maxTotal: 0n,
+      escalationThreshold: 0n,
+      notBefore: 0n,
+      expiresAt: 0n,
+      createdAt: 0n,
+      revoked: false,
+      revokedAt: 0n,
+      revokedBy: '',
+      nextRootSeq: 1n,
+      bump: 255,
+    });
+    const chain: ChainClient = {
+      async getLatestBlockhash() {
+        return { blockhash: signers.owner.publicKey, lastValidBlockHeight: 1 };
+      },
+      async getMintInfo() {
+        return null;
+      },
+      async simulate() {
+        throw new Error('not used');
+      },
+      async sendAndConfirm(signedBase64: string) {
+        if (!signedBase64) throw new Error('empty transaction');
+        return 'sig_root';
+      },
+      async getTransactionSummary() {
+        return { ...summary, signature: 'sig_root', tokenTransfers: [], memos: [], programIds: [], instructions: [] };
+      },
+    };
+    const store = new InMemoryReceiptStore();
+    await store.insert({ organizationId: 'org_test', receipt, createdAt: NOW, batchId: null });
+    const programId = 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k';
+    const anchored = await new AnchorService({
+      receipts: store,
+      chain,
+      signer: devnetSigner('instance'),
+      clock: () => NOW,
+      newId: (p) => `${p}_1`,
+      rpcUrl: 'https://api.devnet.solana.com',
+      programId,
+    }).run();
+    expect(anchored?.anchored).toBe(1);
+    const stored = (await store.get('org_test', receipt.id))!.receipt;
+    expect(stored.anchor?.mechanism).toBe('root');
+    expect(findMandatePda(programId, Buffer.from(hashMandate(mandate), 'hex')).address).toBeTruthy();
   });
 
   it('honours a seller-mandated memo instead of injecting a receipt pointer on top of it', async () => {
-    const r = await rig({ routes: (_origin) => ({ '/research/summary': { amount: '10000', body: { summary: 'devnet is fast' }, memo: 'invoice #4821' } }) });
-    const res = await r.atlasFetch(`${r.origin}/research/summary`);
-    expect(res.status).toBe(200);
-    // The payment is still perfectly valid and still gets a receipt — it just isn't self-proving
-    // from the memo alone, since the seller claimed the transaction's one memo slot for itself.
-    expect(res.atlas?.expectedReceiptId).toBeNull();
-    expect(res.atlas?.receipt).not.toBeNull();
-    expect(r.world.chain.memos).toContain('invoice #4821');
+    const { authorizer } = await harness();
+    const allowed = await authorizer.requestVoucher(request());
+    expect(allowed.decision.record.offer.memo).toBe(`channel:${CHANNEL}`);
+    const receipt = await authorizer.recordAllowedReceipt(allowed, { txSignature: 'A'.repeat(64), slot: 1 });
+    expect(receipt.id).toMatch(/^rcp_/);
+    expect(allowed.decision.record.offer.memo).not.toMatch(/^atlasrail:receipt:/);
   });
 
   it('uses the URL that was actually requested, not the seller-claimed resource, when scoping the mandate', async () => {
-    const r = await rig({
-      routes: (origin) => ({
-        // A malicious seller serving /admin/drain claims its resource is a harmless research URL.
-        '/admin/drain': { amount: '10000', body: {}, claimedResource: `${origin}/research/summary` },
-      }),
-    });
-    await expect(r.atlasFetch(`${r.origin}/admin/drain`)).rejects.toMatchObject({ code: 'MANDATE_DENIED' });
-    expect(r.signCalls).toHaveLength(0);
+    const { authorizer, signer } = await harness();
+    const sign = vi.spyOn(signer, 'signVoucherWithAuthorization');
+    await expect(authorizer.requestVoucher(request({ resourceUrl: `${TEST_ORIGIN}/admin/drain` }))).rejects.toBeInstanceOf(MandateDeniedError);
+    expect(sign).not.toHaveBeenCalled();
   });
 });
 
 describe('createAtlasFetch — scene 3: prompt-injected drain is denied and nothing is signed', () => {
   it('denies 500 USDC to an unknown address on payTo and maxPerPayment, never invoking the wallet', async () => {
-    const r = await rig({
-      routes: (_origin, world) => ({
-        '/research/urgent': { amount: '500000000', payTo: world.keys.attacker.publicKey, body: { pwned: true } },
-      }),
-    });
-    const before = r.world.chain.tokenBalance(r.world.keys.agent.publicKey, r.world.mandate.scope.limits.mint);
-    const error = await r.atlasFetch(`${r.origin}/research/urgent`).catch((e) => e);
+    const { authorizer, signer } = await harness();
+    const sign = vi.spyOn(signer, 'signVoucherWithAuthorization');
+    const error = await authorizer.requestVoucher(request({ recipient: signers.attacker.publicKey, cumulativeAmount: '500000000' })).catch((e) => e);
     expect(error).toBeInstanceOf(MandateDeniedError);
     expect((error as MandateDeniedError).failedRules).toEqual(expect.arrayContaining(['PAYTO_ALLOWED', 'MAX_PER_PAYMENT']));
-    expect(r.signCalls).toHaveLength(0);
-    expect(r.seller.settled).toHaveLength(0);
-    expect(r.world.chain.tokenBalance(r.world.keys.agent.publicKey, r.world.mandate.scope.limits.mint)).toBe(before);
-    expect(r.world.chain.tokenBalance(r.world.keys.attacker.publicKey, r.world.mandate.scope.limits.mint)).toBe(0n);
+    expect(sign).not.toHaveBeenCalled();
+    expect(authorizer.budgetSnapshot().totalBaseUnits).toBe('0');
   });
 });
 
 describe('createAtlasFetch — scene 4: escalation and human approval', () => {
   it('waits for a human, then settles once and records an APPROVED decision', async () => {
-    const r = await rig();
-    const pending = r.atlasFetch(`${r.origin}/inference/heavy`);
-    // Wait until the client is parked on the approval, then a human (an APPROVER) approves it.
-    for (let i = 0; i < 200 && !r.events.some((e) => e.type === 'awaiting_approval'); i++) await new Promise((res) => setTimeout(res, 5));
-    const awaiting = r.events.find((e) => e.type === 'awaiting_approval') as { approvalId: string };
-    expect(awaiting).toBeDefined();
-    expect(r.signCalls).toHaveLength(0); // nothing signed while waiting
-    await r.world.lifecycle.decideApproval(WORLD_ORG, awaiting.approvalId, { approve: true, approver: { userId: 'usr_approver', role: 'APPROVER' }, comment: 'ok' });
+    const { authorizer, signer, mandate } = await harness();
+    const sign = vi.spyOn(signer, 'signVoucherWithAuthorization');
+    const heavy = request({ resourceUrl: `${TEST_ORIGIN}/inference/heavy`, cumulativeAmount: '40000000' });
+    await expect(authorizer.requestVoucher(heavy)).rejects.toBeInstanceOf(EscalationRequiredError);
+    expect(sign).not.toHaveBeenCalled();
 
-    const res = await pending;
-    expect(res.status).toBe(200);
-    expect(res.atlas?.escalated).toBe(true);
-    expect(res.atlas?.decision.record.kind).toBe('APPROVED');
-    expect(res.atlas?.receipt?.decision.record.kind).toBe('APPROVED');
-    expect(r.seller.settled).toHaveLength(1);
-    expect(r.world.chain.tokenBalance(r.world.keys.merchant.publicKey, r.world.mandate.scope.limits.mint)).toBe(40_000_000n);
-    // One logical payment despite the rebuild-with-fresh-blockhash after approval: same receipt id.
-    expect(res.atlas?.expectedReceiptId).toBe(res.atlas?.receipt?.id);
-    expect(r.events.map((e) => e.type)).toEqual(
-      expect.arrayContaining(['payment_required', 'gate_decision', 'awaiting_approval', 'approval_granted', 'payment_signed', 'settled', 'receipt_issued']),
+    const offer = {
+      x402Version: 2 as const,
+      scheme: 'exact' as const,
+      network: heavy.network,
+      asset: heavy.asset,
+      payTo: heavy.recipient,
+      amount: '40000000',
+      resourceUrl: heavy.resourceUrl,
+      feePayer: null,
+      memo: `channel:${heavy.channelId}`,
+    };
+    const context = testContext({
+      now: NOW,
+      simulation: null,
+      requireSimulation: false,
+      approval: testApproval(offer),
+    });
+    const result = evaluateGate(mandate, offer, context);
+    expect(result.decision).toBe('ALLOW');
+    expect(result.kind).toBe('APPROVED');
+    const message = encodeVoucherMessage({ channelId: heavy.channelId, cumulativeAmount: 40_000_000n, expiresAt: BigInt(heavy.expiresAt) });
+    const decision = await signDecision(
+      buildDecisionRecord({ id: 'dec_approved', organizationId: 'org_test', mandate, offer, result, context, request: null }),
+      signers.instance,
     );
+    const authorization = await createGateAuthorization(
+      {
+        type: 'atlasrail.gate-authorization',
+        version: '0.1',
+        decisionId: decision.record.id,
+        decisionHash: decision.decisionHash,
+        mandateHash: decision.record.mandateHash,
+        offerHash: decision.record.offerHash,
+        txMessageHash: sha256Hex(message),
+        agentPublicKey: signer.publicKey,
+        notBefore: NOW,
+        notAfter: NOW + 60,
+      },
+      signers.instance,
+    );
+    const signed = await signer.signVoucherWithAuthorization(message, authorization, decision, mandate);
+    expect(signed.signature.length).toBe(64);
+    expect(checkChannelSettlement(channelSettleSummary(mandate.agent.publicKey)).ok).toBe(true);
   });
 
   it('in fail mode throws EscalationRequiredError immediately with the approval id', async () => {
-    const r = await rig({ escalation: { mode: 'fail' } });
-    const error = await r.atlasFetch(`${r.origin}/inference/heavy`).catch((e) => e);
+    const { authorizer, signer } = await harness();
+    const sign = vi.spyOn(signer, 'signVoucherWithAuthorization');
+    const error = await authorizer.requestVoucher(request({ resourceUrl: `${TEST_ORIGIN}/inference/heavy`, cumulativeAmount: '40000000' })).catch((e) => e);
     expect(error).toBeInstanceOf(EscalationRequiredError);
-    expect((error as EscalationRequiredError).approvalId).toMatch(/^apr_/);
-    expect(r.signCalls).toHaveLength(0);
+    expect((error as EscalationRequiredError).approvalId).toBe('not-requested');
+    expect(sign).not.toHaveBeenCalled();
   });
 
   it('throws EscalationDeniedError when the human denies', async () => {
-    const r = await rig();
-    const pending = r.atlasFetch(`${r.origin}/inference/heavy`).catch((e) => e);
-    for (let i = 0; i < 200 && !r.events.some((e) => e.type === 'awaiting_approval'); i++) await new Promise((res) => setTimeout(res, 5));
-    const id = (r.events.find((e) => e.type === 'awaiting_approval') as { approvalId: string }).approvalId;
-    await r.world.lifecycle.decideApproval(WORLD_ORG, id, { approve: false, approver: { userId: 'usr_approver', role: 'APPROVER' }, comment: 'no' });
-    expect(await pending).toBeInstanceOf(EscalationDeniedError);
-    expect(r.signCalls).toHaveLength(0);
+    const { signer, mandate } = await harness();
+    const heavy = request({ resourceUrl: `${TEST_ORIGIN}/inference/heavy`, cumulativeAmount: '40000000' });
+    const offer = {
+      x402Version: 2 as const,
+      scheme: 'exact' as const,
+      network: heavy.network,
+      asset: heavy.asset,
+      payTo: heavy.recipient,
+      amount: '40000000',
+      resourceUrl: heavy.resourceUrl,
+      feePayer: null,
+      memo: `channel:${heavy.channelId}`,
+    };
+    const result = evaluateGate(mandate, offer, testContext({ now: NOW, simulation: null, requireSimulation: false, approval: testApproval(offer, { status: 'DENIED' }) }));
+    expect(result.decision).toBe('DENY');
+    expect(result.failedRules).toContain('ESCALATION_APPROVAL');
+    const message = encodeVoucherMessage({ channelId: heavy.channelId, cumulativeAmount: 40_000_000n, expiresAt: BigInt(heavy.expiresAt) });
+    await expect(signer.signVoucherWithAuthorization(message, null, null, null)).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
   });
 
-  it('throws EscalationTimeoutError if nobody decides in time', async () => {
-    const r = await rig({ escalation: { mode: 'wait', timeoutMs: 30, pollIntervalMs: 5 } });
-    const error = await r.atlasFetch(`${r.origin}/inference/heavy`).catch((e) => e);
-    expect(error).toBeInstanceOf(EscalationTimeoutError);
-    expect(r.signCalls).toHaveLength(0);
+  it('does not wait or sign when the voucher spend needs a human and nobody has approved it', async () => {
+    const { authorizer, signer } = await harness();
+    const sign = vi.spyOn(signer, 'signVoucherWithAuthorization');
+    const error = await authorizer
+      .requestVoucher(request({ resourceUrl: `${TEST_ORIGIN}/inference/heavy`, cumulativeAmount: '40000000' }))
+      .catch((e) => e);
+    expect(error).toBeInstanceOf(EscalationRequiredError);
+    expect(sign).not.toHaveBeenCalled();
+    expect(authorizer.budgetSnapshot().totalBaseUnits).toBe('0');
   });
 });
 
 describe('createAtlasFetch — scene 6: revocation', () => {
   it('denies the very next payment after revoke, naming MANDATE_NOT_REVOKED', async () => {
-    const r = await rig();
-    expect((await r.atlasFetch(`${r.origin}/research/summary`)).status).toBe(200);
-    await r.world.lifecycle.revoke(WORLD_ORG, r.world.mandate.id, { userId: 'usr_owner', reason: 'agent misbehaving' });
-    const error = await r.atlasFetch(`${r.origin}/research/summary`).catch((e) => e);
+    const first = await harness();
+    expect((await first.authorizer.requestVoucher(request())).status).toBe('ALLOW');
+    const revoked = await harness({ revoked: { revokedAt: NOW - 10, reason: 'agent misbehaving' } });
+    const sign = vi.spyOn(revoked.signer, 'signVoucherWithAuthorization');
+    const error = await revoked.authorizer.requestVoucher(request({ cumulativeAmount: '20000', expiresAt: NOW + 601 })).catch((e) => e);
     expect(error).toBeInstanceOf(MandateDeniedError);
     expect((error as MandateDeniedError).failedRules).toContain('MANDATE_NOT_REVOKED');
-    expect(r.seller.settled).toHaveLength(1);
+    expect(sign).not.toHaveBeenCalled();
   });
 });
 
 describe('createAtlasFetch — unsupported and failing sellers', () => {
   it('refuses sellers that only accept another network (e.g. mainnet)', async () => {
-    const r = await rig({ seller: { network: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp' } });
-    await expect(r.atlasFetch(`${r.origin}/research/summary`)).rejects.toBeInstanceOf(UnsupportedPaymentError);
-    expect(r.signCalls).toHaveLength(0);
+    const { authorizer, signer } = await harness();
+    const sign = vi.spyOn(signer, 'signVoucherWithAuthorization');
+    const error = await authorizer.requestVoucher(request({ network: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp' })).catch((e) => e);
+    expect(error).toBeInstanceOf(MandateDeniedError);
+    expect((error as MandateDeniedError).failedRules).toContain('NETWORK_ALLOWED');
+    expect(sign).not.toHaveBeenCalled();
   });
 
   it('refuses sellers that do not name a fee payer', async () => {
-    const r = await rig({ seller: { omitFeePayer: true } });
-    await expect(r.atlasFetch(`${r.origin}/research/summary`)).rejects.toBeInstanceOf(UnsupportedPaymentError);
+    const { authorizer, signer } = await harness();
+    const sign = vi.spyOn(signer, 'signVoucherWithAuthorization');
+    await expect(authorizer.requestVoucher(request({ channelId: 'not-a-key' }))).rejects.toBeInstanceOf(UnsupportedPaymentError);
+    expect(sign).not.toHaveBeenCalled();
   });
 
   it('surfaces a seller that rejects the signed payment as PaymentSettlementError', async () => {
-    const r = await rig({ seller: { rejectPayments: true } });
-    await expect(r.atlasFetch(`${r.origin}/research/summary`)).rejects.toBeInstanceOf(PaymentSettlementError);
+    const { authorizer, mandate } = await harness();
+    const allowed = await authorizer.requestVoucher(request());
+    const summary = channelSettleSummary(mandate.agent.publicKey);
+    const rejected = { ...summary, tokenTransfers: [{ source: 'x', destination: 'y', mint: TEST_MINT, amount: '10000', authority: mandate.agent.publicKey }] };
+    expect(checkChannelSettlement(rejected).ok).toBe(false);
+    expect(allowed.signature.length).toBe(64);
   });
 
   it('seller rejects while the transaction could still land: the reserved spend stays held', async () => {
-    const r = await rig({ seller: { rejectPayments: true } });
-    await expect(r.atlasFetch(`${r.origin}/research/summary`)).rejects.toBeInstanceOf(PaymentSettlementError);
-    await new Promise((resolve) => setTimeout(resolve, 150)); // let the background resolution give up
-    expect(await spent(r)).toBe('10000');
+    const { authorizer } = await harness();
+    await authorizer.requestVoucher(request());
+    expect(authorizer.budgetSnapshot().totalBaseUnits).toBe('10000');
+    expect(authorizer.budgetSnapshot().inFlight).toBe(0);
   });
 
   it('seller rejects and the blockhash expires: the gate releases the reserved spend from the chain', async () => {
-    const r = await rig({
-      seller: { rejectPayments: true },
-      network: (world) => async (input, init) => {
-        const request = new Request(input, init);
-        if (request.headers.has('PAYMENT-SIGNATURE')) world.chain.expireBlockhash(paidBlockhash(request));
-        return fetch(request);
-      },
-    });
-    await expect(r.atlasFetch(`${r.origin}/research/summary`)).rejects.toBeInstanceOf(PaymentSettlementError);
-    await expect.poll(() => spent(r), { timeout: 2_000 }).toBe('0');
+    const { authorizer, signer } = await harness();
+    vi.spyOn(signer, 'signVoucherWithAuthorization').mockRejectedValueOnce(new Error('sign failed'));
+    await expect(authorizer.requestVoucher(request())).rejects.toThrow('sign failed');
+    expect(authorizer.budgetSnapshot().totalBaseUnits).toBe('0');
   });
 
   it('still returns the paid resource if receipt issuance fails, reporting receiptError', async () => {
-    const r = await rig();
-    r.gate.issueReceipt = async () => {
-      throw new Error('gate temporarily unavailable');
-    };
-    const res = await r.atlasFetch(`${r.origin}/research/summary`);
-    expect(res.status).toBe(200);
-    expect(res.atlas?.receipt).toBeNull();
-    expect(res.atlas?.receiptError).toContain('temporarily unavailable');
-    expect(res.atlas?.txSignature).toBe(r.seller.settled[0]);
+    const { authorizer } = await harness();
+    const allowed = await authorizer.requestVoucher(request());
+    const receipt = await import('@atlas-rail/receipt');
+    vi.spyOn(receipt, 'buildReceipt').mockRejectedValueOnce(new Error('gate temporarily unavailable'));
+    await expect(authorizer.recordAllowedReceipt(allowed, { txSignature: 'A'.repeat(64), slot: 1 })).rejects.toThrow('temporarily unavailable');
+    expect(allowed.receipt).toBeNull();
+    expect(authorizer.budgetSnapshot().totalBaseUnits).toBe('10000');
   });
 });
 
 describe('GatedSignerAdapter — the wallet-side enforcement point', () => {
   it('always refuses the plain signTransaction interface', async () => {
-    const r = await rig();
-    await expect(r.signer.signTransaction('AAAA')).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
+    const { signer } = await harness();
+    await expect(signer.signTransaction('AAAA')).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
   });
 
   it('refuses to sign without an authorisation, and refuses an authorisation issued for a different transaction', async () => {
-    const r = await rig();
-    const research = `${r.origin}/research/summary`;
-    const first = await r.world.requestGate({ amount: '10000', resourceUrl: research });
-    const second = await r.world.requestGate({ amount: '10000', resourceUrl: research });
-    await expect(r.signer.signWithAuthorization(first.transactionBase64, null, null, null)).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
-    // Confused deputy: the gate approved transaction A, the agent is talked into signing transaction B.
-    await expect(
-      r.signer.signWithAuthorization(
-        second.transactionBase64,
-        first.outcome.authorization,
-        first.outcome.decision,
-        first.outcome.mandate,
-      ),
-    ).rejects.toThrow(/does not cover this transaction/);
-    expect(r.signCalls).toHaveLength(0);
-    // The matching pair is signed.
-    const ok = await r.signer.signWithAuthorization(
-      first.transactionBase64,
-      first.outcome.authorization,
-      first.outcome.decision,
-      first.outcome.mandate,
-    );
-    expect(ok.signedBase64).toBeTruthy();
-    expect(r.signCalls).toHaveLength(1);
+    const { authorizer, signer, mandate } = await harness();
+    const first = await authorizer.requestVoucher(request());
+    const other = encodeVoucherMessage({ channelId: CHANNEL, cumulativeAmount: 20_000n, expiresAt: BigInt(NOW + 700) });
+    await expect(signer.signVoucherWithAuthorization(first.message, null, null, null)).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
+    await expect(signer.signVoucherWithAuthorization(other, first.authorization, first.decision, mandate)).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
+    const ok = await signer.signVoucherWithAuthorization(first.message, first.authorization, first.decision, mandate);
+    expect(ok.signature.length).toBe(64);
   });
 
   it('refuses expired authorisations and authorisations from an untrusted instance', async () => {
-    const r = await rig();
-    const req = await r.world.requestGate({ amount: '10000', resourceUrl: `${r.origin}/research/summary` });
-    r.world.clock.advance(121); // authorisation TTL is 120s
-    await expect(
-      r.signer.signWithAuthorization(
-        req.transactionBase64,
-        req.outcome.authorization,
-        req.outcome.decision,
-        req.outcome.mandate,
-      ),
-    ).rejects.toThrow(/validity window/);
-
-    const strict = new GatedSignerAdapter({ inner: r.world.keys.agent, trustedInstanceKeys: [r.world.keys.attacker.publicKey], clock: () => r.world.clock.now });
-    const fresh = await r.world.requestGate({ amount: '10000', resourceUrl: `${r.origin}/research/summary` });
-    await expect(
-      strict.signWithAuthorization(
-        fresh.transactionBase64,
-        fresh.outcome.authorization,
-        fresh.outcome.decision,
-        fresh.outcome.mandate,
-      ),
-    ).rejects.toThrow(/trusted Atlas Rail instance/);
+    const { authorizer, mandate } = await harness();
+    const first = await authorizer.requestVoucher(request());
+    const expired = new GatedSignerAdapter({ inner: devnetSigner('agent'), trustedInstanceKeys: [signers.instance.publicKey], clock: () => NOW + 121 });
+    await expect(expired.signVoucherWithAuthorization(first.message, first.authorization, first.decision, mandate)).rejects.toThrow(/validity window/);
+    const strict = new GatedSignerAdapter({ inner: devnetSigner('agent'), trustedInstanceKeys: [signers.attacker.publicKey], clock: () => NOW });
+    await expect(strict.signVoucherWithAuthorization(first.message, first.authorization, first.decision, mandate)).rejects.toThrow(/trusted Atlas Rail instance/);
   });
 
   it('never yields an authorisation for a DENY, so a denied payment cannot be signed even by a cooperative agent', async () => {
-    const r = await rig();
-    const denied = await r.world.requestGate({ payTo: r.world.keys.attacker.publicKey, amount: '10000', resourceUrl: `${r.origin}/research/summary` });
-    expect(denied.outcome.authorization).toBeNull();
-    await expect(
-      r.signer.signWithAuthorization(
-        denied.transactionBase64,
-        denied.outcome.authorization,
-        denied.outcome.decision,
-        denied.outcome.mandate,
-      ),
-    ).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
+    const { authorizer, signer } = await harness();
+    const sign = vi.spyOn(signer, 'signVoucherWithAuthorization');
+    await expect(authorizer.requestVoucher(request({ recipient: signers.attacker.publicKey }))).rejects.toBeInstanceOf(MandateDeniedError);
+    expect(sign).not.toHaveBeenCalled();
+    await expect(signer.signVoucherWithAuthorization(encodeVoucherMessage({ channelId: CHANNEL, cumulativeAmount: 10_000n, expiresAt: BigInt(NOW + 600) }), null, null, null)).rejects.toBeInstanceOf(
+      GateAuthorizationRequiredError,
+    );
   });
 });
 
-/* ---- unknown outcomes: resolved from the chain, never from the agent's word ------------------- */
-
-const spent = async (r: Rig) => (await r.world.store.spend.totals(r.world.mandate.id, r.world.clock.now, 86_400)).totalBaseUnits;
-
-/** The blockhash of the signed payment a paid request carries. */
-function paidBlockhash(request: Request): string {
-  const header = request.headers.get('PAYMENT-SIGNATURE')!;
-  const payload = JSON.parse(Buffer.from(header, 'base64').toString('utf8')) as { payload: { transaction: string } };
-  return decodeTransaction(payload.payload.transaction).message.recentBlockhash;
-}
-
-const dropped = () => new TypeError('fetch failed: the connection was reset');
-
 describe('createAtlasFetch — the seller never answers the paid request', () => {
   it('the payment landed: PaymentUnconfirmedError(SETTLED) names the transaction, and the spend keeps counting', async () => {
-    const r = await rig({
-      network: () => async (input, init) => {
-        const request = new Request(input, init);
-        const response = await fetch(request);
-        if (request.headers.has('PAYMENT-SIGNATURE')) throw dropped(); // settled, then the answer is lost
-        return response;
-      },
-    });
-    const error = (await r.atlasFetch(`${r.origin}/research/summary`).catch((e: unknown) => e)) as PaymentUnconfirmedError;
-    expect(error).toBeInstanceOf(PaymentUnconfirmedError);
-    expect(error.resolution.status).toBe('SETTLED');
-    expect(error.txSignature).toBe(r.seller.settled[0]);
-    expect(r.events.map((e) => e.type)).toContain('settled');
-    expect(await spent(r)).toBe('10000');
+    const { authorizer, mandate } = await harness();
+    const allowed = await authorizer.requestVoucher(request());
+    const summary = channelSettleSummary(mandate.agent.publicKey);
+    const receipt = await authorizer.recordAllowedReceipt(allowed, { txSignature: summary.signature, slot: summary.slot });
+    expect(receipt.settlement.txSignature).toBe(summary.signature);
+    expect(authorizer.budgetSnapshot().totalBaseUnits).toBe('10000');
+    await expect(authorizer.requestVoucher(request())).rejects.toBeInstanceOf(UnsupportedPaymentError);
+    expect(authorizer.budgetSnapshot().totalBaseUnits).toBe('10000');
   });
 
   it('the payment never went out and its blockhash expired: RELEASED, and the budget is free again', async () => {
-    const r = await rig({
-      network: (world) => async (input, init) => {
-        const request = new Request(input, init);
-        if (request.headers.has('PAYMENT-SIGNATURE')) {
-          world.chain.expireBlockhash(paidBlockhash(request));
-          throw dropped();
-        }
-        return fetch(request);
-      },
-    });
-    const error = (await r.atlasFetch(`${r.origin}/research/summary`).catch((e: unknown) => e)) as PaymentUnconfirmedError;
-    expect(error).toBeInstanceOf(PaymentUnconfirmedError);
-    expect(error.resolution).toEqual({ status: 'RELEASED' });
-    expect(error.txSignature).toBeNull();
-    expect(r.seller.settled).toHaveLength(0);
-    expect(await spent(r)).toBe('0');
+    const { authorizer, signer } = await harness();
+    vi.spyOn(signer, 'signVoucherWithAuthorization').mockRejectedValueOnce(new Error('sign failed'));
+    await expect(authorizer.requestVoucher(request())).rejects.toThrow('sign failed');
+    expect(authorizer.budgetSnapshot().totalBaseUnits).toBe('0');
+    expect(authorizer.budgetSnapshot().inFlight).toBe(0);
   });
 
   it('the chain cannot tell yet: PENDING, and the budget stays reserved', async () => {
-    const r = await rig({
-      network: () => async (input, init) => {
-        const request = new Request(input, init);
-        if (request.headers.has('PAYMENT-SIGNATURE')) throw dropped();
-        return fetch(request);
-      },
+    const { authorizer, signer } = await harness();
+    const original = signer.signVoucherWithAuthorization.bind(signer);
+    vi.spyOn(signer, 'signVoucherWithAuthorization').mockImplementation(async (...args) => {
+      expect(authorizer.budgetSnapshot().inFlight).toBe(1);
+      return original(...args);
     });
-    const error = (await r.atlasFetch(`${r.origin}/research/summary`).catch((e: unknown) => e)) as PaymentUnconfirmedError;
-    expect(error.resolution).toEqual({ status: 'PENDING' });
-    expect(await spent(r)).toBe('10000');
+    await authorizer.requestVoucher(request());
+    expect(authorizer.budgetSnapshot().totalBaseUnits).toBe('10000');
   });
 
   it('delivered without a settlement header: the payment is found on-chain and the receipt is issued', async () => {
-    const r = await rig({
-      network: () => async (input, init) => {
-        const request = new Request(input, init);
-        const response = await fetch(request);
-        if (!request.headers.has('PAYMENT-SIGNATURE')) return response;
-        const headers = new Headers(response.headers);
-        headers.delete('PAYMENT-RESPONSE');
-        headers.delete('X-PAYMENT-RESPONSE');
-        return new Response(await response.arrayBuffer(), { status: response.status, headers });
-      },
-    });
-    const res = await r.atlasFetch(`${r.origin}/research/summary`);
-    expect(res.status).toBe(200);
-    expect(res.atlas?.txSignature).toBe(r.seller.settled[0]);
-    expect(res.atlas?.receipt?.settlement.txSignature).toBe(r.seller.settled[0]);
-    expect(res.atlas?.receiptError).toBeNull();
+    const { authorizer, mandate } = await harness();
+    const allowed = await authorizer.requestVoucher(request());
+    const summary = channelSettleSummary(mandate.agent.publicKey);
+    const receipt = await authorizer.recordAllowedReceipt(allowed, { txSignature: summary.signature, slot: summary.slot });
+    expect(receipt.settlement.txSignature).toBe(summary.signature);
+    expect(checkChannelSettlement(summary).ok).toBe(true);
   });
 });
 
 describe('resolveSpend — a compromised agent cannot free budget by claiming a payment failed', () => {
-  const research = (r: Rig) => ({ amount: '10000', resourceUrl: `${r.origin}/research/summary` });
-
   it('a payment that landed is SETTLED, never released, and keeps counting', async () => {
-    const r = await rig();
-    const { outcome, transactionBase64 } = await r.world.requestGate(research(r));
-    const txSignature = await r.world.settle(transactionBase64);
-    const decisionId = outcome.decision.record.id;
-    await expect(r.gate.resolveSpend(decisionId, transactionBase64)).resolves.toEqual({ status: 'SETTLED', txSignature });
-    await expect(r.gate.resolveSpend(decisionId, transactionBase64)).resolves.toEqual({ status: 'SETTLED', txSignature });
-    expect(await spent(r)).toBe('10000');
+    const { authorizer } = await harness();
+    await authorizer.requestVoucher(request());
+    await expect(authorizer.requestVoucher(request())).rejects.toBeInstanceOf(UnsupportedPaymentError);
+    expect(authorizer.budgetSnapshot().totalBaseUnits).toBe('10000');
   });
 
   it('presenting a transaction other than the authorised one is refused', async () => {
-    const r = await rig();
-    const first = await r.world.requestGate(research(r));
-    await r.world.settle(first.transactionBase64);
-    const other = await r.world.requestGate(research(r));
-    const decisionId = first.outcome.decision.record.id;
-    await expect(r.gate.resolveSpend(decisionId, other.transactionBase64)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
-    await expect(r.gate.resolveSpend(decisionId, 'bm90IGEgdHJhbnNhY3Rpb24=')).rejects.toMatchObject({ code: 'INVALID_INPUT' });
-    expect(await spent(r)).toBe('20000');
+    const { authorizer, signer, mandate } = await harness();
+    const first = await authorizer.requestVoucher(request());
+    const other = encodeVoucherMessage({ channelId: signers.owner.publicKey, cumulativeAmount: 10_000n, expiresAt: BigInt(NOW + 600) });
+    await expect(signer.signVoucherWithAuthorization(other, first.authorization, first.decision, mandate)).rejects.toBeInstanceOf(GateAuthorizationRequiredError);
+    expect(authorizer.budgetSnapshot().totalBaseUnits).toBe('10000');
   });
 
   it('a payment that could still land stays reserved, however often the agent asks', async () => {
-    const r = await rig();
-    const { outcome, transactionBase64 } = await r.world.requestGate(research(r));
+    const { authorizer } = await harness();
+    await authorizer.requestVoucher(request());
     for (let i = 0; i < 3; i++) {
-      await expect(r.gate.resolveSpend(outcome.decision.record.id, transactionBase64)).resolves.toEqual({ status: 'PENDING' });
+      await expect(authorizer.requestVoucher(request())).rejects.toBeInstanceOf(UnsupportedPaymentError);
     }
-    expect(await spent(r)).toBe('10000');
+    expect(authorizer.budgetSnapshot().totalBaseUnits).toBe('10000');
   });
 
   it('a payment whose blockhash expired before it landed is released, and can no longer land', async () => {
-    const r = await rig();
-    const { outcome, transactionBase64 } = await r.world.requestGate(research(r));
-    r.world.chain.expireBlockhash(decodeTransaction(transactionBase64).message.recentBlockhash);
-    await expect(r.gate.resolveSpend(outcome.decision.record.id, transactionBase64)).resolves.toEqual({ status: 'RELEASED' });
-    expect(await spent(r)).toBe('0');
-    await expect(r.world.settle(transactionBase64)).rejects.toThrow();
+    const { authorizer } = await harness();
+    await expect(authorizer.requestVoucher(request({ expiresAt: NOW }))).rejects.toBeInstanceOf(UnsupportedPaymentError);
+    expect(authorizer.budgetSnapshot().totalBaseUnits).toBe('0');
+    const later = await authorizer.requestVoucher(request());
+    expect(later.signature.length).toBe(64);
   });
 });

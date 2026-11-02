@@ -7,7 +7,8 @@
 
 ## Changelog
 
-- **v0.2 (draft):** Adds §3.4 Price limits and rule 15, `PRICE_LIMIT` — an optional, owner-signed per-resource price ceiling (expected price, tolerance, hard maximum). Thanks to **Felix**, who identified the gap this closes: a seller can sit inside every other limit a mandate already enforces (recipient, resource, amount, budget) and still quietly raise its price on every call, since nothing previously checked the *price* of a resource against what the owner actually expected to pay. **Wire compatibility:** `scope.priceLimits` is additive and required-but-empty-by-default (`[]` means "no price limit configured, behaves exactly as v0.1"); this reference implementation ships it under the existing `version: "0.1"` literal rather than bumping the wire version, so no previously valid v0.1 document is invalidated. A future revision may introduce a formal `"0.2"` version literal if other breaking changes accumulate.
+- **v0.2 (draft):** Adds §3.4 Price limits and rule 15, `PRICE_LIMIT` — an optional, owner-signed per-resource price ceiling (expected price, tolerance, hard maximum). It closes a gap: a seller can sit inside every other limit a mandate already enforces (recipient, resource, amount, budget) and still quietly raise its price on every call, since nothing previously checked the *price* of a resource against what the owner actually expected to pay. **Wire compatibility:** `scope.priceLimits` is additive and required-but-empty-by-default (`[]` means "no price limit configured, behaves exactly as v0.1"); this reference implementation ships it under the existing `version: "0.1"` literal rather than bumping the wire version, so no previously valid v0.1 document is invalidated. A future revision may introduce a formal `"0.2"` version literal if other breaking changes accumulate.
+- **31 Oct 2026, additive:** `scheme` on every signature object (missing means `ed25519`) and owner-signed approvals (§5.1). No previously valid document is invalidated.
 - **v0.1:** Initial draft.
 
 ## 1. Motivation
@@ -94,7 +95,7 @@ A pattern is `<origin><path>` where `path` is exact or ends in `/*`. `/*` is a p
 
 ### 3.4 Price limits (rule 15)
 
-Every other limit in §3.1 bounds *who* the agent can pay, *where*, and *how much in total* — none of them bound *the price of one unit of the resource itself*. A seller that is already an allowed `payTo` for an allowed `resource`, charging well inside `maxPerPayment`, can still raise its price a little on every call; nothing described so far ever notices, because each individual payment is legitimate by every other rule's own logic. Felix identified this gap. Price limits close it.
+Every other limit in §3.1 bounds *who* the agent can pay, *where*, and *how much in total* — none of them bound *the price of one unit of the resource itself*. A seller that is already an allowed `payTo` for an allowed `resource`, charging well inside `maxPerPayment`, can still raise its price a little on every call; nothing described so far ever notices, because each individual payment is legitimate by every other rule's own logic. Price limits close this gap.
 
 `scope.priceLimits` is an array (possibly empty) of:
 
@@ -154,6 +155,28 @@ linkHash = SHA-256( JCS({ type: "atlasrail.mandate-link", version: "0.1",
 
 where `previousSignature` is the previous link's signature (`null` for the first). This commits each link to the mandate, its position, its role and its predecessor, so links cannot be reordered, dropped, duplicated or moved between mandates without invalidating every later signature.
 
+**Signature scheme.** Every signature object carries `scheme` next to the key and the signature: delegation links, `decision.instance`, `instance` on gate authorisations and receipts, and owner approvals (§5.1). v0.1 defines one value, `"ed25519"`. A missing `scheme` means `"ed25519"`, so documents written before the field existed still verify. Any other value MUST be rejected. `scheme` is not part of the signed hash in v0.1; a version that adds a second scheme (for example a post-quantum one) will bind it into the hash.
+
+### 5.1 Owner-signed approval
+
+An approval that lets a person override an approvable rule (§7) is signed by a wallet whose key is an `OWNER` or `APPROVER` link of the mandate, for a role listed in `escalation.approverRoles`. The mandate's agent key MUST be refused, even if it also appears elsewhere. The wallet signs these UTF-8 lines, joined with `"\n"`, no trailing newline:
+
+```
+atlasrail/v0.1/owner-approval
+I approve this one payment, once.
+Approval: <approvalId>
+Mandate: <mandateHash>
+Kind: <voucher | pay>
+Amount: <amount> base units
+Recipient: <recipient>
+Request: <requestHash>
+Offer: <offerHash>
+Expires: <expiresAt> (<ISO 8601 UTC>)
+Scheme: ed25519
+```
+
+The text is readable in a wallet's signing prompt, and its first line separates it from every other signature domain. The gate verifies it against the decision's own offer hash, mandate hash and clock; the decision record stores the terms and the signature in `context.approval` (`terms`, `ownerSignature`), so the receipt carries them and any verifier can check them again.
+
 ## 6. Verification algorithm
 
 `verifyMandateChain(m)` (static, no clock):
@@ -211,17 +234,13 @@ The instance key signs `receiptHash` under domain `receipt`. The receipt documen
 
 ### 8.1 Anchoring
 
-Pending receipt hashes are batched into an RFC 6962 Merkle tree (leaf `SHA-256(0x00‖leaf)`, node `SHA-256(0x01‖left‖right)`, tree shape per RFC 6962 §2.1, no node duplication). The root is written to Solana in a Memo transaction signed by the instance key:
-
-```
-atlasrail:anchor:v1:<root hex>:<leaf count>:<batch id>
-```
+Pending receipt hashes are salted, then batched into an RFC 6962 Merkle tree (leaf `SHA-256(0x00‖salt‖receiptHash)`, node `SHA-256(0x01‖left‖right)`, tree shape per RFC 6962 §2.1, no node duplication). One `anchor_root` transaction, signed by the instance key, stores the Merkle root, the leaf count, the batch-header hash, and the batch-file hash. The transaction has no memo.
 
 The receipt is then augmented (outside the signed body) with `anchor: { batchId, merkleRoot, leafCount, leafIndex, proof[{position,hash}], txSignature, anchoredAt, signer }`.
 
 ### 8.2 Receipt verification
 
-A verifier SHOULD run, and report individually: schema; recomputed `receiptHash` and all embedded hashes; instance signature (against a *pinned* key); mandate chain; decision signature and hash; decision-matches-scope replay; decision was ALLOW (with approval where applicable); Merkle inclusion; the anchor memo exists on-chain in a transaction whose signer equals the receipt's instance key; the settlement transaction pays `offer.amount` of `offer.asset` to `offer.payTo` and was paid by `mandate.agent.publicKey`. Chain checks that cannot run offline are reported `SKIP`, never silently passed. The `atlas verify` CLI implements this with exit codes 0 (all pass), 1 (any fail) and 2 (unusable input).
+A verifier SHOULD run, and report individually: schema; recomputed `receiptHash` and all embedded hashes; instance signature (against a *pinned* key); mandate chain; decision signature and hash; decision-matches-scope replay; decision was ALLOW (with approval where applicable); Merkle inclusion; the `anchor_root` transaction is on-chain, signed by the receipt's instance key, and carries the receipt's root, leaf count, header hash, and file hash; the settlement transaction pays `offer.amount` of `offer.asset` to `offer.payTo` and was paid by `mandate.agent.publicKey`. Chain checks that cannot run offline are reported `SKIP`, never silently passed. The `atlas verify` CLI implements this with exit codes 0 (all pass), 1 (any fail) and 2 (unusable input).
 
 ## 9. Security considerations
 
