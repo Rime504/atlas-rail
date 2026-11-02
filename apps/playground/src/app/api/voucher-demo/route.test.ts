@@ -102,7 +102,7 @@ describe('POST /api/voucher-demo', () => {
       expect(await get.json()).toEqual({ error: LOCAL_ONLY, localOnly: true });
       const res = await POST(post({ payer: payer.publicKey.toBase58() }));
       expect(res.status).toBe(501);
-      expect(await res.json()).toMatchObject({ error: 'This demo runs locally. See the video.' });
+      expect(await res.json()).toMatchObject({ error: 'This demo runs on your own laptop.' });
       expect(spawn).not.toHaveBeenCalled();
     } finally {
       delete process.env.VERCEL;
