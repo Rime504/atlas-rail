@@ -1,4 +1,14 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function openDemo(page: Page) {
+  await page.addInitScript(() => {
+    const key = { toBase58: () => 'GTN6eKeP1111111111111111111111111111111111' };
+    (window as unknown as { solana: { connect: () => Promise<{ publicKey: { toBase58: () => string } }> } }).solana = {
+      connect: async () => ({ publicKey: key }),
+    };
+  });
+  await page.goto('/demo');
+}
 
 test('landing page has one clear call to action', async ({ page }) => {
   await page.goto('/');
@@ -11,121 +21,90 @@ test('landing page has one clear call to action', async ({ page }) => {
 test('progress bar announces the step count, with the percentage kept separate for screen readers', async ({ page }) => {
   await page.goto('/demo');
   const progressbar = page.getByRole('progressbar');
-  // The accessible name/value must read "Step 1 of 8" with no percentage mixed in — the percentage
+  // The accessible name/value must read "Step 1 of 9" with no percentage mixed in — the percentage
   // is sighted-only, decorative, and excluded from the accessibility tree (aria-hidden on its row).
   await expect(progressbar).toHaveAccessibleName('Walkthrough progress');
-  await expect(progressbar).toHaveAttribute('aria-valuetext', 'Step 1 of 8');
+  await expect(progressbar).toHaveAttribute('aria-valuetext', 'Step 1 of 4');
   await expect(progressbar).toHaveAttribute('aria-valuenow', '1');
   await expect(progressbar).toHaveAttribute('aria-valuemin', '1');
-  await expect(progressbar).toHaveAttribute('aria-valuemax', '8');
-  // The visible "Step 1 of 8 / 13%" row must not also be exposed to the accessibility tree —
-  // otherwise it would be announced a second time, redundantly, right next to the progressbar.
-  await expect(page.locator('[aria-hidden="true"]').filter({ hasText: 'Step 1 of 8' })).toBeVisible();
+  await expect(progressbar).toHaveAttribute('aria-valuemax', '4');
+  await expect(page.locator('[aria-hidden="true"]').filter({ hasText: 'Step 1 of 4' })).toBeVisible();
 });
 
-test('walks through all 8 steps end to end', async ({ page }) => {
+test('walks the voucher path and shows the settle and root links', async ({ page }) => {
+  const payer = 'GTN6eKeP1111111111111111111111111111111111';
+  const posts: { url: string; body: string }[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST') posts.push({ url: request.url(), body: request.postData() ?? '' });
+  });
+  await page.route('**/api/voucher-demo', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        payer: 'GTN6eKeP1111111111111111111111111111111111',
+        channel: '7rQzEFbeUHR4SDCbUj6qyaF7obQXKR52LwGsiFqvJ1iM',
+        channelExplorer: 'https://explorer.solana.com/address/7rQzEFbeUHR4SDCbUj6qyaF7obQXKR52LwGsiFqvJ1iM?cluster=devnet',
+        denial: { signed: false, message: 'MandateDeniedError' },
+        settleSignature: '5A6PE6BD33tWXhw4BPcaT1WBXoLMQBdvXAb6PRMgSwAcpxQD4ZCzbsGxpf16XAJm6vzp5h4v7rXz6g8ADCVdXcuW',
+        settleExplorer: 'https://explorer.solana.com/tx/5A6PE6BD33tWXhw4BPcaT1WBXoLMQBdvXAb6PRMgSwAcpxQD4ZCzbsGxpf16XAJm6vzp5h4v7rXz6g8ADCVdXcuW?cluster=devnet',
+        anchorSignature: 'BL6Ubi3oJt4mP4VpY9X8uasVYmJCYEm3M6SkeY341Y4tXrWyxZGNKF7VYjZMx41AbSEk6AbAt991NwM2gTRtQyW',
+        anchorExplorer: 'https://explorer.solana.com/tx/BL6Ubi3oJt4mP4VpY9X8uasVYmJCYEm3M6SkeY341Y4tXrWyxZGNKF7VYjZMx41AbSEk6AbAt991NwM2gTRtQyW?cluster=devnet',
+        rootPda: 'Fu9zto1sWKMTRdsVrn5nHtcJFb9rbMLw5QjJoBZmGsz5',
+        rootExplorer: 'https://explorer.solana.com/address/Fu9zto1sWKMTRdsVrn5nHtcJFb9rbMLw5QjJoBZmGsz5?cluster=devnet',
+        merkleRoot: 'c0c1c6e5165f4e1e1345a512d6c562165cb4727819e3610a1a11a808d33677c7',
+        receiptId: 'rcp_e91f2e5fe1f8396b',
+        deposit: '10000',
+        settled: '10000',
+      }),
+    });
+  });
+  await page.addInitScript((address) => {
+    const key = { toBase58: () => address };
+    (window as unknown as { solana: { connect: () => Promise<{ publicKey: { toBase58: () => string } }> } }).solana = {
+      connect: async () => ({ publicKey: key }),
+    };
+  }, payer);
   await page.goto('/');
   await page.getByRole('link', { name: /start the demo/i }).click();
   await expect(page).toHaveURL(/\/demo$/);
 
-  // Step 1: Meet the agent
-  await expect(page.getByText('Meet the agent')).toBeVisible();
-  await expect(page.getByText('Research Agent', { exact: true })).toBeVisible();
-  await expect(page.getByText('Wallet address')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Connect your wallet' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^next$/i })).toBeDisabled();
+  await page.getByRole('button', { name: /connect wallet/i }).click();
   await page.getByRole('button', { name: /^next$/i }).click();
 
-  // Step 2: Give it rules
-  await expect(page.getByText('Give it rules')).toBeVisible();
-  await expect(page.getByText('$5.00')).toBeVisible();
-  await page.getByRole('button', { name: /sign and register on solana/i }).click();
-  await expect(page.getByTestId('verdict-banner')).toContainText('Signed by owner, approver and agent');
+  await expect(page.getByRole('heading', { name: 'Create the mandate' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /pay on devnet/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^next$/i })).toBeDisabled();
+  await page.getByRole('button', { name: /use these rules/i }).click();
   await page.getByRole('button', { name: /^next$/i }).click();
 
-  // Step 3: A normal payment
-  await expect(page.getByText('A normal payment')).toBeVisible();
-  await page.getByRole('button', { name: /run the payment/i }).click();
-  await expect(page.getByTestId('verdict-banner')).toHaveAttribute('data-verdict', 'ALLOW');
-  await page.getByRole('button', { name: /^next$/i }).click();
+  await expect(page.getByRole('heading', { name: 'Pay on devnet' })).toBeVisible();
+  await page.getByRole('button', { name: /pay on devnet/i }).click();
 
-  // Step 4: An attack
-  await expect(page.getByText('An attack')).toBeVisible();
-  await page.getByRole('button', { name: /let the compromised agent try to pay/i }).click();
-  const attackVerdict = page.getByTestId('verdict-banner');
-  await expect(attackVerdict).toHaveAttribute('data-verdict', 'DENY');
-  await expect(attackVerdict).toContainText('seller not on the list');
-  await page.getByRole('button', { name: /^next$/i }).click();
-
-  // Step 5: Price spike (both zones)
-  await expect(page.getByText('Price spike')).toBeVisible();
-  await page.getByRole('button', { name: /charge \$0\.02 instead/i }).click();
-  await expect(page.getByTestId('verdict-banner').first()).toHaveAttribute('data-verdict', 'ESCALATE');
-  await page.getByRole('button', { name: /charge \$0\.05 instead/i }).click();
-  await expect(page.getByTestId('verdict-banner').nth(1)).toHaveAttribute('data-verdict', 'DENY');
-  await page.getByRole('button', { name: /^next$/i }).click();
-
-  // Step 6: You are the human
-  await expect(page.getByText('You are the human')).toBeVisible();
-  await page.getByRole('button', { name: /^approve$/i }).click();
-  const humanVerdict = page.getByTestId('verdict-banner');
-  await expect(humanVerdict).toHaveAttribute('data-verdict', 'ALLOW');
-  await expect(humanVerdict).toContainText('the human approved it');
-  await page.getByRole('button', { name: /^next$/i }).click();
-
-  // Step 7: Proof
-  await expect(page.getByText('Proof', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /verify this receipt/i }).click();
-  await expect(page.getByText('PASS').first()).toBeVisible();
-  await expect(page.locator('li', { hasText: 'FAIL' })).toHaveCount(0);
-  // Instant mode: the payment is simulated, so the step points to a real one on /verify instead.
-  await expect(page.getByRole('link', { name: /verify a real devnet payment/i })).toHaveAttribute('href', '/verify');
-  await page.getByRole('button', { name: /^next$/i }).click();
-
-  // Step 8: Revoke
-  await expect(page.getByText('Revoke', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /revoke on solana/i }).click();
-  await expect(page.getByTestId('verdict-banner')).toContainText('Mandate revoked');
-  await page.getByRole('button', { name: /try the payment again/i }).click();
-  const finalVerdict = page.getByTestId('verdict-banner').last();
-  await expect(finalVerdict).toHaveAttribute('data-verdict', 'DENY');
-  await expect(finalVerdict).toContainText('revoked');
-
-  // End screen
-  await page.getByRole('button', { name: /^finish$/i }).click();
-  await expect(page.getByRole('heading', { name: /every payment proves it was allowed/i })).toBeVisible();
-  await expect(page.getByText('Check any one yourself.')).toBeVisible();
-  await expect(page.getByRole('link', { name: /verify a payment/i })).toHaveAttribute('href', '/verify');
-  await expect(page.getByRole('link', { name: /view the code/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: /run it again/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Settled and anchored' })).toBeVisible();
+  const demo = posts.filter((post) => post.url.includes('/api/voucher-demo'));
+  expect(demo).toHaveLength(1);
+  expect(JSON.parse(demo[0].body)).toEqual({ payer });
+  expect(posts.some((post) => post.url.includes('/api/step'))).toBe(false);
+  await expect(page.getByText('Refused (MandateDeniedError)')).toBeVisible();
+  await expect(page.getByText('Attack was signed')).toHaveCount(0);
+  await expect(page.getByText('MandateDeniedError')).toBeVisible();
+  await expect(page.getByRole('link', { name: /view on solana explorer/i }).nth(1)).toHaveAttribute('href', /5A6PE6BD33tW/);
+  await expect(page.getByRole('link', { name: /view on solana explorer/i }).nth(3)).toHaveAttribute('href', /Fu9zto1sWKMT/);
 });
 
 test('back button returns to the previous step without losing state', async ({ page }) => {
-  await page.goto('/demo');
-  await page.getByRole('button', { name: /^next$/i }).click(); // step 1 -> 2
-  await expect(page.getByText('Give it rules')).toBeVisible();
+  await openDemo(page);
+  await page.getByRole('button', { name: /connect wallet/i }).click();
+  await page.getByRole('button', { name: /^next$/i }).click();
+  await expect(page.getByRole('heading', { name: 'Create the mandate' })).toBeVisible();
+  await page.getByRole('button', { name: /use these rules/i }).click();
+  await page.getByRole('button', { name: /^next$/i }).click();
+  await expect(page.getByRole('heading', { name: 'Pay on devnet' })).toBeVisible();
   await page.getByRole('button', { name: /^back$/i }).click();
-  await expect(page.getByText('Meet the agent')).toBeVisible();
-});
-
-test('the mode badge is visible and consistent across steps, not just on the toggle step', async ({ page }) => {
-  await page.goto('/demo');
-  await expect(page.getByText('Instant mode (no chain)')).toBeVisible();
-  await page.getByRole('button', { name: /^next$/i }).click(); // step 1 -> 2
-  await expect(page.getByText('Instant mode (no chain)')).toBeVisible();
-  await page.getByRole('button', { name: /sign and register on solana/i }).click();
-  await page.getByRole('button', { name: /^next$/i }).click(); // step 2 -> 3
-  await expect(page.getByText('Instant mode (no chain)')).toBeVisible();
-});
-
-test('a vacuous price-limit pass (no limit configured for this resource) is shown as not applicable, never a plain pass', async ({ page }) => {
-  await page.goto('/demo');
-  await page.getByRole('button', { name: /^next$/i }).click(); // step 1 -> 2
-  await page.getByRole('button', { name: /sign and register on solana/i }).click();
-  await page.getByRole('button', { name: /^next$/i }).click(); // step 2 -> 3
-  await page.getByRole('button', { name: /run the payment/i }).click();
-  await page.getByRole('button', { name: /^next$/i }).click(); // step 3 -> 4
-  await page.getByRole('button', { name: /let the compromised agent try to pay/i }).click();
-  await page.getByRole('button', { name: /show the rules it was checked against/i }).click();
-  await expect(page.getByText('No price limit applies to this resource')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Create the mandate' })).toBeVisible();
 });
 
 test('no step causes horizontal page overflow at a 360px viewport width', async ({ page }) => {
@@ -135,43 +114,22 @@ test('no step causes horizontal page overflow at a 360px viewport width', async 
     expect(overflowing).toBe(false);
   };
 
+  await page.addInitScript(() => {
+    const key = { toBase58: () => 'GTN6eKeP1111111111111111111111111111111111' };
+    (window as unknown as { solana: { connect: () => Promise<{ publicKey: { toBase58: () => string } }> } }).solana = {
+      connect: async () => ({ publicKey: key }),
+    };
+  });
   await page.goto('/');
   await assertNoOverflow();
   await page.getByRole('link', { name: /start the demo/i }).click();
 
-  await assertNoOverflow(); // step 1
-  await page.getByRole('button', { name: /^next$/i }).click();
-  await assertNoOverflow(); // step 2
-  await page.getByRole('button', { name: /sign and register on solana/i }).click();
-  await page.getByRole('button', { name: /show the signed mandate/i }).click();
-  await assertNoOverflow(); // step 2, mandate expanded (full-length addresses rendered)
-  await page.getByRole('button', { name: /^next$/i }).click();
-  await assertNoOverflow(); // step 3
-  await page.getByRole('button', { name: /run the payment/i }).click();
-  await page.getByRole('button', { name: /show the rules it was checked against/i }).click();
-  await assertNoOverflow(); // step 3, rules expanded
-  await page.getByRole('button', { name: /^next$/i }).click();
-  await assertNoOverflow(); // step 4
-  await page.getByRole('button', { name: /let the compromised agent try to pay/i }).click();
   await assertNoOverflow();
+  await page.getByRole('button', { name: /connect wallet/i }).click();
   await page.getByRole('button', { name: /^next$/i }).click();
-  await assertNoOverflow(); // step 5
-  await page.getByRole('button', { name: /charge \$0\.02 instead/i }).click();
-  await page.getByRole('button', { name: /charge \$0\.05 instead/i }).click();
   await assertNoOverflow();
+  await page.getByRole('button', { name: /use these rules/i }).click();
   await page.getByRole('button', { name: /^next$/i }).click();
-  await assertNoOverflow(); // step 6
-  await page.getByRole('button', { name: /^approve$/i }).click();
-  await assertNoOverflow();
-  await page.getByRole('button', { name: /^next$/i }).click();
-  await assertNoOverflow(); // step 7
-  await page.getByRole('button', { name: /verify this receipt/i }).click();
-  await assertNoOverflow();
-  await page.getByRole('button', { name: /show the raw receipt/i }).click();
-  await assertNoOverflow(); // raw receipt JSON dump, the longest content on the page
-  await page.getByRole('button', { name: /^next$/i }).click();
-  await assertNoOverflow(); // step 8
-  await page.getByRole('button', { name: /revoke on solana/i }).click();
   await assertNoOverflow();
 });
 

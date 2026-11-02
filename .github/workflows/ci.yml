@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   build-and-test:
@@ -37,7 +37,9 @@ jobs:
       - name: Build Monorepo
         run: pnpm build
 
-  agent-mandates-e2e:
+  # Settle, top up and pay against the real payment-channels program (copied from Devnet) and this
+  # repo's mandate program on a local validator. Catches a settle the channel program would reject.
+  chain:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -52,26 +54,19 @@ jobs:
         with:
           version: 9.15.0
 
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v4.1.2/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Build the mandate program
+        run: cargo build-sbf --manifest-path programs/atlas-mandate/Cargo.toml --sbf-out-dir target/deploy
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build (workspace packages + demo apps)
-        run: pnpm build
+      - name: Build packages
+        run: pnpm turbo run build --filter=atlasrails... --filter=@atlas-rail/cli...
 
-      # No Docker, no devnet, no network dependency: embedded Postgres + an in-memory Solana JSON-RPC
-      # cluster stand in for both, so this job can't be flaky because of a faucet rate limit or a
-      # container registry pull. --exit makes the orchestrator report the scenes' pass/fail as its
-      # own exit code instead of staying up afterward.
-      - name: Run the Agent Mandates demo (offline rehearsal, all six scenes)
-        run: pnpm demo:rehearse --skip-build --skip-web
-
-      - name: Upload demo artifacts (receipts, run summary) on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: agent-mandates-demo-artifacts
-          path: |
-            .demo/last-run.json
-            .demo/receipts/
-            .demo/logs/
-          if-no-files-found: ignore
+      - name: Settle and top-up on a local validator
+        run: pnpm test:chain

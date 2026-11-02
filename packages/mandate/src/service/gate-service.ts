@@ -37,9 +37,8 @@ export interface GateServiceOptions {
   /**
    * When set (behind `ATLAS_ONCHAIN=1`), additionally checked on every evaluation: if the on-chain
    * mandate account says revoked, the gate denies even when the database still says active. Returns
-   * `null` if the on-chain account doesn't exist or the check is unavailable (e.g. an RPC hiccup) —
-   * that is not itself treated as revoked, so a transient chain-read failure never blocks a payment
-   * the database considers valid.
+   * `null` only when the account is fine (or missing, outside require mode). An RPC failure must
+   * return a revocation, so a payment is denied when the chain cannot be read.
    */
   onchainRevocationCheck?: (mandateHash: string) => Promise<{ revokedAt: number; reason: string | null } | null>;
   requireSimulation?: boolean;

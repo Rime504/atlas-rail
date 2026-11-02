@@ -581,3 +581,78 @@ model UserSigningKey {
   label     String?
   createdAt DateTime @default(now())
 }
+
+/// One signed channel voucher. The voucher ask sums these for the window budget and the lifetime cap,
+/// and reads the highest cumulative per channel as the watermark. Survives restarts and is shared by
+/// every API process.
+model VoucherSpend {
+  id          String   @id
+  mandateHash String
+  channelId   String
+  cumulative  String
+  delta       String
+  autonomous  Boolean
+  recipient   String
+  messageHash String   @unique
+  createdAt   DateTime @default(now())
+
+  @@index([mandateHash, createdAt])
+  @@index([mandateHash, channelId])
+}
+
+/// A request to the owner to allow one exact payment that went over a limit or was flagged as unusual.
+/// Bound to the voucher bytes or the pay.sh operation fingerprint, usable once, never changes the mandate.
+model OwnerApproval {
+  id                String    @id
+  kind              String
+  mandateHash       String
+  subjectHash       String
+  offerHash         String
+  amount            String
+  recipient         String
+  agent             String
+  reason            String
+  status            String
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
+  decidedAt         DateTime?
+  decidedBy         String?
+  telegramMessageId Int?
+  /// Owner and approver keys allowed to sign, as [{ publicKey, role }].
+  signers           Json      @default("[]")
+  /// The wallet signature over the exact payment ("ed25519"), once signed.
+  signatureScheme   String?
+  signer            String?
+  signature         String?
+
+  @@index([subjectHash, createdAt])
+}
+
+/// One pay.sh spending-authority operation, bound for good to its first request and offer.
+model PayOperation {
+  key         String   @id
+  callerId    String
+  operationId String
+  bindingHash String
+  mandateHash String
+  attemptId   String
+  decision    String
+  answer      String
+  approvalId  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+
+  @@index([mandateHash, createdAt])
+}
+
+/// A signed receipt for every spending-authority decision, anchored on Solana in batches.
+model PayDecisionReceipt {
+  id          String   @id
+  mandateHash String
+  receiptHash String   @unique
+  document    Json
+  batchId     String?
+  createdAt   DateTime @default(now())
+
+  @@index([batchId, createdAt])
+}

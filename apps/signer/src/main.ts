@@ -14,6 +14,7 @@
 import { fromBase58 } from '@atlas-rail/mandate';
 import { DevnetKeyring, DevnetKeypairSigner } from '@atlas-rail/solana';
 import { GatedSignerAdapter, startSignerService } from '@atlas-rail/x402';
+import { mandateVoucherKeys, voucherSessionPath } from './voucher-keys';
 
 function agentKey(): { wallet: DevnetKeypairSigner; keyring: DevnetKeyring | null } {
   const secret = process.env.ATLAS_AGENT_SECRET_KEY;
@@ -38,6 +39,7 @@ async function main() {
 
   const service = await startSignerService({
     signer: new GatedSignerAdapter({ inner: wallet, trustedInstanceKeys: trusted }),
+    voucherKeys: mandateVoucherKeys(DevnetKeyring.load(voucherSessionPath()), trusted),
     host: process.env.ATLAS_SIGNER_HOST ?? '127.0.0.1',
     port: Number(process.env.ATLAS_SIGNER_PORT ?? 3012),
     token: process.env.ATLAS_SIGNER_TOKEN || undefined,

@@ -8,8 +8,11 @@
 //!   the owner, an independent approver and the agent itself all sign the same
 //!   transaction, mirroring the off-chain delegation chain.
 //! * `revoke_mandate` lets the owner or the approver revoke it. Revocation is final.
-//! * `anchor_root` lets the gate authority record a Merkle root for a batch of receipts,
-//!   even after the mandate has been revoked (revocation stops new payments, not evidence).
+//! * `anchor_root_v2` lets the gate authority record a Merkle root for a batch of receipts, with
+//!   the batch header hash and the batch file hash, even after the mandate has been revoked
+//!   (revocation stops new payments, not evidence).
+//! * `anchor_root` is the deprecated first version (root and leaf count only). It stays so older
+//!   clients keep working, and its `Root` accounts stay readable. Both share `next_root_seq`.
 //!
 //! The policy gate reads this account before every payment and denies if the mandate is
 //! missing, revoked, not yet valid or expired.
@@ -17,14 +20,27 @@
 //! Devnet and localnet only. Atlas Rail never deploys to mainnet.
 
 use anchor_lang::prelude::*;
+use solana_security_txt::security_txt;
 
 declare_id!("CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k");
+
+security_txt! {
+    name: "Atlas Mandate",
+    project_url: "https://github.com/Rime504/atlas-rail",
+    contacts: "email:atlasrails@gmail.com,link:https://github.com/Rime504/atlas-rail/security/advisories/new",
+    policy: "https://github.com/Rime504/atlas-rail/blob/master/SECURITY.md",
+    preferred_languages: "en",
+    source_code: "https://github.com/Rime504/atlas-rail"
+}
 
 /// Seed prefix for mandate accounts: `["mandate", mandate_hash]`.
 pub const MANDATE_SEED: &[u8] = b"mandate";
 
 /// Seed prefix for root accounts: `["root", mandate, seq.to_le_bytes()]`.
 pub const ROOT_SEED: &[u8] = b"root";
+
+/// Domain tag of the canonical batch header. Same bytes as `HEADER_TAG` in `packages/receipt/src/batch-file.ts`.
+pub const BATCH_HEADER_TAG: &[u8] = b"atlasrail.batch-header/1\0";
 
 /// Same bounds as `mandateLimitsSchema.windowSeconds` in `packages/mandate/src/schema.ts`.
 pub const MIN_WINDOW_SECONDS: i64 = 60;
@@ -100,6 +116,7 @@ pub mod atlas_mandate {
         Ok(())
     }
 
+    /// Deprecated: use `anchor_root_v2`. Kept unchanged so older clients keep working.
     /// Anchor a Merkle root for a batch of receipts. Only the gate authority may do this.
     /// Allowed even after the mandate is revoked — revocation stops new payments, not evidence.
     pub fn anchor_root(ctx: Context<AnchorRoot>, args: AnchorRootArgs) -> Result<()> {
@@ -131,6 +148,56 @@ pub mod atlas_mandate {
             seq: args.seq,
             merkle_root: args.merkle_root,
             leaf_count: args.leaf_count,
+            anchored_at: now,
+        });
+        Ok(())
+    }
+
+    /// Anchor a Merkle root for a batch of receipts, with the batch header hash and the batch file
+    /// hash. Both hashes are required. Only the gate authority may do this. Allowed even after the
+    /// mandate is revoked. Uses the same `next_root_seq` and PDA seeds as `anchor_root`.
+    pub fn anchor_root_v2(ctx: Context<AnchorRootV2>, args: AnchorRootV2Args) -> Result<()> {
+        require!(args.leaf_count > 0, MandateError::EmptyBatch);
+        require!(
+            args.batch_header != [0; 32] && args.batch_file_hash != [0; 32],
+            MandateError::MissingBatchHash
+        );
+
+        let mandate = &mut ctx.accounts.mandate;
+        require!(
+            ctx.accounts.gate_authority.key() == mandate.gate_authority,
+            MandateError::UnauthorizedAnchor
+        );
+        require!(args.seq == mandate.next_root_seq, MandateError::OutOfOrderSeq);
+        require!(
+            args.batch_header
+                == batch_header_hash(&mandate.key(), args.seq, args.leaf_count, &args.merkle_root, &args.batch_file_hash),
+            MandateError::BatchHeaderMismatch
+        );
+
+        let now = Clock::get()?.unix_timestamp;
+        let root = &mut ctx.accounts.root;
+        root.mandate = mandate.key();
+        root.seq = args.seq;
+        root.merkle_root = args.merkle_root;
+        root.leaf_count = args.leaf_count;
+        root.anchored_at = now;
+        root.batch_header = args.batch_header;
+        root.batch_file_hash = args.batch_file_hash;
+        root.bump = ctx.bumps.root;
+
+        mandate.next_root_seq = args
+            .seq
+            .checked_add(1)
+            .ok_or(MandateError::OutOfOrderSeq)?;
+
+        emit!(RootAnchoredV2 {
+            mandate: mandate.key(),
+            seq: args.seq,
+            merkle_root: args.merkle_root,
+            leaf_count: args.leaf_count,
+            batch_header: args.batch_header,
+            batch_file_hash: args.batch_file_hash,
             anchored_at: now,
         });
         Ok(())
@@ -215,6 +282,42 @@ pub struct AnchorRoot<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
+pub struct AnchorRootV2Args {
+    /// Must equal `mandate.next_root_seq` (monotonically increasing, no gaps, no replays).
+    pub seq: u64,
+    /// RFC 6962 Merkle root over the batch of salted receipt leaves.
+    pub merkle_root: [u8; 32],
+    /// Number of leaves in the batch; must be > 0.
+    pub leaf_count: u32,
+    /// SHA-256 of the canonical batch header. Required: all zeros is rejected.
+    pub batch_header: [u8; 32],
+    /// SHA-256 of the canonical off-chain batch file. Required: all zeros is rejected.
+    pub batch_file_hash: [u8; 32],
+}
+
+#[derive(Accounts)]
+#[instruction(args: AnchorRootV2Args)]
+pub struct AnchorRootV2<'info> {
+    #[account(
+        mut,
+        seeds = [MANDATE_SEED, mandate.mandate_hash.as_ref()],
+        bump = mandate.bump
+    )]
+    pub mandate: Account<'info, Mandate>,
+    #[account(
+        init,
+        payer = gate_authority,
+        space = 8 + RootV2::INIT_SPACE,
+        seeds = [ROOT_SEED, mandate.key().as_ref(), &args.seq.to_le_bytes()],
+        bump
+    )]
+    pub root: Account<'info, RootV2>,
+    #[account(mut)]
+    pub gate_authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 #[account]
 #[derive(InitSpace, Debug)]
 pub struct Mandate {
@@ -248,6 +351,23 @@ pub struct Root {
     pub merkle_root: [u8; 32],
     pub leaf_count: u32,
     pub anchored_at: i64,
+    pub bump: u8,
+}
+
+/// Written by `anchor_root_v2`. A separate account type so the `Root` accounts already on-chain
+/// keep their layout and stay readable.
+#[account]
+#[derive(InitSpace, Debug)]
+pub struct RootV2 {
+    pub mandate: Pubkey,
+    pub seq: u64,
+    pub merkle_root: [u8; 32],
+    pub leaf_count: u32,
+    pub anchored_at: i64,
+    /// SHA-256 of the canonical batch header (mandate, seq, leaf count, root, file hash).
+    pub batch_header: [u8; 32],
+    /// SHA-256 of the canonical off-chain batch file. The file itself stays off-chain.
+    pub batch_file_hash: [u8; 32],
     pub bump: u8,
 }
 
@@ -285,6 +405,17 @@ pub struct RootAnchored {
     pub anchored_at: i64,
 }
 
+#[event]
+pub struct RootAnchoredV2 {
+    pub mandate: Pubkey,
+    pub seq: u64,
+    pub merkle_root: [u8; 32],
+    pub leaf_count: u32,
+    pub batch_header: [u8; 32],
+    pub batch_file_hash: [u8; 32],
+    pub anchored_at: i64,
+}
+
 #[error_code]
 pub enum MandateError {
     #[msg("The approver must be a different key from the owner")]
@@ -313,6 +444,23 @@ pub enum MandateError {
     OutOfOrderSeq,
     #[msg("Receipt batch must contain at least one leaf")]
     EmptyBatch,
+    #[msg("The batch header hash and the batch file hash are both required")]
+    MissingBatchHash,
+    #[msg("batch_header is not the hash of this mandate, seq, leaf count, root and file hash")]
+    BatchHeaderMismatch,
+}
+
+/// SHA-256 of the canonical batch header: tag, mandate, seq (u64 LE), leaf count (u32 LE), root, file hash.
+pub fn batch_header_hash(mandate: &Pubkey, seq: u64, leaf_count: u32, merkle_root: &[u8; 32], batch_file_hash: &[u8; 32]) -> [u8; 32] {
+    solana_sha256_hasher::hashv(&[
+        BATCH_HEADER_TAG,
+        mandate.as_ref(),
+        &seq.to_le_bytes(),
+        &leaf_count.to_le_bytes(),
+        merkle_root,
+        batch_file_hash,
+    ])
+    .to_bytes()
 }
 
 /// Pure validation, kept separate so it can be unit-tested without a validator.
@@ -472,5 +620,38 @@ mod tests {
         assert!(m.is_active(9_999));
         assert!(!m.is_active(10_000), "expired");
         assert!(!mandate(true).is_active(5_000), "revoked");
+    }
+
+    #[test]
+    fn anchor_v2_args_store_header_and_file_hash() {
+        let args = AnchorRootV2Args {
+            seq: 1,
+            merkle_root: [9; 32],
+            leaf_count: 5,
+            batch_header: [1; 32],
+            batch_file_hash: [2; 32],
+        };
+        let mut data = Vec::new();
+        args.serialize(&mut data).expect("serialize");
+        assert_eq!(data.len(), 8 + 32 + 4 + 32 + 32);
+        assert_eq!(&data[8 + 32 + 4..8 + 32 + 4 + 32], &[1; 32]);
+        assert_eq!(&data[data.len() - 32..], &[2; 32]);
+        assert_eq!(RootV2::INIT_SPACE, 32 + 8 + 32 + 4 + 8 + 32 + 32 + 1);
+    }
+
+    #[test]
+    fn batch_header_hash_matches_the_off_chain_encoding() {
+        // Vector from encodeBatchHeader + hashBytes in packages/receipt/src/batch-file.ts.
+        let hash = batch_header_hash(&key(1), 2, 3, &[4; 32], &[5; 32]);
+        let hex: String = hash.iter().map(|b| format!("{:02x}", b)).collect();
+        assert_eq!(hex, "77de2a34d7c40c94ff38eff4fe1cebbd4858c7cb0c575a8acb4d63843696accf");
+    }
+
+    #[test]
+    fn old_root_layout_is_unchanged() {
+        assert_eq!(Root::INIT_SPACE, 32 + 8 + 32 + 4 + 8 + 1);
+        let mut data = Vec::new();
+        AnchorRootArgs { seq: 1, merkle_root: [9; 32], leaf_count: 5 }.serialize(&mut data).expect("serialize");
+        assert_eq!(data.len(), 8 + 32 + 4);
     }
 }

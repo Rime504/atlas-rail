@@ -2,7 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
-import { buildAnchorMemo, hashLeaf, merkleProof, merkleRoot, parseAnchorMemo, verifyMerkleProof } from './merkle';
+import { hashLeaf, merkleProof, merkleRoot, verifyMerkleProof } from './merkle';
 
 const leaf = (n: number) => bytesToHex(sha256(new TextEncoder().encode(`receipt-${n}`)));
 const leaves = (n: number) => Array.from({ length: n }, (_, i) => leaf(i));
@@ -78,18 +78,5 @@ describe('merkle tree (RFC 6962 shape)', () => {
       }),
       { numRuns: 100 },
     );
-  });
-});
-
-describe('anchor memo', () => {
-  it('round-trips and rejects malformed memos', () => {
-    const root = merkleRoot(leaves(5));
-    const memo = buildAnchorMemo({ merkleRoot: root, leafCount: 5, batchId: 'anc_01ABC' });
-    expect(memo).toBe(`atlasrail:anchor:v1:${root}:5:anc_01ABC`);
-    expect(parseAnchorMemo(memo)).toEqual({ merkleRoot: root, leafCount: 5, batchId: 'anc_01ABC' });
-    for (const bad of ['', 'atlasrail:anchor:v1:short:5:x', `atlasrail:anchor:v2:${root}:5:x`, `atlasrail:anchor:v1:${root}:0:x`, `atlasrail:anchor:v1:${root}:5:`]) {
-      expect(parseAnchorMemo(bad)).toBeNull();
-    }
-    expect(new TextEncoder().encode(memo).length).toBeLessThan(200);
   });
 });

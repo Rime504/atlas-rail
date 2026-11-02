@@ -6,6 +6,7 @@ export * from './resource';
 export * from './offer';
 export * from './mandate';
 export * from './gate';
+export * from './owner-approval';
 export * from './decision';
 export * from './json-schema';
 export * from './service';

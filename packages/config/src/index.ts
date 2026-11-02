@@ -1,3 +1,5 @@
+import { sha256 } from '@noble/hashes/sha256';
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
 import { z } from 'zod';
 
 export * from './queues';
@@ -48,10 +50,11 @@ export const envSchema = z.object({
   // Gates every on-chain mandate-registry behaviour (Milestone B): off by default so the existing
   // off-chain demo keeps working unchanged until this is explicitly turned on.
   ATLAS_ONCHAIN: envBoolean.default(false),
+  // When true with ATLAS_ONCHAIN: missing accounts, inactive windows, and RPC/decode errors deny
+  // the voucher (fail closed). Default false keeps the historical soft-fail path for demos.
+  ATLAS_ONCHAIN_REQUIRE: envBoolean.default(false),
   MANDATE_PROGRAM_ID: z.string().min(32).default('CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k'),
-  // Switches receipt anchoring from an SPL Memo to the program's `anchor_root` instruction (a
-  // per-mandate Root PDA). Off by default; requires ATLAS_ONCHAIN=1 (anchor_root needs the mandate
-  // to already be registered on-chain) and only takes effect once the deployed program includes it.
+  // Accepted so older env files still parse. Anchoring always uses `anchor_root`.
   ATLAS_ANCHOR_ROOT: envBoolean.default(false),
 
   WEBHOOK_ALLOW_PRIVATE_NETWORKS: envBoolean.default(false),
@@ -69,6 +72,16 @@ export const envSchema = z.object({
 
 export type EnvConfig = z.infer<typeof envSchema>;
 
+/**
+ * SHA-256 of the placeholder values in .env.example and docker-compose.yml. Those values are public,
+ * so production must not boot with them. Only the hashes live here, not the values.
+ */
+const EXAMPLE_SECRET_SHA256: Record<string, string> = {
+  ENCRYPTION_KEY_BASE64: 'f45cbe0e01694af10d4befa0bd5ed48ecbea6990f701a274ab61569bb701cd70',
+  JWT_ACCESS_SECRET: 'fa147b359afabe67ce3ea34a9c1ef72f9719d06052de29526db40b83e5bae43e',
+  JWT_REFRESH_SECRET: '5d44d839eb340b98c9ec2a1e6415fdd1958024ceccd634d07e34180027265cef',
+};
+
 export function validateEnv(env: Record<string, unknown> = process.env): EnvConfig {
   const result = envSchema.safeParse(env);
   if (!result.success) {
@@ -81,6 +94,15 @@ export function validateEnv(env: Record<string, unknown> = process.env): EnvConf
   // Startup safety assertions
   if (parsed.NODE_ENV === 'production' && parsed.ATLAS_ALLOW_MOCK_SIGNER) {
     throw new Error('CRITICAL SAFETY FATAL: Mock signer adapter cannot be enabled in production!');
+  }
+
+  if (parsed.NODE_ENV === 'production') {
+    for (const [name, hash] of Object.entries(EXAMPLE_SECRET_SHA256)) {
+      const value = String(parsed[name as keyof EnvConfig] ?? '');
+      if (bytesToHex(sha256(utf8ToBytes(value))) === hash) {
+        throw new Error(`CRITICAL SAFETY FATAL: ${name} is the public example value. Set a fresh secret for production.`);
+      }
+    }
   }
 
   if (parsed.SOLANA_RPC_URL.includes('mainnet')) {

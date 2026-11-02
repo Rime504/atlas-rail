@@ -171,13 +171,16 @@ export default function ReceiptDetailPage() {
               <KeyValue label="Position">
                 Leaf {receipt.anchor.leafIndex + 1} of {receipt.anchor.leafCount} · proof of {receipt.anchor.proof.length} hash{receipt.anchor.proof.length === 1 ? '' : 'es'}
               </KeyValue>
-              <KeyValue label="Anchor transaction (Memo)">
+              <KeyValue label="Anchor transaction">
                 <span className="inline-flex items-center gap-2">
                   <MonoAddress value={receipt.anchor.txSignature} lead={8} trail={8} />
                   <a href={explorerTxUrl(receipt.anchor.txSignature)} target="_blank" rel="noreferrer" className="text-slate-500 hover:text-solana-green" aria-label="View anchor on Solana Explorer">
                     <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 </span>
+              </KeyValue>
+              <KeyValue label="What this anchor proves">
+                The stored proof can show this receipt sits under the Merkle root. It does not, by itself, prove the payment settled. Settlement is the signature above.
               </KeyValue>
               <KeyValue label="Anchored">{formatUnix(receipt.anchor.anchoredAt)}</KeyValue>
             </dl>

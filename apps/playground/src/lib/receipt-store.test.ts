@@ -36,7 +36,7 @@ describe('public receipt store', () => {
     const world = await createWorld();
     const backend = memoryBackend();
     const receipt = await anchoredReceipt(world);
-    const result = await publishReceipt(receipt, { chain: world.chain, backend });
+    const result = await publishReceipt(receipt, { chain: world.chain, backend, trustedInstanceKeys: [world.keys.instance.publicKey] });
     expect(result.stored).toBe(true);
     expect(await loadPublished('receipt', receipt.id, backend)).toMatchObject({ id: receipt.id, receiptHash: receipt.receiptHash });
   });
@@ -55,8 +55,8 @@ describe('public receipt store', () => {
     const world = await createWorld();
     const backend = memoryBackend();
     const receipt = await anchoredReceipt(world);
-    expect((await publishReceipt(receipt, { chain: world.chain, backend })).stored).toBe(true);
-    expect((await publishReceipt(receipt, { chain: world.chain, backend })).stored).toBe(true);
+    expect((await publishReceipt(receipt, { chain: world.chain, backend, trustedInstanceKeys: [world.keys.instance.publicKey] })).stored).toBe(true);
+    expect((await publishReceipt(receipt, { chain: world.chain, backend, trustedInstanceKeys: [world.keys.instance.publicKey] })).stored).toBe(true);
     backend.files.set(`receipts/${receipt.id}.json`, JSON.stringify({ ...receipt, receiptHash: 'something-else' }));
     const again = await publishReceipt(receipt, { chain: world.chain, backend });
     expect(again).toMatchObject({ stored: false });

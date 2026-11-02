@@ -2,7 +2,7 @@ name: Security Audit
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   schedule:
     - cron: '0 0 * * 0'
 

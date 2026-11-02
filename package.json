@@ -6,6 +6,7 @@
   "license": "Apache-2.0",
   "author": "Atlas Rail Contributors",
   "scripts": {
+    "demo": "node scripts/demo-story.mjs",
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
@@ -13,6 +14,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:unit": "vitest run --config vitest.config.ts packages/domain packages/solana",
     "test:integration": "vitest run --config vitest.config.ts apps/api",
+    "test:chain": "node --test --test-force-exit scripts/topup-local.test.mjs",
     "test:watch": "vitest --config vitest.config.ts",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\"",
@@ -21,12 +23,7 @@
     "db:seed": "pnpm --filter @atlas-rail/database db:seed",
     "db:push": "pnpm --filter @atlas-rail/database db:push",
     "openapi": "pnpm --filter @atlas-rail/api openapi",
-    "demo": "node scripts/demo.mjs",
-    "demo:offline": "node scripts/demo.mjs --offline --no-docker",
-    "demo:rehearse": "node scripts/demo.mjs --offline --no-docker --auto-approve --exit",
-    "agent:e2e": "node scripts/agent-e2e.mjs",
-    "build:demo": "turbo run build --filter=@atlas-rail/api --filter=@atlas-rail/worker --filter=@atlas-rail/demo-api --filter=@atlas-rail/demo-agent --filter=@atlas-rail/cli --filter=@atlas-rail/mock-validator --filter=@atlas-rail/web",
-    "redteam": "pnpm turbo run build --filter=@atlas-rail/demo-agent... && node apps/demo-agent/dist/redteam/main.js"
+    "demo:pay": "node scripts/demo-pay.mjs"
   },
   "devDependencies": {
     "embedded-postgres": "18.4.0-beta.17",

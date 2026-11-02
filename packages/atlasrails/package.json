@@ -1,0 +1,43 @@
+{
+  "name": "atlasrails",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Atlas Rail channel payments: staged SDK with gate-first vouchers, settle, distribute, and receipts.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./fund": {
+      "types": "./fund.d.ts",
+      "default": "./channel-fund.mjs"
+    },
+    "./channel": {
+      "types": "./dist/channel-flow.d.ts",
+      "default": "./dist/channel-flow.js"
+    }
+  },
+  "files": ["dist", "payment.mjs", "channel-fund.mjs", "fund.d.ts", "MANUAL.md", "SDK.md"],
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@atlas-rail/mandate": "workspace:*",
+    "@atlas-rail/receipt": "workspace:*",
+    "@atlas-rail/solana": "workspace:*",
+    "@atlas-rail/x402": "workspace:*",
+    "@scure/base": "^1.2.6",
+    "@solana/spl-token": "^0.4.9",
+    "@solana/web3.js": "^1.95.8"
+  },
+  "devDependencies": {
+    "@atlas-rail/typescript-config": "workspace:*",
+    "@types/node": "^22.10.1",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.2"
+  }
+}

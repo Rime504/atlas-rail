@@ -5,7 +5,7 @@ import type { NextConfig } from 'next';
 // Node.js route handler (never the Edge runtime: these packages use Node's `crypto` and
 // `@solana/web3.js`), so none of it enters the client bundle.
 const nextConfig: NextConfig = {
-  transpilePackages: ['@atlas-rail/mandate', '@atlas-rail/receipt', '@atlas-rail/solana'],
+  transpilePackages: ['@atlas-rail/mandate', '@atlas-rail/receipt', '@atlas-rail/solana', '@atlas-rail/x402', 'atlasrails'],
   reactStrictMode: true,
   experimental: {
     optimizePackageImports: ['lucide-react'],

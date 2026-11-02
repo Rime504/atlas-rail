@@ -25,7 +25,7 @@ import {
   resourcePriceLimitSchema,
   verifyMandateChain,
 } from '@atlas-rail/mandate';
-import { verifyReceipt } from '@atlas-rail/receipt';
+import { projectPaymentHistory, verifyReceipt, type HistoryApproval, type HistoryDecision, type HistoryReceipt } from '@atlas-rail/receipt';
 import { AuthGuard, RequirePermission } from '../common/auth.guard';
 import { AgentFacade } from './agent.facade';
 import { AgentExceptionFilter } from './agent.exceptions';
@@ -289,6 +289,11 @@ export class AgentController {
   private async decide(req: any, approvalId: string, approve: boolean, body: unknown) {
     const { comment } = decideSchema.parse(body ?? {});
     if (req.user.isApiKey) throw new ForbiddenException('Approvals are decided by people, not API keys');
+    // Launch rule: over-limit payments are blocked. Approving an escalation stays off until
+    // ATLAS_ENABLE_APPROVALS=1. Denying still works, and an unanswered request expires.
+    if (approve && process.env.ATLAS_ENABLE_APPROVALS !== '1') {
+      throw new ForbiddenException('Approving over-limit payments is turned off for launch. You can still deny.');
+    }
     return this.agent.lifecycle.decideApproval(req.user.organizationId, approvalId, {
       approve,
       approver: { userId: req.user.userId, role: req.user.role },
@@ -297,6 +302,73 @@ export class AgentController {
   }
 
   /* ---- receipts ------------------------------------------------------------------------------ */
+
+  @Get('payments')
+  @RequirePermission('receipt:read')
+  @ApiOperation({ summary: 'Payment history for the signed-in organisation. Settled totals ignore blocked and pending rows.' })
+  async payments(@Req() req: any, @Query('namespace') namespace?: string) {
+    const organizationId: string = req.user.organizationId;
+    const scope = namespace === 'devnet' || namespace === 'other' ? namespace : 'all';
+    const [decisions, receipts, approvals] = await Promise.all([
+      this.agent.store.decisions.list(organizationId, { limit: 200 }),
+      this.agent.receipts.list(organizationId, { limit: 200 }),
+      this.agent.store.approvals.list(organizationId, { limit: 200 }),
+    ]);
+    return projectPaymentHistory({
+      organizationId,
+      namespace: scope,
+      decisions: decisions.map((row): HistoryDecision => ({
+        organizationId: row.organizationId,
+        id: row.signed.record.id,
+        mandateId: row.signed.record.mandateId,
+        decision: row.signed.record.decision,
+        kind: row.signed.record.kind,
+        reason: row.signed.record.reason,
+        failedRule: row.signed.record.failedRule,
+        offer: row.signed.record.offer,
+        createdAt: row.createdAt,
+        hasAuthorization: row.authorization !== null,
+      })),
+      receipts: receipts.map((row): HistoryReceipt => ({
+        organizationId: row.organizationId,
+        id: row.receipt.id,
+        decisionId: row.receipt.decision.record.id,
+        receiptHash: row.receipt.receiptHash,
+        offer: row.receipt.offer,
+        txSignature: row.receipt.settlement.txSignature,
+        issuedAt: row.receipt.issuedAt,
+        anchor: row.receipt.anchor
+          ? {
+              merkleRoot: row.receipt.anchor.merkleRoot,
+              leafCount: row.receipt.anchor.leafCount,
+              leafIndex: row.receipt.anchor.leafIndex,
+              proof: row.receipt.anchor.proof,
+              txSignature: row.receipt.anchor.txSignature,
+              network: row.receipt.anchor.network,
+              anchoredAt: row.receipt.anchor.anchoredAt,
+              leafSalt: row.receipt.anchor.leafSalt,
+              batchHeader: row.receipt.anchor.batchHeader,
+              batchFileHash: row.receipt.anchor.batchFileHash,
+            }
+          : null,
+      })),
+      approvals: approvals.map((row): HistoryApproval => ({
+        organizationId: row.organizationId,
+        decisionId: row.decisionId,
+        status: row.status,
+      })),
+    });
+  }
+
+  @Get('payments/:paymentId')
+  @RequirePermission('receipt:read')
+  @ApiOperation({ summary: 'One payment from the signed-in organisation' })
+  async payment(@Req() req: any, @Param('paymentId') paymentId: string, @Query('namespace') namespace?: string) {
+    const view = await this.payments(req, namespace);
+    const row = view.payments.find((item) => item.id === paymentId);
+    if (!row) throw new AgentServiceError('NOT_FOUND', 'Payment not found');
+    return row;
+  }
 
   @Get('receipts')
   @RequirePermission('receipt:read')

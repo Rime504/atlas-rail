@@ -16,10 +16,10 @@ export default function LandingPage() {
           <span className="bg-solana-gradient-text bg-clip-text text-transparent">Atlas Rail makes sure they only pay what they&rsquo;re allowed to</span>, and proves it.
         </h1>
         <p className="mt-6 max-w-lg text-base text-mutedText">
-          An 8-step guided walkthrough, running the real policy gate and receipt code. No signup, nothing to install.
+          Connect a devnet wallet, set the voucher mandate, and settle one payment on Solana. The receipt root is anchored on devnet.
         </p>
         <p className="mt-3 max-w-lg text-xs text-mutedText">
-          The hosted playground runs the real gate rules with per-session state. The full gate service (Postgres ledger, reservations, per-mandate lock, separate signer) runs with pnpm demo; that&rsquo;s where the concurrency proof comes from.
+          The hosted playground runs the real gate rules with per-session state.
         </p>
         <Link
           href="/demo"
@@ -34,6 +34,15 @@ export default function LandingPage() {
           </Link>
           <Link href="/verify" className="inline-flex items-center gap-1.5 text-white/90 hover:text-white">
             <Search className="h-4 w-4 text-allow" aria-hidden="true" /> Verify a real payment
+          </Link>
+          <Link href="/wallet" className="inline-flex items-center gap-1.5 text-white/90 hover:text-white">
+            Connect a Solana wallet
+          </Link>
+          <Link href="/fund" className="inline-flex items-center gap-1.5 text-white/90 hover:text-white">
+            Fund a devnet channel
+          </Link>
+          <Link href="/mandate" className="inline-flex items-center gap-1.5 text-white/90 hover:text-white">
+            Create an on-chain mandate
           </Link>
         </div>
         <div className="mt-12 flex items-center gap-6 text-sm text-mutedText">

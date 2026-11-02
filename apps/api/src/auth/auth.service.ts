@@ -36,12 +36,12 @@ export class AuthService {
     };
 
     const accessToken = this.jwtService.sign(payload, {
-      secret: process.env.JWT_ACCESS_SECRET || 'atlas_rail_dev_access_secret_do_not_use_in_production_32bytes',
+      secret: process.env.JWT_ACCESS_SECRET,
       expiresIn: '15m',
     });
 
     const refreshToken = this.jwtService.sign(payload, {
-      secret: process.env.JWT_REFRESH_SECRET || 'atlas_rail_dev_refresh_secret_do_not_use_in_production_32bytes',
+      secret: process.env.JWT_REFRESH_SECRET,
       expiresIn: '7d',
     });
 

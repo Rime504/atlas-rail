@@ -13,13 +13,14 @@ export interface PublishResult {
  * N2's public receipt store: anyone with only a devnet transaction signature reads its memo for a
  * receipt id, and this is what they fetch. Deliberately offline-verified at publish time (no chain
  * access, no trustedInstanceKeys allowlist) — the only thing published here is confirmed internally
- * self-consistent (schema, hash binding, a signature that actually verifies for its claimed signer,
- * the whole mandate delegation chain, the decision matching the mandate scope). On-chain checks
- * (anchor, settlement) aren't run here since a receipt is published right after settlement, before
- * it's been anchored — `atlas verify`/the /verify page run those separately, with real chain access.
+ * self-consistent (schema, hash binding, a signature that verifies for the key inside the receipt).
+ * That check is explicitly untrusted: it does not decide that the instance key is Atlas Rail's.
+ * On-chain checks (anchor, settlement) aren't run here since a receipt is published right after
+ * settlement, before it's been anchored — `atlas verify`/the /verify page run those separately,
+ * with real chain access and a trusted instance key.
  */
 export async function publishPublicReceipt(receipt: unknown, source: PublicReceiptSource): Promise<PublishResult> {
-  const verification = await verifyReceipt(receipt, {});
+  const verification = await verifyReceipt(receipt, { untrusted: true });
   const hardFail = verification.checks.find((c) => c.status === 'FAIL');
   if (hardFail) return { accepted: false, reason: `${hardFail.id}: ${hardFail.message}` };
 

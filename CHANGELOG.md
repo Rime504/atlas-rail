@@ -4,9 +4,11 @@ All notable changes to Atlas Rail will be documented in this file.
 
 ## [Unreleased] - Agent Mandates (x402 on Solana devnet)
 
-Draft proposal, devnet only, not audited — see `spec/agent-mandate-v0.1.md` and `docs/security/threat-model.md`.
+Draft proposal, devnet only, not audited. See `spec/agent-mandate-v0.1.md` and `docs/security/threat-model.md`.
 
 ### Added
+- `atlasrails`: `createAtlasRail` creates and revokes an on-chain mandate, opens an escrow, requests a voucher, settles and distributes under `prepareOnly`, `requireApproval`, or `autoExecute`, and refunds the leftover. With the payee key, revoke seals the channel immediately. The script helpers still run deposit, voucher, settle, pay, and withdraw from caller fields. Manual: `packages/atlasrails/MANUAL.md`. Methods: `packages/atlasrails/SDK.md`. Example: `examples/atlasrails-pay/agent-payment.ts`.
+- Playground `/mandate`: Phantom creates the mandate, then opens, pays, and refunds on Devnet. Grace on that page is at least 900 seconds.
 - `@atlas-rail/mandate`: RFC 8785 JCS canonicalization, Ed25519 delegation-chain mandates, the Policy Gate (`evaluateGate`: ALLOW/DENY/ESCALATE across 14 ordered rules with per-rule evidence), signed decision records, gate authorizations bound to a transaction message hash, revocation.
 - `@atlas-rail/receipt`: bound receipts binding mandate + decision + settlement + response, RFC 6962 Merkle batching, Solana devnet Memo anchoring, offline verification.
 - `@atlas-rail/x402`: an `atlas fetch` wrapper that catches HTTP 402, evaluates the gate, and signs only on ALLOW; a gated signer adapter that physically cannot sign without a valid authorization; a local seller test kit.

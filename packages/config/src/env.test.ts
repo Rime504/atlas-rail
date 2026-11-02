@@ -11,6 +11,8 @@ const baseEnv = {
   SOLANA_USDC_MINT: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
 };
 
+const freshSecret = { ENCRYPTION_KEY_BASE64: Buffer.alloc(32, 9).toString('base64') };
+
 describe('validateEnv', () => {
   it('accepts the string "false" for ATLAS_MAINNET_ENABLED (docker-compose and .env.example set it this way)', () => {
     const env = validateEnv({ ...baseEnv, ATLAS_MAINNET_ENABLED: 'false' });
@@ -33,7 +35,12 @@ describe('validateEnv', () => {
 
   it('refuses the mock signer in production', () => {
     expect(() => validateEnv({ ...baseEnv, NODE_ENV: 'production', ATLAS_ALLOW_MOCK_SIGNER: 'true' })).toThrow(/Mock signer/);
-    expect(() => validateEnv({ ...baseEnv, NODE_ENV: 'production', ATLAS_ALLOW_MOCK_SIGNER: 'false' })).not.toThrow();
+    expect(() => validateEnv({ ...baseEnv, ...freshSecret, NODE_ENV: 'production', ATLAS_ALLOW_MOCK_SIGNER: 'false' })).not.toThrow();
+  });
+
+  it('refuses the public example encryption key in production, and allows it in development', () => {
+    expect(() => validateEnv({ ...baseEnv, NODE_ENV: 'production', ATLAS_ALLOW_MOCK_SIGNER: 'false' })).toThrow(/ENCRYPTION_KEY_BASE64 is the public example/);
+    expect(() => validateEnv({ ...baseEnv, NODE_ENV: 'development' })).not.toThrow();
   });
 
   it('refuses a mainnet RPC URL', () => {
@@ -45,11 +52,16 @@ describe('validateEnv', () => {
     expect(validateEnv({ ...baseEnv, ATLAS_ONCHAIN: 'true' }).ATLAS_ONCHAIN).toBe(true);
   });
 
+  it('defaults ATLAS_ONCHAIN_REQUIRE to false (soft-fail unless explicitly fail-closed)', () => {
+    expect(validateEnv(baseEnv).ATLAS_ONCHAIN_REQUIRE).toBe(false);
+    expect(validateEnv({ ...baseEnv, ATLAS_ONCHAIN_REQUIRE: 'true' }).ATLAS_ONCHAIN_REQUIRE).toBe(true);
+  });
+
   it('defaults MANDATE_PROGRAM_ID to the deployed devnet program', () => {
     expect(validateEnv(baseEnv).MANDATE_PROGRAM_ID).toBe('CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k');
   });
 
-  it('defaults ATLAS_ANCHOR_ROOT to false so anchoring stays on the Memo path', () => {
+  it('parses ATLAS_ANCHOR_ROOT and defaults it to false', () => {
     expect(validateEnv(baseEnv).ATLAS_ANCHOR_ROOT).toBe(false);
     expect(validateEnv({ ...baseEnv, ATLAS_ANCHOR_ROOT: 'true' }).ATLAS_ANCHOR_ROOT).toBe(true);
   });

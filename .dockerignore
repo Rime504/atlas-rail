@@ -54,7 +54,6 @@ ROADMAP.md
 SECURITY.md
 Makefile
 vitest.config.ts
-CLAUDE.md
 AGENTS.md
 docker-compose.yml
 Dockerfile.*

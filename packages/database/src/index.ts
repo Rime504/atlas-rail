@@ -3,3 +3,7 @@ export * from './client';
 export * from './ulid';
 export * from './agent-stores';
 export * from './run-exclusive';
+export * from './voucher-spend-store';
+export * from './owner-approval-store';
+export * from './pay-operation-store';
+export * from './decision-receipt-store';

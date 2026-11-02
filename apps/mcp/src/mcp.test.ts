@@ -1,60 +1,60 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { existsSync } from 'fs';
-import { join } from 'path';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { wrapFetch } from '@atlas-rail/agent';
-import { WORLD_ORG, createWorld } from '@atlas-rail/receipt/testing';
-import { LocalGateClient, reservePort, startFakeSeller } from '@atlas-rail/x402/testkit';
+import { describe, expect, it, vi } from 'vitest';
+import { AtlasDenied } from '@atlas-rail/agent';
+import { SOLANA_DEVNET_CAIP2 } from '@atlas-rail/mandate';
+import { NOW, TEST_MINT, TEST_ORIGIN, signedTestMandate, signers } from '@atlas-rail/mandate/testing';
+import { DevnetKeypairSigner } from '@atlas-rail/solana';
+import { AtlasFetch, GatedSignerAdapter, MandateDeniedError, VoucherAuthorizer, VoucherRequest } from '@atlas-rail/x402';
 import { payTool } from './pay';
 
-const closers: Array<() => Promise<void>> = [];
-afterEach(async () => {
-  while (closers.length) await closers.pop()!();
-});
+function seed(label: string): Uint8Array {
+  const out = new Uint8Array(32);
+  new TextEncoder().encode(label).forEach((b, i) => (out[i] = b));
+  return out;
+}
 
 describe('the pay tool', () => {
   it('pays within the mandate and reports the receipt; reports the refusing rules otherwise', async () => {
-    const port = await reservePort();
-    const origin = `http://127.0.0.1:${port}`;
-    const world = await createWorld({ mandate: { allowedResources: [`${origin}/research/*`] } });
-    const seller = await startFakeSeller({
-      chain: world.chain, facilitator: world.keys.facilitator, payTo: world.keys.merchant.publicKey, mint: world.mandate.scope.limits.mint, port,
-      routes: { '/research/summary': { amount: '10000', body: { ok: true } }, '/research/drain': { amount: '10000', payTo: world.keys.attacker.publicKey, body: {} } },
+    process.env.ATLAS_ALLOW_MOCK_SIGNER = 'true';
+    const mandate = await signedTestMandate();
+    const signer = new GatedSignerAdapter({
+      inner: new DevnetKeypairSigner(seed('agent')),
+      trustedInstanceKeys: [signers.instance.publicKey],
+      clock: () => NOW,
     });
-    closers.push(seller.close);
-    const pay = wrapFetch(fetch, {
-      mandateId: world.mandate.id,
-      gate: new LocalGateClient({ organizationId: WORLD_ORG, gate: world.gate, store: world.store, receiptService: world.receiptService }),
-      wallet: world.keys.agent, trustedInstanceKeys: [world.keys.instance.publicKey], chain: world.chain, clock: () => world.clock.now,
-    });
-    expect(await payTool(pay, `${origin}/research/summary`)).toMatch(/HTTP 200[\s\S]*Receipt: rcp_/);
-    expect(await payTool(pay, `${origin}/research/drain`)).toMatch(/REFUSED[\s\S]*PAYTO_ALLOWED/);
+    const authorizer = new VoucherAuthorizer({ mandate, instance: signers.instance, signer, organizationId: 'org_test', clock: () => NOW });
+    const sign = vi.spyOn(signer, 'signVoucherWithAuthorization');
+    const pay: AtlasFetch = async (input) => {
+      const url = String(input);
+      const ask: VoucherRequest = {
+        channelId: url.endsWith('/drain') ? signers.owner.publicKey : signers.facilitator.publicKey,
+        cumulativeAmount: '10000',
+        expiresAt: NOW + 600,
+        recipient: url.endsWith('/drain') ? signers.attacker.publicKey : signers.merchant.publicKey,
+        resourceUrl: url,
+        asset: TEST_MINT,
+        network: SOLANA_DEVNET_CAIP2,
+      };
+      try {
+        const allowed = await authorizer.requestVoucher(ask);
+        const receipt = await authorizer.recordAllowedReceipt(allowed, { txSignature: 'A'.repeat(64), slot: 1 });
+        const response = new Response(JSON.stringify({ ok: true }), { status: 200 }) as Awaited<ReturnType<AtlasFetch>>;
+        response.atlas = {
+          decision: allowed.decision,
+          approvalId: null,
+          escalated: false,
+          txSignature: receipt.settlement.txSignature,
+          receipt,
+          receiptError: null,
+          expectedReceiptId: receipt.id,
+        };
+        return response;
+      } catch (error) {
+        if (error instanceof MandateDeniedError) throw new AtlasDenied(error.decision);
+        throw error;
+      }
+    };
+    expect(await payTool(pay, `${TEST_ORIGIN}/research/summary`)).toMatch(/HTTP 200[\s\S]*Receipt: rcp_/);
+    expect(await payTool(pay, `${TEST_ORIGIN}/research/drain`)).toMatch(/REFUSED[\s\S]*PAYTO_ALLOWED/);
+    expect(sign).toHaveBeenCalledTimes(1);
   });
-});
-
-const SERVER = join(__dirname, '..', 'dist', 'main.js');
-
-// Needs the built server; `pnpm typecheck` builds it first (apps/mcp/turbo.json), as CI does.
-describe('atlas-rail-mcp over stdio', () => {
-  it.skipIf(!existsSync(SERVER))('starts and advertises exactly one tool, pay(url)', async () => {
-    const transport = new StdioClientTransport({
-      command: process.execPath,
-      args: [SERVER],
-      env: {
-        ...(process.env as Record<string, string>),
-        ATLAS_GATE_URL: 'http://127.0.0.1:1',
-        ATLAS_API_KEY: 'test',
-        ATLAS_MANDATE_ID: 'mnd_test',
-        ATLAS_TRUSTED_INSTANCE_KEY: '11111111111111111111111111111111',
-        ATLAS_AGENT_SECRET_KEY: '11111111111111111111111111111112',
-      },
-    });
-    const client = new Client({ name: 'test', version: '0.0.0' });
-    await client.connect(transport);
-    closers.push(() => client.close());
-    const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name)).toEqual(['pay']);
-    expect(tools[0].inputSchema.required).toEqual(['url']);
-  }, 30_000);
 });

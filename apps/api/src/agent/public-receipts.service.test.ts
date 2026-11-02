@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { hashResponseBody } from '@atlas-rail/receipt';
-import { WORLD_ORG, createWorld } from '@atlas-rail/receipt/testing';
+import { SOLANA_DEVNET_CAIP2 } from '@atlas-rail/mandate';
+import { TEST_MINT, TEST_ORIGIN, WORLD_ORG, createWorld } from '@atlas-rail/receipt/testing';
+import { GatedSignerAdapter, VoucherAuthorizer } from '@atlas-rail/x402';
 import { publishPublicReceipt } from './public-receipts.service';
 
 const rows = new Map<string, { id: string; receiptHash: string; document: unknown; source: string }>();
+let voucherSeq = 0;
 
 vi.mock('@atlas-rail/database', () => ({
   prisma: {
@@ -19,19 +21,37 @@ vi.mock('@atlas-rail/database', () => ({
 
 async function validReceipt() {
   const world = await createWorld();
-  const { outcome, transactionBase64 } = await world.requestGate({ amount: '10000' });
-  const txSignature = await world.settle(transactionBase64);
-  return world.receiptService.issue(WORLD_ORG, {
-    decisionId: outcome.decision.record.id,
-    txSignature,
-    response: { status: 200, bodySha256: hashResponseBody('{}'), contentType: 'application/json' },
+  const authorizer = new VoucherAuthorizer({
+    mandate: world.mandate,
+    instance: world.keys.instance,
+    signer: new GatedSignerAdapter({
+      inner: world.keys.agent,
+      trustedInstanceKeys: [world.keys.instance.publicKey],
+      clock: () => world.clock.now,
+    }),
+    organizationId: WORLD_ORG,
+    clock: () => world.clock.now,
   });
+  const settledAmount = '2500';
+  const cumulativeAmount = '12500';
+  const allowed = await authorizer.requestVoucher({
+    channelId: world.keys.facilitator.publicKey,
+    cumulativeAmount,
+    settledAmount,
+    expiresAt: world.clock.now + 600 + voucherSeq++,
+    recipient: world.keys.merchant.publicKey,
+    resourceUrl: `${TEST_ORIGIN}/research/summary`,
+    asset: TEST_MINT,
+    network: SOLANA_DEVNET_CAIP2,
+  });
+  // Gate scores cumulative − settled. The signer runs only after that decision is ALLOW.
+  expect(allowed.decision.record.decision).toBe('ALLOW');
+  expect(allowed.deltaAmount).toBe('10000');
+  expect(allowed.decision.record.offer.amount).toBe(allowed.deltaAmount);
+  return authorizer.recordAllowedReceipt(allowed, { txSignature: `V${String(voucherSeq).padStart(87, 'V')}`, slot: 1 });
 }
 
 describe('publishPublicReceipt', () => {
-  // Each createWorld() restarts its own id counter from 1, so receipts from different tests can
-  // share an id (rcp_000001) despite being unrelated — this mock's store must not let that masquerade
-  // as a real collision across tests.
   beforeEach(() => rows.clear());
 
   it('accepts a well-formed, internally-consistent receipt and stores it', async () => {

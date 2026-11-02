@@ -7,19 +7,40 @@ import { AuthorizedSigner, GatedSignerAdapter } from './gated-signer';
 
 /*
  * The agent's key, behind HTTP. Run this as its own process (or on its own machine, or inside a
- * custody provider); the agent gets only the URL. There are exactly three operations, and none of
- * them signs arbitrary bytes:
+ * custody provider); the agent gets only the URL. None of these operations signs arbitrary bytes:
  *
  *   GET  /v1/public-key      the agent's address
+ *   POST /v1/voucher-key     mint the random voucher key for one mandate id
+ *   GET  /v1/voucher-key     that mandate's voucher address, if it was already minted
+ *   DELETE /v1/voucher-key   drop that mandate's voucher key
  *   POST /v1/sign-message    an Atlas Rail agent request or mandate acceptance, in its exact domain form
  *   POST /v1/sign-authorized a transaction, with the gate authorisation, ALLOW decision and mandate
  *                            that cover its exact message bytes
+ *   POST /v1/sign-voucher    the 50-byte payment-channels voucher, with an authorisation for those bytes
+ *   POST /v1/sign-mandate-create  one create_mandate naming this key as agent, never as fee payer
  */
 
 const MAX_BODY_BYTES = 64 * 1024;
+const MANDATE_ID = /^mnd_[A-Za-z0-9]{10,40}$/;
+
+function mandateIdOf(value: unknown): string {
+  if (typeof value !== 'string' || !MANDATE_ID.test(value)) throw new HttpError(400, 'mandate id is required');
+  return value;
+}
+
+export interface VoucherKeys {
+  /** The key already minted for this mandate, or null. */
+  get(mandateId: string): GatedSignerAdapter | null;
+  /** A new random key on the first call for this mandate. The same key after that. */
+  mint(mandateId: string): GatedSignerAdapter;
+  /** Drops the key for this mandate. */
+  drop(mandateId: string): void;
+}
 
 export interface SignerServiceOptions {
   signer: GatedSignerAdapter;
+  /** When set, each mandate id has its own voucher key. Absent keeps the single `signer` key. */
+  voucherKeys?: VoucherKeys;
   /** Bind address. Defaults to 127.0.0.1: reachable from this machine only. */
   host?: string;
   /** 0 picks a free port. */
@@ -65,8 +86,21 @@ function tokenMatches(header: string | undefined, token: string): boolean {
   return presented.length === expected.length && timingSafeEqual(presented, expected);
 }
 
+function voucherSigner(options: SignerServiceOptions, mandateId: unknown): GatedSignerAdapter {
+  if (!options.voucherKeys) throw new HttpError(400, 'mandate id is required');
+  const key = options.voucherKeys.get(mandateIdOf(mandateId));
+  if (!key) throw new HttpError(404, 'No voucher key for this mandate');
+  return key;
+}
+
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+
 export function startSignerService(options: SignerServiceOptions): Promise<RunningSignerService> {
   const { signer } = options;
+  // Reachable from other machines means anyone there could mint or drop voucher keys: require a token.
+  if (!LOOPBACK_HOSTS.has(options.host ?? '127.0.0.1') && !options.token) {
+    return Promise.reject(new Error('The signer needs a bearer token (ATLAS_SIGNER_TOKEN) when it listens beyond this machine'));
+  }
 
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const send = (status: number, body: unknown) => {
@@ -80,10 +114,31 @@ export function startSignerService(options: SignerServiceOptions): Promise<Runni
 
       if (req.method === 'GET' && path === '/v1/public-key') return send(200, { publicKey: signer.publicKey });
 
+      if (path === '/v1/voucher-key') {
+        if (!options.voucherKeys) throw new HttpError(404, 'Not found');
+        const mandateId = req.method === 'GET'
+          ? new URL(req.url ?? '/', 'http://signer').searchParams.get('mandateId')
+          : undefined;
+        if (req.method === 'GET') {
+          const existing = options.voucherKeys.get(mandateIdOf(mandateId));
+          if (!existing) throw new HttpError(404, 'No voucher key for this mandate');
+          return send(200, { publicKey: existing.publicKey });
+        }
+        if (req.method === 'POST') {
+          const body = await readJson(req);
+          return send(200, { publicKey: options.voucherKeys.mint(mandateIdOf(body.mandateId)).publicKey });
+        }
+        if (req.method === 'DELETE') {
+          options.voucherKeys.drop(mandateIdOf(new URL(req.url ?? '/', 'http://signer').searchParams.get('mandateId')));
+          return send(200, { deleted: true });
+        }
+      }
+
       if (req.method === 'POST' && path === '/v1/sign-message') {
         const body = await readJson(req);
         if (typeof body.messageBase64 !== 'string') throw new HttpError(400, 'messageBase64 is required');
-        const signature = await signer.signMessage(Buffer.from(body.messageBase64, 'base64'));
+        const messageSigner = body.mandateId === undefined ? signer : voucherSigner(options, body.mandateId);
+        const signature = await messageSigner.signMessage(Buffer.from(body.messageBase64, 'base64'));
         return send(200, { signatureBase64: Buffer.from(signature).toString('base64') });
       }
 
@@ -97,6 +152,30 @@ export function startSignerService(options: SignerServiceOptions): Promise<Runni
           (body.mandate ?? null) as AgentMandate | null,
         );
         return send(200, signed);
+      }
+
+      if (req.method === 'POST' && path === '/v1/sign-mandate-create') {
+        const body = await readJson(req);
+        if (typeof body.transactionBase64 !== 'string') throw new HttpError(400, 'transactionBase64 is required');
+        const agent = body.mandateId === undefined ? signer : voucherSigner(options, body.mandateId);
+        return send(200, await agent.signMandateCreation(body.transactionBase64));
+      }
+
+      if (req.method === 'POST' && path === '/v1/sign-voucher') {
+        const body = await readJson(req);
+        if (typeof body.messageBase64 !== 'string') throw new HttpError(400, 'messageBase64 is required');
+        const mandate = (body.mandate ?? null) as AgentMandate | null;
+        const voucher = options.voucherKeys ? voucherSigner(options, mandate?.id) : signer;
+        if (options.voucherKeys && voucher.publicKey !== mandate?.agent.publicKey) {
+          throw new HttpError(403, 'Voucher key is not this mandate agent');
+        }
+        const signed = await voucher.signVoucherWithAuthorization(
+          Buffer.from(body.messageBase64, 'base64'),
+          (body.authorization ?? null) as GateAuthorization | null,
+          (body.decision ?? null) as SignedDecision | null,
+          mandate,
+        );
+        return send(200, { signatureBase64: Buffer.from(signed.signature).toString('base64') });
       }
 
       throw new HttpError(404, 'Not found');
@@ -155,6 +234,20 @@ export class HttpSignerClient implements AuthorizedSigner {
     mandate: AgentMandate | null,
   ): Promise<{ signedBase64: string; signature: string }> {
     return HttpSignerClient.call(this.options, 'POST', '/v1/sign-authorized', { transactionBase64, authorization, decision, mandate });
+  }
+
+  signVoucher(
+    message: Uint8Array,
+    authorization: GateAuthorization | null,
+    decision: SignedDecision | null,
+    mandate: AgentMandate | null,
+  ): Promise<{ signatureBase64: string }> {
+    return HttpSignerClient.call(this.options, 'POST', '/v1/sign-voucher', {
+      messageBase64: Buffer.from(message).toString('base64'),
+      authorization,
+      decision,
+      mandate,
+    });
   }
 
   private static async call<T>(

@@ -1,6 +1,7 @@
+import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { FlowVisual } from './FlowVisual';
-import { PLAYGROUND, VERIFY } from '@/content';
+import { PLAYGROUND, START, VERIFY } from '@/content';
 
 export function Hero() {
   return (
@@ -23,13 +24,18 @@ export function Hero() {
           The authorization layer for AI agent payments on Solana.
         </p>
         <div className="rise rise-4 mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <a href={PLAYGROUND} target="_blank" rel="noreferrer" className="btn-primary w-full sm:w-auto">
-            Try it live <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </a>
-          <a href={VERIFY} target="_blank" rel="noreferrer" className="btn-secondary w-full sm:w-auto">
-            Verify a payment
+          <Link href={START} className="btn-accent h-14 w-full px-9 text-[17px] sm:w-auto">
+            Become a user <ArrowRight className="h-5 w-5" aria-hidden="true" />
+          </Link>
+          <a href={PLAYGROUND} target="_blank" rel="noreferrer" className="btn-secondary w-full sm:w-auto">
+            Try it live
           </a>
         </div>
+        <p className="rise rise-4 mt-4 text-[14px]">
+          <a href={VERIFY} target="_blank" rel="noreferrer" className="link-quiet">
+            Verify a payment from the chain
+          </a>
+        </p>
       </div>
 
       <div className="rise rise-4 mx-auto mt-16 max-w-page px-5 sm:mt-20 sm:px-8">

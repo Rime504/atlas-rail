@@ -17,6 +17,7 @@
     "clean": "rimraf dist tsconfig.tsbuildinfo"
   },
   "dependencies": {
+    "@noble/hashes": "^1.8.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

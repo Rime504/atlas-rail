@@ -1,0 +1,19 @@
+[package]
+name = "atlas-pay-host"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Runs the real pay.sh MCP curl tool with Atlas Rail as its spending authority (PR #514)."
+
+# Standalone: not part of the Anchor workspace at the repo root.
+[workspace]
+
+[dependencies]
+# solana-foundation/pay PR #514 head (898135e, "allow explicit pre-execution retry").
+pay-mcp = { git = "https://github.com/solana-foundation/pay", rev = "898135e5404018e61daa2644f30952507947e990" }
+pay-core = { git = "https://github.com/solana-foundation/pay", rev = "898135e5404018e61daa2644f30952507947e990" }
+rmcp = { version = "3.5", features = ["server", "transport-io", "client"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde_json = "1"

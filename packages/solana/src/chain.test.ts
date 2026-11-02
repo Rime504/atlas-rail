@@ -1,120 +1,145 @@
 import { createHash } from 'crypto';
-import { ComputeBudgetProgram, Keypair, PublicKey, TransactionInstruction, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
-import { TOKEN_PROGRAM_ID, createTransferCheckedInstruction, getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { Connection, Keypair, PublicKey, TransactionInstruction, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
-import { checkMemoAnchor, checkRootAnchor, checkSettlement, summarizeTransaction } from './chain';
+import { Web3ChainClient, checkChannelSettlement, checkRootAnchor, summarizeTransaction } from './chain';
 import { findMandatePda, findRootPda } from './mandate-registry';
-import { buildExactPaymentTransaction } from './x402-payment';
 
-const MINT = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const MEMO = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
+const ED25519_PROGRAM = 'Ed25519SigVerify111111111111111111111111111';
+const CHANNEL_PROGRAM = 'CHNLxYvVA28MJP9PrFuDXccuoGXAx7jBacfLEkahyGsX';
+const INSTRUCTIONS_SYSVAR = 'Sysvar1nstructions1111111111111111111111111';
 const payer = Keypair.generate();
-const feePayer = Keypair.generate();
-const merchant = Keypair.generate();
 const blockhash = Keypair.generate().publicKey.toBase58();
 
-function paymentSummary(amount = '10000', memo?: string, err: unknown | null = null) {
-  const tx = buildExactPaymentTransaction({
-    payer: payer.publicKey.toBase58(),
-    feePayer: feePayer.publicKey.toBase58(),
-    mint: MINT,
-    decimals: 6,
-    payTo: merchant.publicKey.toBase58(),
-    amountBaseUnits: amount,
+function channelSettleTransaction(agent: PublicKey = payer.publicKey, extra: TransactionInstruction[] = []): VersionedTransaction {
+  const message = Buffer.from('voucher');
+  const signature = Buffer.alloc(64, 7);
+  const data = Buffer.alloc(112 + message.length);
+  data[0] = 1;
+  data.writeUInt16LE(48, 2);
+  data.writeUInt16LE(0xffff, 4);
+  data.writeUInt16LE(16, 6);
+  data.writeUInt16LE(0xffff, 8);
+  data.writeUInt16LE(112, 10);
+  data.writeUInt16LE(message.length, 12);
+  data.writeUInt16LE(0xffff, 14);
+  agent.toBuffer().copy(data, 16);
+  signature.copy(data, 48);
+  message.copy(data, 112);
+  const compiled = new TransactionMessage({
+    payerKey: payer.publicKey,
     recentBlockhash: blockhash,
-    memo,
-  });
-  return summarizeTransaction('sig', tx, { slot: 42, blockTime: 1_800_000_000, err });
+    instructions: [
+      new TransactionInstruction({ programId: new PublicKey(ED25519_PROGRAM), keys: [], data }),
+      new TransactionInstruction({
+        programId: new PublicKey(CHANNEL_PROGRAM),
+        keys: [
+          { pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: true },
+          { pubkey: new PublicKey(INSTRUCTIONS_SYSVAR), isSigner: false, isWritable: false },
+        ],
+        data: Buffer.from([2]),
+      }),
+      ...extra,
+    ],
+  }).compileToV0Message();
+  return new VersionedTransaction(compiled);
+}
+
+function channelSettleSummary(agent: PublicKey = payer.publicKey, err: unknown | null = null, extra: TransactionInstruction[] = []) {
+  return summarizeTransaction('sig', channelSettleTransaction(agent, extra), { slot: 42, blockTime: 1_800_000_000, err });
 }
 
 describe('summarizeTransaction', () => {
-  it('extracts the transfer, memo, signers, fee payer and programs', () => {
-    const summary = paymentSummary('10000', 'pi_memo');
-    expect(summary.feePayer).toBe(feePayer.publicKey.toBase58());
-    expect(summary.signers).toEqual([feePayer.publicKey.toBase58(), payer.publicKey.toBase58()]);
-    expect(summary.memos).toEqual(['pi_memo']);
-    expect(summary.tokenTransfers).toEqual([
-      {
-        source: getAssociatedTokenAddressSync(new PublicKey(MINT), payer.publicKey).toBase58(),
-        destination: getAssociatedTokenAddressSync(new PublicKey(MINT), merchant.publicKey).toBase58(),
-        mint: MINT,
-        amount: '10000',
-        authority: payer.publicKey.toBase58(),
-      },
-    ]);
-    expect(summary.programIds).toContain(TOKEN_PROGRAM_ID.toBase58());
+  it('extracts a payment-channels settle: voucher payer, no token movement', () => {
+    const summary = channelSettleSummary();
+    expect(summary.feePayer).toBe(payer.publicKey.toBase58());
+    expect(summary.tokenTransfers).toEqual([]);
+    expect(summary.programIds).toEqual([ED25519_PROGRAM, CHANNEL_PROGRAM]);
     expect(summary.slot).toBe(42);
+    expect(checkChannelSettlement(summary).payer).toBe(payer.publicKey.toBase58());
   });
 });
 
-describe('checkSettlement', () => {
-  const expected = { payTo: merchant.publicKey.toBase58(), mint: MINT, amountBaseUnits: '10000' };
-
-  it('accepts exactly one matching transfer and reports the payer', () => {
-    const result = checkSettlement(paymentSummary(), expected);
+describe('checkChannelSettlement', () => {
+  it('accepts an Ed25519 precompile plus settle and reports the voucher payer', () => {
+    const result = checkChannelSettlement(channelSettleSummary());
     expect(result.ok).toBe(true);
     expect(result.payer).toBe(payer.publicKey.toBase58());
     expect(result.slot).toBe(42);
   });
 
-  it('rejects wrong amount (off by one), wrong recipient, wrong mint', () => {
-    expect(checkSettlement(paymentSummary('10001'), expected).ok).toBe(false);
-    expect(checkSettlement(paymentSummary(), { ...expected, amountBaseUnits: '9999' }).ok).toBe(false);
-    expect(checkSettlement(paymentSummary(), { ...expected, payTo: Keypair.generate().publicKey.toBase58() }).ok).toBe(false);
-    expect(checkSettlement(paymentSummary(), { ...expected, mint: Keypair.generate().publicKey.toBase58() }).ok).toBe(false);
+  it('rejects a different voucher key, a token transfer, and a non-settle discriminator', () => {
+    expect(checkChannelSettlement(channelSettleSummary(Keypair.generate().publicKey)).payer).not.toBe(payer.publicKey.toBase58());
+    const withTransfer = channelSettleSummary(payer.publicKey, null, [
+      new TransactionInstruction({ programId: new PublicKey(MEMO), keys: [], data: Buffer.from('extra') }),
+    ]);
+    expect(checkChannelSettlement(withTransfer).ok).toBe(false);
+    const wrongDisc = channelSettleSummary();
+    wrongDisc.instructions[1] = { ...wrongDisc.instructions[1], dataBase64: Buffer.from([7]).toString('base64') };
+    expect(checkChannelSettlement(wrongDisc).ok).toBe(false);
   });
 
   it('rejects failed and missing transactions', () => {
-    expect(checkSettlement(paymentSummary('10000', undefined, { InstructionError: [2, 'Custom'] }), expected)).toMatchObject({ ok: false });
-    expect(checkSettlement(null, expected).reason).toContain('not found');
+    expect(checkChannelSettlement(channelSettleSummary(payer.publicKey, { InstructionError: [1, 'Custom'] })).ok).toBe(false);
+    expect(checkChannelSettlement(null).reason).toContain('not found');
   });
 
-  it('rejects a transaction with two matching transfers (double payment)', () => {
-    const transfer = () =>
-      createTransferCheckedInstruction(
-        getAssociatedTokenAddressSync(new PublicKey(MINT), payer.publicKey),
-        new PublicKey(MINT),
-        getAssociatedTokenAddressSync(new PublicKey(MINT), merchant.publicKey),
-        payer.publicKey,
-        10000n,
-        6,
-        [],
-        TOKEN_PROGRAM_ID,
-      );
-    const message = new TransactionMessage({
-      payerKey: feePayer.publicKey,
-      recentBlockhash: blockhash,
-      instructions: [ComputeBudgetProgram.setComputeUnitLimit({ units: 20000 }), transfer(), transfer()],
-    }).compileToV0Message();
-    const summary = summarizeTransaction('sig2', new VersionedTransaction(message), { slot: 1, blockTime: null, err: null });
-    expect(checkSettlement(summary, expected)).toMatchObject({ ok: false, reason: expect.stringContaining('more than one') });
+  it('rejects a settle that also moves tokens', () => {
+    const summary = channelSettleSummary();
+    summary.tokenTransfers = [{ source: 's', destination: 'd', mint: 'm', amount: '10000', authority: payer.publicKey.toBase58() }];
+    expect(checkChannelSettlement(summary)).toMatchObject({ ok: false, reason: expect.stringContaining('Ed25519') });
   });
 });
 
-describe('checkMemoAnchor', () => {
-  const memoTx = (signer: Keypair, text: string, err: unknown | null = null) => {
-    const message = new TransactionMessage({
-      payerKey: signer.publicKey,
-      recentBlockhash: blockhash,
-      instructions: [new TransactionInstruction({ keys: [], programId: new PublicKey(MEMO), data: Buffer.from(text) })],
-    }).compileToV0Message();
-    return summarizeTransaction('anchor', new VersionedTransaction(message), { slot: 7, blockTime: 1_800_000_100, err });
-  };
+describe('Web3ChainClient settle preflight', () => {
+  function fakeConnection(statuses: Array<'processed' | 'confirmed' | 'finalized'>) {
+    const calls: string[] = [];
+    let index = 0;
+    const connection = {
+      rpcEndpoint: 'https://api.devnet.solana.com',
+      async simulateTransaction() {
+        calls.push('simulate');
+        return { value: { err: null, logs: [], unitsConsumed: 12 } };
+      },
+      async sendRawTransaction() {
+        calls.push('send');
+        return 'sig';
+      },
+      async getLatestBlockhash() {
+        return { blockhash, lastValidBlockHeight: 9 };
+      },
+      async getSignatureStatuses() {
+        calls.push('status');
+        const confirmationStatus = statuses[Math.min(index, statuses.length - 1)];
+        index += 1;
+        return { value: [{ err: null, confirmationStatus }] };
+      },
+    };
+    return { calls, connection: connection as unknown as Connection };
+  }
 
-  it('accepts a successful transaction signed by the instance key carrying the memo', () => {
-    const instance = Keypair.generate();
-    const result = checkMemoAnchor(memoTx(instance, 'atlasrail:anchor:v1:abc'), { memo: 'atlasrail:anchor:v1:abc', signer: instance.publicKey.toBase58() });
-    expect(result.ok).toBe(true);
-    expect(result.slot).toBe(7);
+  const raw = () => Buffer.from(channelSettleTransaction().serialize()).toString('base64');
+
+  it('simulates a settle on devnet and does not broadcast it', async () => {
+    const fake = fakeConnection(['confirmed']);
+    const result = await new Web3ChainClient(fake.connection).simulate(raw());
+    expect(result.success).toBe(true);
+    expect(fake.calls).toEqual(['simulate']);
   });
 
-  it('rejects wrong memo, wrong signer, failed and missing transactions', () => {
-    const instance = Keypair.generate();
-    const summary = memoTx(instance, 'atlasrail:anchor:v1:abc');
-    expect(checkMemoAnchor(summary, { memo: 'atlasrail:anchor:v1:other', signer: instance.publicKey.toBase58() }).ok).toBe(false);
-    expect(checkMemoAnchor(summary, { memo: 'atlasrail:anchor:v1:abc', signer: Keypair.generate().publicKey.toBase58() }).ok).toBe(false);
-    expect(checkMemoAnchor(memoTx(instance, 'atlasrail:anchor:v1:abc', { err: 1 }), { memo: 'atlasrail:anchor:v1:abc', signer: instance.publicKey.toBase58() }).ok).toBe(false);
-    expect(checkMemoAnchor(null, { memo: 'x', signer: instance.publicKey.toBase58() }).ok).toBe(false);
+  it('confirms only after the status is confirmed or finalized', async () => {
+    const processed = fakeConnection(['processed', 'confirmed']);
+    await expect(new Web3ChainClient(processed.connection).sendAndConfirm(raw())).resolves.toBe('sig');
+    expect(processed.calls.filter((call) => call === 'status')).toHaveLength(2);
+    expect(processed.calls).toContain('send');
+
+    const finalized = fakeConnection(['finalized']);
+    await expect(new Web3ChainClient(finalized.connection).sendAndConfirm(raw())).resolves.toBe('sig');
+    expect(finalized.calls.filter((call) => call === 'status')).toHaveLength(1);
+  });
+
+  it('refuses a mainnet endpoint', () => {
+    expect(() => Web3ChainClient.fromUrl('https://api.mainnet-beta.solana.com')).toThrow('CRITICAL SAFETY FATAL');
   });
 });
 
@@ -162,6 +187,29 @@ describe('checkRootAnchor', () => {
     ...overrides,
   });
 
+  it('accepts anchor_root_v2 with the batch header and file hash, and rejects a mismatched hash', () => {
+    const instance = Keypair.generate();
+    const v1 = anchorRootTx(instance);
+    const ix = v1.instructions.find((i) => i.programId === PROGRAM_ID)!;
+    const header = Buffer.alloc(32, 3);
+    const file = Buffer.alloc(32, 4);
+    const body = Buffer.from(ix.dataBase64, 'base64').subarray(8);
+    const v2Disc = createHash('sha256').update('global:anchor_root_v2').digest().subarray(0, 8);
+    ix.dataBase64 = Buffer.concat([v2Disc, body, header, file]).toString('base64');
+    const ok = checkRootAnchor(v1, { ...expected({}, instance), batchHeader: header.toString('hex'), batchFileHash: file.toString('hex') });
+    expect(ok.ok).toBe(true);
+    const bad = checkRootAnchor(v1, { ...expected({}, instance), batchHeader: header.toString('hex'), batchFileHash: '05'.repeat(32) });
+    expect(bad.ok).toBe(false);
+  });
+
+  it('rejects a memo on an otherwise valid anchor_root', () => {
+    const instance = Keypair.generate();
+    const tx = anchorRootTx(instance);
+    tx.memos.push('atlasrail:anchor:v1:nope');
+    tx.programIds.push('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+    expect(checkRootAnchor(tx, expected({}, instance)).ok).toBe(false);
+  });
+
   it('accepts a successful anchor_root transaction with matching seq, root and leaf count', () => {
     const instance = Keypair.generate();
     const result = checkRootAnchor(anchorRootTx(instance), expected({}, instance));
@@ -195,7 +243,7 @@ describe('checkRootAnchor', () => {
 
   it('rejects a transaction that does not invoke the mandate registry at all', () => {
     const instance = Keypair.generate();
-    const summary = paymentSummary();
+    const summary = channelSettleSummary();
     expect(checkRootAnchor(summary, expected({}, instance)).ok).toBe(false);
   });
 });

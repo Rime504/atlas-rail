@@ -1,20 +1,50 @@
 import { describe, expect, it } from 'vitest';
-import { Keypair } from '@solana/web3.js';
+import { Keypair, PublicKey, TransactionInstruction, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
 import { PaymentHistory, findPaymentOutcome } from './payment-outcome';
-import { buildExactPaymentTransaction, transactionMessageHash } from './x402-payment';
+import { transactionMessageHash } from './x402-payment';
+
+const CHANNEL = new PublicKey('CHNLxYvVA28MJP9PrFuDXccuoGXAx7jBacfLEkahyGsX');
+const ED25519 = new PublicKey('Ed25519SigVerify111111111111111111111111111');
+const INSTRUCTIONS_SYSVAR = new PublicKey('Sysvar1nstructions1111111111111111111111111');
 
 const key = () => Keypair.generate().publicKey.toBase58();
 const payer = key();
-const tx = buildExactPaymentTransaction({
-  payer,
-  feePayer: key(),
-  mint: key(),
-  decimals: 6,
-  payTo: key(),
-  amountBaseUnits: '10000',
-  recentBlockhash: key(),
-  memo: null,
-});
+
+/** Ed25519 precompile plus payment-channels settle, the same two instructions the devnet script submits. */
+function settleTransaction(): VersionedTransaction {
+  const message = Buffer.from('voucher');
+  const signature = Buffer.alloc(64, 7);
+  const data = Buffer.alloc(112 + message.length);
+  data[0] = 1;
+  data.writeUInt16LE(48, 2);
+  data.writeUInt16LE(0xffff, 4);
+  data.writeUInt16LE(16, 6);
+  data.writeUInt16LE(0xffff, 8);
+  data.writeUInt16LE(112, 10);
+  data.writeUInt16LE(message.length, 12);
+  data.writeUInt16LE(0xffff, 14);
+  Keypair.generate().publicKey.toBuffer().copy(data, 16);
+  signature.copy(data, 48);
+  message.copy(data, 112);
+  const compiled = new TransactionMessage({
+    payerKey: new PublicKey(payer),
+    recentBlockhash: key(),
+    instructions: [
+      new TransactionInstruction({ programId: ED25519, keys: [], data }),
+      new TransactionInstruction({
+        programId: CHANNEL,
+        keys: [
+          { pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: true },
+          { pubkey: INSTRUCTIONS_SYSVAR, isSigner: false, isWritable: false },
+        ],
+        data: Buffer.from([2]),
+      }),
+    ],
+  }).compileToV0Message();
+  return new VersionedTransaction(compiled);
+}
+
+const tx = settleTransaction();
 const transactionBase64 = Buffer.from(tx.serialize()).toString('base64');
 const hash = transactionMessageHash(tx);
 const NOW = 1_800_000_000;

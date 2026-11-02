@@ -19,7 +19,8 @@
   "dependencies": {
     "@atlas-rail/mandate": "workspace:*",
     "@atlas-rail/receipt": "workspace:*",
-    "@atlas-rail/solana": "workspace:*"
+    "@atlas-rail/solana": "workspace:*",
+    "atlasrails": "workspace:*"
   },
   "devDependencies": {
     "@atlas-rail/typescript-config": "workspace:*",

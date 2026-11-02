@@ -55,6 +55,11 @@ body {
     @apply inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/15 px-5 text-[15px] font-medium text-white transition-colors hover:border-white/30 hover:bg-white/[0.04];
   }
 
+  /* The one call to action that matters most: "Become a user". */
+  .btn-accent {
+    @apply inline-flex h-12 items-center justify-center gap-2 rounded-full bg-accent px-7 text-[16px] font-semibold text-ink shadow-[0_0_40px_-8px_rgba(46,242,184,0.55)] transition-[filter,transform] hover:brightness-110 active:scale-[0.98];
+  }
+
   .link-quiet {
     @apply text-muted underline decoration-white/20 underline-offset-4 transition-colors hover:text-white hover:decoration-white/60;
   }

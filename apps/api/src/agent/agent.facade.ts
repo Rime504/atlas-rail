@@ -23,6 +23,7 @@ import {
   buildRevokeMandateTransaction,
   fetchMandateAccount,
   findMandatePda,
+  isMandateAccountActive,
 } from '@atlas-rail/solana';
 import { QueueService } from '../common/queue.service';
 import { AGENT_CHAIN, AGENT_KEYRING } from './agent.tokens';
@@ -38,10 +39,9 @@ function onchainEnabled(): boolean {
   return result.success && result.data === true;
 }
 
-/** Same pattern as {@link onchainEnabled}. Switches anchoring from an SPL Memo to the mandate
- * registry's `anchor_root` instruction. Only meaningful when `onchainEnabled()` is also true. */
-function anchorRootEnabled(): boolean {
-  const result = envBoolean.safeParse(process.env.ATLAS_ANCHOR_ROOT);
+/** Fail-closed companion to {@link onchainEnabled}: missing/inactive accounts and RPC errors deny. */
+function onchainRequire(): boolean {
+  const result = envBoolean.safeParse(process.env.ATLAS_ONCHAIN_REQUIRE);
   return result.success && result.data === true;
 }
 
@@ -124,7 +124,6 @@ export class AgentFacade {
       signer: this.instanceSigner,
       clock,
       newId,
-      mode: onchainEnabled() && anchorRootEnabled() ? 'root' : 'memo',
       rpcUrl: solanaRpcUrl(),
       programId: mandateProgramId(),
     });
@@ -164,20 +163,40 @@ export class AgentFacade {
   }
 
   /**
-   * Behind `ATLAS_ONCHAIN=1`: does the on-chain mandate account say revoked? Returns `null` (not
-   * revoked, as far as this check can tell) if the account doesn't exist yet or the RPC call fails —
-   * a chain-read hiccup must never block a payment the database considers valid; only a *positive*
-   * on-chain revocation overrides the database (see {@link GateServiceOptions.onchainRevocationCheck}).
+   * Behind `ATLAS_ONCHAIN=1`: does the on-chain mandate account say revoked / inactive?
+   *
+   * Soft mode (default): missing accounts and RPC errors return `null` so the off-chain DB still
+   * decides — only a *positive* on-chain revocation overrides.
+   *
+   * Require mode (`ATLAS_ONCHAIN_REQUIRE=1`): missing, inactive, revoked, or undecodable accounts
+   * deny the payment (fail closed). RPC/decode errors also deny.
    */
   private async checkOnChainRevocation(mandateHashHex: string): Promise<{ revokedAt: number; reason: string | null } | null> {
+    const requireRegistry = onchainRequire();
     try {
       const { address } = findMandatePda(mandateProgramId(), Buffer.from(mandateHashHex, 'hex'));
       const account = await fetchMandateAccount(process.env.SOLANA_RPC_URL ?? 'https://api.devnet.solana.com', address);
-      if (!account || !account.revoked) return null;
-      return { revokedAt: Number(account.revokedAt), reason: 'Mandate is revoked on-chain' };
-    } catch (error) {
-      this.logger.warn(`On-chain revocation check failed, falling back to the database: ${error instanceof Error ? error.message : String(error)}`);
+      if (!account) {
+        if (requireRegistry) {
+          return { revokedAt: Math.floor(Date.now() / 1000), reason: 'On-chain mandate account is missing' };
+        }
+        return null;
+      }
+      if (account.revoked) {
+        return { revokedAt: Number(account.revokedAt), reason: 'Mandate is revoked on-chain' };
+      }
+      if (!isMandateAccountActive(account)) {
+        if (requireRegistry) {
+          return { revokedAt: Math.floor(Date.now() / 1000), reason: 'On-chain mandate is not active (notBefore / expiresAt)' };
+        }
+        return null;
+      }
       return null;
+    } catch (error) {
+      // Fails closed: when the chain cannot answer, the gate cannot know the mandate was not revoked.
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`On-chain mandate check failed closed: ${message}`);
+      return { revokedAt: Math.floor(Date.now() / 1000), reason: `On-chain mandate check failed: ${message}` };
     }
   }
 

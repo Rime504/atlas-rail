@@ -1,0 +1,16 @@
+{
+  "name": "@atlas-rail/example-atlasrails-pay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-strip-types agent-payment.ts"
+  },
+  "dependencies": {
+    "atlasrails": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2"
+  }
+}

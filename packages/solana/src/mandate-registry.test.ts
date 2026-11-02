@@ -6,8 +6,10 @@ import {
   buildRevokeMandateTransaction,
   decodeMandateAccount,
   decodeRootAccount,
+  exportMandateAccountJson,
   findMandatePda,
   findRootPda,
+  isMandateAccountActive,
 } from './mandate-registry';
 
 // Verified independently against `sha256("global:create_mandate")[0..8]` etc. (and against the IDL
@@ -15,9 +17,10 @@ import {
 // silently fails as "unknown instruction", so this test exists to catch that immediately.
 const CREATE_MANDATE_DISCRIMINATOR = Buffer.from([230, 170, 158, 68, 33, 169, 16, 158]);
 const REVOKE_MANDATE_DISCRIMINATOR = Buffer.from([252, 97, 140, 119, 67, 43, 177, 108]);
-const ANCHOR_ROOT_DISCRIMINATOR = Buffer.from([123, 31, 186, 67, 90, 205, 47, 87]);
+const ANCHOR_ROOT_V2_DISCRIMINATOR = Buffer.from([46, 118, 158, 39, 84, 152, 27, 134]);
 const MANDATE_ACCOUNT_DISCRIMINATOR = Buffer.from([113, 216, 98, 159, 185, 63, 55, 18]);
 const ROOT_ACCOUNT_DISCRIMINATOR = Buffer.from([46, 159, 131, 37, 245, 84, 5, 9]);
+const ROOT_V2_ACCOUNT_DISCRIMINATOR = Buffer.from([232, 166, 214, 209, 154, 130, 45, 74]);
 
 const PROGRAM_ID = 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k';
 // Any valid 32-byte base58 pubkey works as a dummy blockhash for building (unsigned, unsent)
@@ -149,13 +152,37 @@ describe('buildAnchorRootTransaction', () => {
       seq: 0n,
       merkleRoot,
       leafCount: 3,
+      batchHeader: new Uint8Array(32).fill(1),
+      batchFileHash: new Uint8Array(32).fill(2),
       recentBlockhash: DUMMY_BLOCKHASH,
     });
     const tx = VersionedTransaction.deserialize(Buffer.from(base64, 'base64'));
     const ix = tx.message.compiledInstructions[0];
-    expect(Buffer.from(ix.data.subarray(0, 8))).toEqual(ANCHOR_ROOT_DISCRIMINATOR);
+    expect(Buffer.from(ix.data.subarray(0, 8))).toEqual(ANCHOR_ROOT_V2_DISCRIMINATOR);
+    expect(Buffer.from(ix.data.subarray(ix.data.length - 32)).equals(Buffer.alloc(32, 2))).toBe(true);
+    expect(tx.message.compiledInstructions).toHaveLength(1);
     expect(tx.message.header.numRequiredSignatures).toBe(1);
     expect(tx.message.staticAccountKeys[0].toBase58()).toBe(gateAuthority);
+  });
+
+  it('sends the same bytes under the deprecated anchor_root when asked', () => {
+    const { address: mandatePda } = findMandatePda(PROGRAM_ID, mandateHash(5));
+    const params = {
+      programId: PROGRAM_ID,
+      mandatePda,
+      gateAuthority: Keypair.generate().publicKey.toBase58(),
+      seq: 0n,
+      merkleRoot: new Uint8Array(32).fill(9),
+      leafCount: 3,
+      batchHeader: new Uint8Array(32).fill(1),
+      batchFileHash: new Uint8Array(32).fill(2),
+      recentBlockhash: DUMMY_BLOCKHASH,
+    };
+    const dataOf = (base64: string) => Buffer.from(VersionedTransaction.deserialize(Buffer.from(base64, 'base64')).message.compiledInstructions[0].data);
+    const v2 = dataOf(buildAnchorRootTransaction(params));
+    const legacy = dataOf(buildAnchorRootTransaction({ ...params, legacyInstruction: true }));
+    expect(legacy.subarray(0, 8)).toEqual(Buffer.from([123, 31, 186, 67, 90, 205, 47, 87]));
+    expect(legacy.subarray(8).equals(v2.subarray(8))).toBe(true);
   });
 });
 
@@ -213,6 +240,47 @@ describe('decodeMandateAccount', () => {
     const bad = Buffer.alloc(8 + 32 + 32 * 5 + 8 * 8 + 1 + 8 + 32 + 8 + 1);
     expect(() => decodeMandateAccount(bad)).toThrow(/discriminator/);
   });
+
+  it('rejects truncated account data', () => {
+    expect(() => decodeMandateAccount(Buffer.from(MANDATE_ACCOUNT_DISCRIMINATOR))).toThrow(/too short/);
+  });
+});
+
+describe('isMandateAccountActive / exportMandateAccountJson', () => {
+  it('treats revoked and expired accounts as inactive', () => {
+    const owner = Keypair.generate().publicKey;
+    const body = Buffer.alloc(32 + 32 * 5 + 8 * 8 + 1 + 8 + 32 + 8 + 1);
+    let o = 0;
+    Buffer.from(mandateHash(1)).copy(body, o); o += 32;
+    for (let i = 0; i < 5; i += 1) {
+      owner.toBuffer().copy(body, o);
+      o += 32;
+    }
+    body.writeBigUInt64LE(1n, o); o += 8;
+    body.writeBigUInt64LE(1n, o); o += 8;
+    body.writeBigInt64LE(60n, o); o += 8;
+    body.writeBigUInt64LE(1n, o); o += 8;
+    body.writeBigUInt64LE(1n, o); o += 8;
+    body.writeBigInt64LE(100n, o); o += 8; // notBefore
+    body.writeBigInt64LE(200n, o); o += 8; // expiresAt
+    body.writeBigInt64LE(100n, o); o += 8;
+    body.writeUInt8(0, o); o += 1;
+    body.writeBigInt64LE(0n, o); o += 8;
+    owner.toBuffer().copy(body, o); o += 32;
+    body.writeBigUInt64LE(0n, o); o += 8;
+    body.writeUInt8(1, o);
+    const decoded = decodeMandateAccount(Buffer.concat([MANDATE_ACCOUNT_DISCRIMINATOR, body]));
+    expect(isMandateAccountActive(decoded, 150)).toBe(true);
+    expect(isMandateAccountActive(decoded, 200)).toBe(false);
+    expect(isMandateAccountActive({ ...decoded, revoked: true }, 150)).toBe(false);
+    const exported = exportMandateAccountJson('Pda11111111111111111111111111111111', decoded, {
+      txSignature: 'sig',
+    });
+    expect(exported.schema_version).toBe('atlasrail.onchain-mandate/1');
+    expect(exported.program_id).toBe(PROGRAM_ID);
+    expect(exported.revoked).toBe(false);
+    expect(exported.tx_signature).toBe('sig');
+  });
 });
 
 describe('decodeRootAccount', () => {
@@ -235,6 +303,27 @@ describe('decodeRootAccount', () => {
     expect(decoded.merkleRoot).toBe(Buffer.from(merkleRoot).toString('hex'));
     expect(decoded.leafCount).toBe(3);
     expect(decoded.anchoredAt).toBe(1_700_000_000n);
+    expect(decoded.batchHeader).toBeNull();
+    expect(decoded.batchFileHash).toBeNull();
     expect(decoded.bump).toBe(254);
+  });
+
+  it('reads the batch header and file hash from a RootV2 account written by anchor_root_v2', () => {
+    const mandate = Keypair.generate().publicKey;
+    const body = Buffer.alloc(32 + 8 + 32 + 4 + 8 + 32 + 32 + 1);
+    let o = 0;
+    mandate.toBuffer().copy(body, o); o += 32;
+    body.writeBigUInt64LE(1n, o); o += 8;
+    body.fill(11, o, o + 32); o += 32;
+    body.writeUInt32LE(5, o); o += 4;
+    body.writeBigInt64LE(1_700_000_000n, o); o += 8;
+    body.fill(3, o, o + 32); o += 32;
+    body.fill(4, o, o + 32); o += 32;
+    body.writeUInt8(7, o);
+    const decoded = decodeRootAccount(Buffer.concat([ROOT_V2_ACCOUNT_DISCRIMINATOR, body]));
+    expect(decoded.batchHeader).toBe('03'.repeat(32));
+    expect(decoded.batchFileHash).toBe('04'.repeat(32));
+    expect(decoded.leafCount).toBe(5);
+    expect(decoded.bump).toBe(7);
   });
 });

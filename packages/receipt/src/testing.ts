@@ -97,7 +97,35 @@ export async function createWorld(options: { mandate?: Parameters<typeof unsigne
   });
   const lifecycle = new MandateLifecycleService({ store, clock: clockFn });
   const receiptService = new ReceiptService({ store, receipts, chain, instanceSigner: keys.instance, clock: clockFn, newId });
-  const anchorService = new AnchorService({ receipts, chain, signer: keys.instance, clock: clockFn, newId });
+  const anchorService = new AnchorService({
+    receipts,
+    chain,
+    signer: keys.instance,
+    clock: clockFn,
+    newId,
+    programId: 'CnGoTE5Bxc8MFGaeK5LDv5uAZ7pNiktMunYy8JZcLY4k',
+    loadMandate: async () => ({
+      mandateHash: '0'.repeat(64),
+      owner: keys.owner.publicKey,
+      approver: keys.approver.publicKey,
+      agent: keys.agent.publicKey,
+      gateAuthority: keys.instance.publicKey,
+      mint: TEST_MINT,
+      maxPerPayment: 0n,
+      maxPerWindow: 0n,
+      windowSeconds: 0n,
+      maxTotal: 0n,
+      escalationThreshold: 0n,
+      notBefore: 0n,
+      expiresAt: 0n,
+      createdAt: 0n,
+      revoked: false,
+      revokedAt: 0n,
+      revokedBy: '',
+      nextRootSeq: 0n,
+      bump: 255,
+    }),
+  });
 
   // The shared mandate fixtures use the same seed labels, so their public keys match `keys`.
   const base = unsignedTestMandate(options.mandate);

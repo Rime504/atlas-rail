@@ -117,17 +117,20 @@
         {
           "role": "OWNER",
           "publicKey": "FseuYDfayH186rL2ALfk3ej5c7uoj3JcDfCQxupobqFt",
-          "signature": "4mYdRWV3iJAjiuZDk8d3vvapYJKjGMB4adknbi9ddvrz8bKfDXxfrqeui4qzMY9DkCUc7bdwW5MJHrFpKskqmx9w"
+          "signature": "4mYdRWV3iJAjiuZDk8d3vvapYJKjGMB4adknbi9ddvrz8bKfDXxfrqeui4qzMY9DkCUc7bdwW5MJHrFpKskqmx9w",
+          "scheme": "ed25519"
         },
         {
           "role": "APPROVER",
           "publicKey": "EXQWapH4ukNXMBUZTFa9nNsjZjFgJaM74STTG9ZRBmBJ",
-          "signature": "tVgdzHBoUHW11V2RNzxJsxwuskaKjpCwCaGKcd1sG6oeEj2xWzoK2EjbYwz5SL71MC5bKZ1UN1n3oPmKa4rFctr"
+          "signature": "tVgdzHBoUHW11V2RNzxJsxwuskaKjpCwCaGKcd1sG6oeEj2xWzoK2EjbYwz5SL71MC5bKZ1UN1n3oPmKa4rFctr",
+          "scheme": "ed25519"
         },
         {
           "role": "AGENT",
           "publicKey": "BshxiGx4dCBP2sookthKTKfqpbZNqphFJ7PYjiYGBpE7",
-          "signature": "5uD1EZbzhCgKMVpnCvBkCku14suMx8mwPM2ZrN243WybQyRn9AUWFeGR2QYJRsbM5igBtCq74erPKEKQox846yci"
+          "signature": "5uD1EZbzhCgKMVpnCvBkCku14suMx8mwPM2ZrN243WybQyRn9AUWFeGR2QYJRsbM5igBtCq74erPKEKQox846yci",
+          "scheme": "ed25519"
         }
       ]
     },
@@ -242,17 +245,20 @@
         {
           "role": "OWNER",
           "publicKey": "FseuYDfayH186rL2ALfk3ej5c7uoj3JcDfCQxupobqFt",
-          "signature": "4QTVVE5tRJNiQKj2mibZtzM5GAtdJPhKdjpqpGz3Sk2yRQyV11SFgKxqdj5SZRiyM8gmZWN74oG3YKwSQwEut4w1"
+          "signature": "4QTVVE5tRJNiQKj2mibZtzM5GAtdJPhKdjpqpGz3Sk2yRQyV11SFgKxqdj5SZRiyM8gmZWN74oG3YKwSQwEut4w1",
+          "scheme": "ed25519"
         },
         {
           "role": "APPROVER",
           "publicKey": "EXQWapH4ukNXMBUZTFa9nNsjZjFgJaM74STTG9ZRBmBJ",
-          "signature": "5UzyNmjPdMReKJ37XmmrKk6rDRCKfp5t2UUz2LMhm38hCoShbbLwWLaQFiHtNJ24rqoG3aRQVjHK76vWcQNtNKfC"
+          "signature": "5UzyNmjPdMReKJ37XmmrKk6rDRCKfp5t2UUz2LMhm38hCoShbbLwWLaQFiHtNJ24rqoG3aRQVjHK76vWcQNtNKfC",
+          "scheme": "ed25519"
         },
         {
           "role": "AGENT",
           "publicKey": "BshxiGx4dCBP2sookthKTKfqpbZNqphFJ7PYjiYGBpE7",
-          "signature": "4kL5mTcwVHgu7VCkfrPoN2L4pWutXDDBdqUGJhFThyXS1FvWCCQakREiud62EL2EgY4sMEV2hXk9d3Gfe7RHLQHq"
+          "signature": "4kL5mTcwVHgu7VCkfrPoN2L4pWutXDDBdqUGJhFThyXS1FvWCCQakREiud62EL2EgY4sMEV2hXk9d3Gfe7RHLQHq",
+          "scheme": "ed25519"
         }
       ]
     }
@@ -316,17 +322,20 @@
         {
           "role": "OWNER",
           "publicKey": "FseuYDfayH186rL2ALfk3ej5c7uoj3JcDfCQxupobqFt",
-          "signature": "4AY8gLuM7RUjh6U3JZSZABg5Quxqdgxjj1oYEg7EHTdK6D5wrrumYqd6TVjiBReBSwasmYjDtqJvABMwh7qLTfE5"
+          "signature": "4AY8gLuM7RUjh6U3JZSZABg5Quxqdgxjj1oYEg7EHTdK6D5wrrumYqd6TVjiBReBSwasmYjDtqJvABMwh7qLTfE5",
+          "scheme": "ed25519"
         },
         {
           "role": "APPROVER",
           "publicKey": "EXQWapH4ukNXMBUZTFa9nNsjZjFgJaM74STTG9ZRBmBJ",
-          "signature": "2CftYXmqAp4Bgh1Puy6N8JKd4dKtZngxo1fupvGpp6wL57ysPdqEjHeD4xXDcyS7nkbsmXCaKJcRtyYzAQm61KVW"
+          "signature": "2CftYXmqAp4Bgh1Puy6N8JKd4dKtZngxo1fupvGpp6wL57ysPdqEjHeD4xXDcyS7nkbsmXCaKJcRtyYzAQm61KVW",
+          "scheme": "ed25519"
         },
         {
           "role": "AGENT",
           "publicKey": "BshxiGx4dCBP2sookthKTKfqpbZNqphFJ7PYjiYGBpE7",
-          "signature": "3bZJz4CAKbNUByMz4F5qec9KmXSCnXf61eyv7fQbWdYehNh3gHRAC4iVtPJzimrQ8NKqoJSc66qh7Kk9oHriimdU"
+          "signature": "3bZJz4CAKbNUByMz4F5qec9KmXSCnXf61eyv7fQbWdYehNh3gHRAC4iVtPJzimrQ8NKqoJSc66qh7Kk9oHriimdU",
+          "scheme": "ed25519"
         }
       ]
     }
@@ -392,10 +401,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "10000",
         "resourceUrl": "http://localhost:4402/research/summary",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "a9571e4d78a494a0e01819f18613849aa85595306227184fd105a6acaba862f0",
+      "offerHash": "1f6f820b4171ff662e449f6a4d63770d64116d00a9c4c65c4a24c3f52c01d56d",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -403,22 +412,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {
@@ -454,10 +449,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "2000000",
         "resourceUrl": "http://localhost:4402/research/summary",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "86521f9351ff52390a8986779fd72be16e470b15e5964db842e4176e944613f6",
+      "offerHash": "2c77120ce1f328d4cddbd4da9ecde8ad23357decd4461637e720f1fee5c3df18",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -465,22 +460,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {
@@ -518,10 +499,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "2000000",
         "resourceUrl": "http://localhost:4402/research/summary",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "86521f9351ff52390a8986779fd72be16e470b15e5964db842e4176e944613f6",
+      "offerHash": "2c77120ce1f328d4cddbd4da9ecde8ad23357decd4461637e720f1fee5c3df18",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -529,25 +510,11 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": {
           "id": "apr_TEST",
-          "offerHash": "86521f9351ff52390a8986779fd72be16e470b15e5964db842e4176e944613f6",
+          "offerHash": "2c77120ce1f328d4cddbd4da9ecde8ad23357decd4461637e720f1fee5c3df18",
           "status": "APPROVED",
           "expiresAt": 1800000600,
           "approver": {
@@ -590,10 +557,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "500000000",
         "resourceUrl": "http://127.0.0.1:59725/invoice",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "07d54688fbd4dadb9e32d669806b9d12c8ae3c5bade6cb90d3f707bb59f50fa0",
+      "offerHash": "2c53e49f485008c4ede56190717a64f4de3d2f9a5cad697ead953eee3d48b6a5",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -601,22 +568,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {
@@ -640,7 +593,7 @@
           "PRICE_LIMIT:PASS",
           "WINDOW_BUDGET:ESCALATE",
           "MAX_TOTAL:FAIL",
-          "TRANSACTION_SIMULATION:PASS",
+          "TRANSACTION_SIMULATION:SKIPPED",
           "ESCALATION_THRESHOLD:ESCALATE"
         ]
       }
@@ -655,10 +608,10 @@
         "payTo": "6USPNHAc6Nh953zZcraZd6nFRoJRiQHy8ojEzt6SgZvC",
         "amount": "10000",
         "resourceUrl": "http://localhost:4402/research/summary",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "c5b53e73e1c5090665233845b0be9f23dfe66c920bbf79f3b62537643491bb1e",
+      "offerHash": "7f6624a19542957ccf342f525e9888a5cfa767e6fb4c332e06714f10c33bcaff",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -666,22 +619,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {
@@ -702,7 +641,7 @@
           "PRICE_LIMIT:PASS",
           "WINDOW_BUDGET:PASS",
           "MAX_TOTAL:PASS",
-          "TRANSACTION_SIMULATION:PASS",
+          "TRANSACTION_SIMULATION:SKIPPED",
           "ESCALATION_THRESHOLD:PASS"
         ]
       }
@@ -717,10 +656,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "60000000",
         "resourceUrl": "http://localhost:4402/research/summary",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "2e9e0c4cc3914120f6fa75d5eb0c68567dbf2ff7c91e86a848bcd76d1fb39133",
+      "offerHash": "e7a140ff109acb7d97a39b0b31902324d5c9f808669920c96bcfec1f0f7cba0c",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -728,22 +667,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {
@@ -767,7 +692,7 @@
           "PRICE_LIMIT:PASS",
           "WINDOW_BUDGET:ESCALATE",
           "MAX_TOTAL:PASS",
-          "TRANSACTION_SIMULATION:PASS",
+          "TRANSACTION_SIMULATION:SKIPPED",
           "ESCALATION_THRESHOLD:ESCALATE"
         ]
       }
@@ -782,10 +707,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "10000",
         "resourceUrl": "http://localhost:4402/research/summary",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "a9571e4d78a494a0e01819f18613849aa85595306227184fd105a6acaba862f0",
+      "offerHash": "1f6f820b4171ff662e449f6a4d63770d64116d00a9c4c65c4a24c3f52c01d56d",
       "context": {
         "now": 1800000000,
         "revoked": {
@@ -796,22 +721,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {
@@ -847,10 +758,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "40000000",
         "resourceUrl": "http://localhost:4402/inference/heavy",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "bd3e086a9bd6ea3cf3d035250b3347e2bc52fe6809702be6a8118ef7a32e8ad6",
+      "offerHash": "c06ec5a23fe8c86ae26f12d136698454dbd7c1058e85bbe3b5e5c3ec3214884e",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -858,22 +769,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {
@@ -913,10 +810,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "10000",
         "resourceUrl": "http://localhost:4402/inference/run",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "581d91c62c19f7acb59d8284f73963df81def292f62c85f10b34c7f4f45436f8",
+      "offerHash": "5c235f22a5e9d17105b09f410c48ec486ce2b30c208e68f5de910a76e2640bc0",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -924,22 +821,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {
@@ -977,10 +860,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "10000",
         "resourceUrl": "http://localhost:4402/research/summary",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "a9571e4d78a494a0e01819f18613849aa85595306227184fd105a6acaba862f0",
+      "offerHash": "1f6f820b4171ff662e449f6a4d63770d64116d00a9c4c65c4a24c3f52c01d56d",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -988,22 +871,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {
@@ -1039,10 +908,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "1000000",
         "resourceUrl": "http://localhost:4402/research/summary",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "53bfe4aaee56fc3f93f174caf949fb84d6ae1e65e0a3d09582153d56beed1d5d",
+      "offerHash": "03948f670b79a0104394139de9a9afda3cacd662e6d4a8c73091ef4f19492c58",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -1050,22 +919,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {
@@ -1101,10 +956,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "1050000",
         "resourceUrl": "http://localhost:4402/research/summary",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "114dc61c580f242340e6bd28c3cf8177fae4ee59ddf92eab2b9a2b85a1a0ecf2",
+      "offerHash": "244b61e71bdc4a44a40779c8008d3da4493c9329ac20fb678cbf517ba7612bc9",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -1112,22 +967,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {
@@ -1163,10 +1004,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "1500000",
         "resourceUrl": "http://localhost:4402/research/summary",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "9a66899bd4f6deaa6aa3930b16affb27f9f1c059eb53489128bca37e7cde889c",
+      "offerHash": "a2b1ed68f4ffa302cfa2543b697d3d11fd3083ea3fdf23c5f39c3792959f9252",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -1174,22 +1015,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {
@@ -1227,10 +1054,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "1500000",
         "resourceUrl": "http://localhost:4402/research/summary",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "9a66899bd4f6deaa6aa3930b16affb27f9f1c059eb53489128bca37e7cde889c",
+      "offerHash": "a2b1ed68f4ffa302cfa2543b697d3d11fd3083ea3fdf23c5f39c3792959f9252",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -1238,25 +1065,11 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": {
           "id": "apr_TEST",
-          "offerHash": "9a66899bd4f6deaa6aa3930b16affb27f9f1c059eb53489128bca37e7cde889c",
+          "offerHash": "a2b1ed68f4ffa302cfa2543b697d3d11fd3083ea3fdf23c5f39c3792959f9252",
           "status": "APPROVED",
           "expiresAt": 1800000600,
           "approver": {
@@ -1299,10 +1112,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "2500000",
         "resourceUrl": "http://localhost:4402/research/summary",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "ea38eff7505b2276d830657f44debc64f9f6a541fb4cf56e9c3ff8446c87dc57",
+      "offerHash": "b7e056df670b9fd7ff537ab5658ca9e09a2cb4b6af4cd8492175c788321a0415",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -1310,22 +1123,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {
@@ -1346,7 +1145,7 @@
           "PRICE_LIMIT:FAIL",
           "WINDOW_BUDGET:PASS",
           "MAX_TOTAL:PASS",
-          "TRANSACTION_SIMULATION:PASS",
+          "TRANSACTION_SIMULATION:SKIPPED",
           "ESCALATION_THRESHOLD:PASS"
         ]
       }
@@ -1361,10 +1160,10 @@
         "payTo": "DtvyPCcVE9mQXNR4LBX9fQgrrzT9hzsF6YCDvhLMGnRG",
         "amount": "1095000",
         "resourceUrl": "http://localhost:4402/research/summary",
-        "feePayer": "45cefiBth8vvLUR7SncYNGa1TWNa45kPBjT23gX7VDEp",
-        "memo": null
+        "feePayer": null,
+        "memo": "channel:test-channel"
       },
-      "offerHash": "48dc496637c54146d38dc36de8f24dcd518291fe935031d2285a3baac1535c3b",
+      "offerHash": "d52aba5670230d1f1fe27710d64f819ac3c2a8fd454d1fc5cb82ab69082951b2",
       "context": {
         "now": 1800000000,
         "revoked": null,
@@ -1372,22 +1171,8 @@
           "windowAutonomousBaseUnits": "0",
           "totalBaseUnits": "0"
         },
-        "simulation": {
-          "success": true,
-          "error": null,
-          "programIds": [
-            "ComputeBudget111111111111111111111111111111",
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-          ],
-          "unknownProgramIds": [],
-          "transferCount": 1,
-          "matchesOffer": true,
-          "mismatch": null,
-          "txMessageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "unitsConsumed": 18000
-        },
-        "requireSimulation": true,
+        "simulation": null,
+        "requireSimulation": false,
         "approval": null
       },
       "expected": {

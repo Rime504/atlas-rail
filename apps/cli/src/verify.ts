@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { verifyMandateChain } from '@atlas-rail/mandate';
-import { ReceiptCheck, ReceiptVerification, verifyReceipt } from '@atlas-rail/receipt';
+import { DECISION_RECEIPT_TYPE, ReceiptCheck, ReceiptVerification, verifyDecisionReceipt, verifyReceipt } from '@atlas-rail/receipt';
 import { Web3ChainClient } from '@atlas-rail/solana';
 
 export interface VerifyCliOptions {
@@ -8,6 +8,8 @@ export interface VerifyCliOptions {
   rpc: string | null;
   offline: boolean;
   trustedKeys: string[];
+  /** Explicit diagnostic verification. Ignored when trustedKeys is non-empty. */
+  untrusted?: boolean;
   checkSettlement: boolean;
   requireAnchor: boolean;
   json: boolean;
@@ -74,12 +76,16 @@ export async function runVerify(options: VerifyCliOptions, out: (line: string) =
     }
   }
 
-  const result = await verifyReceipt(document, {
-    chain,
-    trustedInstanceKeys: options.trustedKeys.length > 0 ? options.trustedKeys : undefined,
-    checkSettlementOnChain: options.checkSettlement && chain !== null,
-    requireAnchor: options.requireAnchor,
-  });
+  // pay.sh decision receipts (allow or deny, no settlement) have their own checks. They need a pinned key.
+  const result = (document as { type?: unknown } | null)?.type === DECISION_RECEIPT_TYPE
+    ? await verifyDecisionReceipt(document, { chain, trustedInstanceKeys: options.trustedKeys, requireAnchor: options.requireAnchor })
+    : await verifyReceipt(document, {
+        chain,
+        trustedInstanceKeys: options.trustedKeys.length > 0 ? options.trustedKeys : undefined,
+        untrusted: options.untrusted,
+        checkSettlementOnChain: options.checkSettlement && chain !== null,
+        requireAnchor: options.requireAnchor,
+      });
 
   out(options.json ? JSON.stringify(result, null, 2) : formatReport(options.file, result, options.color, options.offline));
   return result.pass ? 0 : 1;

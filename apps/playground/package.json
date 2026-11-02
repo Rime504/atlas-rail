@@ -14,9 +14,13 @@
     "publish-showcase": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/publish-showcase.mts"
   },
   "dependencies": {
+    "atlasrails": "workspace:*",
+    "@atlas-rail/x402": "workspace:*",
+    "@solana/spl-token": "^0.4.9",
     "@atlas-rail/mandate": "workspace:*",
     "@atlas-rail/receipt": "workspace:*",
     "@atlas-rail/solana": "workspace:*",
+    "@noble/curves": "1.9.7",
     "@solana/web3.js": "^1.95.8",
     "@vercel/blob": "^2.8.1",
     "lucide-react": "^0.468.0",

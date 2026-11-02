@@ -1,4 +1,3 @@
-import { merkleRoot } from '@atlas-rail/receipt';
 import type { BoundReceipt, ReceiptVerification } from '@atlas-rail/receipt';
 import type { ChainClient } from '@atlas-rail/solana';
 import { anchorRootOnchain, devnetChain, resolveDevnetCoreKeys, withTimeout } from './devnet';
@@ -28,8 +27,7 @@ export async function anchorProveAndPublish(
       // Must be the actual Merkle root over the leaf (merkleRoot([receiptHash])), not the raw
       // receipt hash itself — proveReceipt computes the same root independently below, and the
       // two have to match exactly for ANCHOR_ONCHAIN to verify against what's really on-chain.
-      const root = merkleRoot([receipt.receiptHash]);
-      onchainAnchor = await withTimeout(anchorRootOnchain(world.mandate!, root, 1, core));
+      onchainAnchor = await withTimeout(anchorRootOnchain(world.mandate!, receipt.receiptHash, core));
       next = { ...next, anchorOnchain: onchainAnchor.action };
     } catch (err) {
       anchorError = messageOf(err);

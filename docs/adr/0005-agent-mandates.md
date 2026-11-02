@@ -80,7 +80,7 @@ serialisable transaction that records an ALLOW so concurrent requests cannot joi
 ### Packages
 
 - `packages/mandate` — framework-free: JCS, Ed25519 helpers, mandate create/sign/verify/hash, resource matching, gate, decision records.
-- `packages/receipt` — bound receipts, Merkle tree, anchor memo format, offline verifier.
+- `packages/receipt` — bound receipts, salted Merkle tree, `anchor_root`, offline verifier.
 - `packages/x402-client` (`@atlas-rail/x402`) — `fetch` wrapper; uses the official `@x402/core` codecs and types.
 - `apps/demo-api`, `apps/demo-agent` — a paid x402 API with a local facilitator built from the official `@x402/svm` scheme, and a scripted agent.
 - `apps/cli` — `atlas verify`.

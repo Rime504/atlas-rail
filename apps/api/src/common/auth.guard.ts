@@ -52,7 +52,7 @@ export class AuthGuard implements CanActivate {
       const token = authHeader.substring(7);
       try {
         const payload = this.jwtService.verify(token, {
-          secret: process.env.JWT_ACCESS_SECRET || 'atlas_rail_dev_access_secret_do_not_use_in_production_32bytes',
+          secret: process.env.JWT_ACCESS_SECRET,
         });
         userContext = payload;
       } catch {

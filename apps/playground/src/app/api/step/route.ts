@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  SettleFn,
   attack,
   humanDecision,
   initWorld,
@@ -11,7 +10,7 @@ import {
   revokeMandate,
   signMandateStep,
 } from '@/lib/scenario';
-import { rateLimited, registerMandateOnchain, resolveDevnetCoreKeys, revokeMandateOnchain, settlePaymentOnchain, withTimeout } from '@/lib/devnet';
+import { rateLimited, registerMandateOnchain, resolveDevnetCoreKeys, revokeMandateOnchain, withTimeout } from '@/lib/devnet';
 import { StepRequest, StepResponse, World } from '@/lib/types';
 import { anchorProveAndPublish, publishStep } from '@/lib/step-proof';
 import { SessionTamperedError, openWorld, sealWorld } from '@/lib/session';
@@ -60,8 +59,8 @@ export async function POST(req: NextRequest) {
           return respond({ ...w, devnetFallbackReason: 'Devnet mode is not configured on this deployment yet.' });
         }
         // Decided once per run, here, and reused for every on-chain action this session attempts
-        // below (register, two settlements, an anchor, revoke) — so one full walkthrough counts as
-        // one run against the hourly limit, not five.
+        // below (register, an anchor, revoke) — so one full walkthrough counts as one run against
+        // the hourly limit, not five.
         if (rateLimited(clientIp(req))) {
           return respond({ ...initWorld('devnet', core, false).world, devnetFallbackReason: 'Devnet rate limit reached (15 runs/hour) — continuing without real on-chain actions.' });
         }
@@ -91,7 +90,7 @@ export async function POST(req: NextRequest) {
 
       case 'pay-normal': {
         requireWorld(world);
-        const { world: next, outcome } = await payNormal(world, settleFor(world));
+        const { world: next, outcome } = await payNormal(world);
         return respond(next, outcome);
       }
 
@@ -116,7 +115,7 @@ export async function POST(req: NextRequest) {
       case 'human-decision': {
         requireWorld(world);
         const approve = Boolean(action.approve);
-        const { world: next, outcome } = await humanDecision(world, approve, approve ? settleFor(world) : undefined);
+        const { world: next, outcome } = await humanDecision(world, approve);
         return respond(next, outcome);
       }
 
@@ -174,17 +173,6 @@ export async function POST(req: NextRequest) {
 
 function requireWorld(world: World | null): asserts world is World {
   if (!world) throw new Error('No session — start from the beginning');
-}
-
-/** A real settlement attempt for this world, if devnet mode is on and this run hasn't hit the
- * hourly rate limit — undefined (synthetic settlement) otherwise. `evaluateAndMaybeReceipt` already
- * falls back to synthetic with a visible reason if the attempt itself throws, so this only needs to
- * decide whether to try at all. */
-function settleFor(world: World): SettleFn | undefined {
-  if (world.mode !== 'devnet' || !world.devnetAllowed) return undefined;
-  const core = resolveDevnetCoreKeys();
-  if (!core) return undefined;
-  return (offer, receiptId) => withTimeout(settlePaymentOnchain(offer, core, receiptId));
 }
 
 function messageOf(err: unknown): string {
