@@ -16,24 +16,24 @@ export default function LandingPage() {
           <span className="bg-solana-gradient-text bg-clip-text text-transparent">Atlas Rail makes sure they only pay what they&rsquo;re allowed to</span>, and proves it.
         </h1>
         <p className="mt-6 max-w-lg text-base text-mutedText">
-          Connect a devnet wallet, set the voucher mandate, and settle one payment on Solana. The receipt root is anchored on devnet.
+          Check a real payment from the Solana chain, or try to make an agent overspend. The real gate rules decide, live.
         </p>
         <p className="mt-3 max-w-lg text-xs text-mutedText">
-          The hosted playground runs the real gate rules with per-session state.
+          The full 7-step demo runs on your laptop with <code className="font-mono">pnpm demo</code>.
         </p>
         <Link
-          href="/demo"
+          href="/verify"
           className="group mt-10 inline-flex items-center gap-2 rounded-full bg-solana-gradient px-8 py-4 text-base font-semibold text-background shadow-glow transition-transform hover:scale-[1.03] focus-visible:scale-[1.03]"
         >
-          Start the demo
+          <Search className="h-5 w-5" aria-hidden="true" /> Verify a real payment
           <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" aria-hidden="true" />
         </Link>
         <div className="mt-6 flex flex-col items-center gap-3 text-sm font-medium sm:flex-row sm:gap-6">
           <Link href="/break" className="inline-flex items-center gap-1.5 text-white/90 hover:text-white">
-            <ShieldX className="h-4 w-4 text-deny" aria-hidden="true" /> Watch an attack get blocked
+            <ShieldX className="h-4 w-4 text-deny" aria-hidden="true" /> Try to break the gate
           </Link>
-          <Link href="/verify" className="inline-flex items-center gap-1.5 text-white/90 hover:text-white">
-            <Search className="h-4 w-4 text-allow" aria-hidden="true" /> Verify a real payment
+          <Link href="/demo" className="inline-flex items-center gap-1.5 text-white/90 hover:text-white">
+            Run the full demo
           </Link>
           <Link href="/wallet" className="inline-flex items-center gap-1.5 text-white/90 hover:text-white">
             Connect a Solana wallet

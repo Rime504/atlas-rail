@@ -53,7 +53,7 @@ export default function DemoPage() {
     fetch('/api/voucher-demo')
       .then((res) => res.json() as Promise<{ localOnly?: boolean; error?: string }>)
       .then((data) => {
-        if (data.localOnly) setLocalOnly(data.error ?? 'This demo runs locally. See the video.');
+        if (data.localOnly) setLocalOnly(data.error ?? 'This demo runs on your own laptop.');
       })
       .catch(() => undefined);
   }, []);
@@ -119,8 +119,26 @@ export default function DemoPage() {
         <section className="rounded-2xl border border-border bg-surface p-6">
           <h1 className="font-display text-3xl font-semibold">{localOnly}</h1>
           <p className="mt-3 text-sm text-mutedText">
-            This page pays on Solana devnet from a key file on the developer&apos;s machine, so it does not run on a hosted preview.
+            The full demo signs with a key on your machine, so it runs from the repo: a mandate, five checked payments, a $5 payment blocked,
+            an owner approval, and receipts anchored on Solana. About 30 seconds.
           </p>
+          <pre className="mt-4 overflow-x-auto rounded-xl border border-border bg-background px-4 py-3 text-left font-mono text-sm text-white/90">
+            {'git clone https://github.com/Rime504/atlas-rail\ncd atlas-rail\npnpm install\npnpm demo'}
+          </pre>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/verify"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-solana-gradient px-6 py-3 text-sm font-semibold text-background shadow-glow"
+            >
+              Verify a real payment <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+            <Link
+              href="/break"
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-border px-6 py-3 text-sm font-semibold text-white/90 hover:bg-surfaceRaised"
+            >
+              Try to break the gate
+            </Link>
+          </div>
           <Link href="/" className="mt-6 inline-flex items-center gap-2 text-sm text-mutedText hover:text-white">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to the playground
           </Link>
