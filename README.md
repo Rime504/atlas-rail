@@ -28,7 +28,7 @@ Atlas Rail proves the payment was allowed.
 
 **Spending authority for Solana's `pay` tool.** Works today. `pay` asks Atlas Rail before it pays, and pays only if the answer is yes. The hook that lets `pay` ask is still in review in the `pay` project.
 
-**Over-limit or unusual payments.** The payment waits. The owner approves that one payment, once. If nobody approves, nothing is paid.
+**Over-limit or unusual payments.** The payment waits. The owner approves that one payment, once, by signing it with their own wallet. Telegram only sends the alert; a Telegram tap cannot approve anything. If nobody signs, nothing is paid.
 
 **Even if the agent's app is hacked.** The agent's key lives in a separate signer, not in the agent's app. It only signs what the rules allow.
 
@@ -53,7 +53,7 @@ Both run on a local Solana validator on your machine. Nothing touches real money
 1. The owner creates a mandate: $0.05 per call, $1 per day.
 2. The agent pays an API 5 times. Each payment is checked first and gets a receipt.
 3. The agent tries to pay $5. It is blocked before anything is signed, and the owner is asked.
-4. An unusual payment, inside the limits, is flagged. The owner approves it, and it is paid once.
+4. An unusual payment, inside the limits, is flagged. The owner signs to approve it with their own wallet, and it is paid once.
 5. All receipts are anchored on Solana in one transaction.
 6. One receipt is checked: PASS. The same receipt with one byte changed: FAIL.
 7. A channel runs low. The agent pauses until the owner tops it up.
@@ -63,7 +63,7 @@ Both run on a local Solana validator on your machine. Nothing touches real money
 - A normal payment: allowed and paid.
 - Over the limit: refused, and the owner is asked.
 - An unknown recipient: refused.
-- The owner approves, the agent tries again: paid once.
+- The owner signs the approval with their wallet, the agent tries again: paid once.
 - Atlas Rail is down, or answers too slowly: nothing is paid.
 - The same payment sent twice at once: paid once.
 

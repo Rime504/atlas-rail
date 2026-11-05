@@ -112,7 +112,7 @@ export function HowItWorks() {
         <div>
           <h3 className="text-[18px] font-semibold text-white">Anything unusual goes to a human.</h3>
           <p className="mt-1 text-[15px] leading-relaxed text-muted">
-            Above a threshold, or for chosen resources, a person must approve that exact payment.
+            Above a threshold, or for chosen resources, the owner must approve that exact payment by signing it with their own wallet. Telegram only sends the alert.
           </p>
         </div>
       </div>
@@ -126,7 +126,7 @@ const USE_CASES = [
   { icon: Globe, title: 'Paying for APIs and data', body: 'Your agent pays x402 APIs. Each payment is checked before it is signed.', status: 'Works today' },
   { icon: Repeat, title: 'Pay per call with payment channels', body: 'A deposit sits in a Solana payment channel. Each allowed call settles from it.', status: 'Works today' },
   { icon: Plug, title: "Spending authority for Solana's pay tool", body: 'pay asks Atlas Rail before it pays. Only an allowed payment goes through.', status: 'Works today · hook in review' },
-  { icon: UserCheck, title: 'Over-limit or unusual payments', body: 'The payment waits for the owner, who approves that one payment, once.', status: 'Works today' },
+  { icon: UserCheck, title: 'Over-limit or unusual payments', body: 'The payment waits. The owner approves that one payment, once, by signing with their own wallet. Telegram only sends the alert.', status: 'Works today' },
   { icon: KeyRound, title: "If the agent's app is hacked", body: "The agent's key lives in a separate signer. It only signs what the rules allow.", status: 'Works today' },
   { icon: TrendingUp, title: 'Trading agents', body: 'Rules for trades: maximum trade size, allowed tokens, allowed exchanges.', status: 'Coming next · not built yet', next: true },
 ];

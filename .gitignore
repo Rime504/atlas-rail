@@ -70,3 +70,11 @@ id.json
 
 # Rust build output in any crate
 target/
+
+# Wallets, key files and certificates: never commit
+*wallet*.json
+keys/
+*.pem
+*.key
+*.p12
+*secret*.json
