@@ -6,7 +6,7 @@
     "test": "mocha -r ts-node/register --timeout 30000 \"src/**/*.test.ts\""
   },
   "dependencies": {
-    "@solana/web3.js": "^1.98.0",
+    "@solana/web3.js": "^3.1.1",
     "litesvm": "^1.5.0",
     "borsh": "^2.0.0"
   },
