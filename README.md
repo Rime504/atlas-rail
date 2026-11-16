@@ -115,6 +115,10 @@ Measured on a laptop with a local validator:
 
 The mandate format is in [`spec/agent-mandate-v0.1.md`](spec/agent-mandate-v0.1.md).
 
+## Product and execution planning
+
+Read [whatthisis.md](whatthisis.md) for the current product, its trust boundaries and the proposed customer workflow. [engineering.md](engineering.md) sequences the next work into reviewable tasks with customer-validation gates, acceptance criteria and release checks. Proposed features and targets in those documents are not shipped capabilities.
+
 ## Team
 
 Built by Rime Khatib and Divyesh Shan. Contact us through the [website](https://atlas-rail-site.vercel.app).

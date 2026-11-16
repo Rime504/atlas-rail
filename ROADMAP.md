@@ -1,5 +1,7 @@
 # Atlas Rail Roadmap
 
+This is the historical version outline. For the proposed, dependency-ordered execution backlog, use [engineering.md](engineering.md); [whatthisis.md](whatthisis.md) distinguishes implemented behavior from proposed product scope. The release-assessment items below do not authorize mainnet or real funds.
+
 - **v0.1**: Devnet treasury controls, policy engine, multi-approval authorization, idempotency, transaction simulation, append-only audit & reconciliation ledgers, HMAC webhooks.
 - **v0.2**: External customer-controlled signer / HSM integration interface.
 - **v0.3**: Controlled mainnet readiness assessment & formal threat modeling (not mainnet activation).
