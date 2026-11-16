@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@atlas-rail/typescript-config": "workspace:*",
-    "@eslint/eslintrc": "^3.2.0",
+    "@eslint/eslintrc": "^3.3.7",
     "@types/node": "^22.10.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
